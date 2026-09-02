@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import re
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,11 @@ NATIVE = (
     "cargo auditable build --locked --release -p aletheia --bin aletheia "
     '--target "$BUILD_TARGET" --features recall,embed-candle'
 )
+
+PINNED_USES = re.compile(
+    r"^(?P<action>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_./-]+)?)@[0-9a-f]{40}$"
+)
+BUMPED_REVISION = "1234567890abcdef1234567890abcdef12345678"
 
 
 def workflow() -> dict:
@@ -252,11 +258,11 @@ class ReleaseBuildValidation(unittest.TestCase):
         self.assert_rejected(candidate)
         for mutate in (
             lambda candidate: candidate["jobs"]["build"]["steps"].append({"uses": "actions/cache@deadbeef"}),
-            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"submodules": True}),
-            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"ref": "main"}),
-            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"path": "decoy"}),
-            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION).update({"working-directory": "decoy"}),
-            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.RUST_TOOLCHAIN_ACTION)["with"].update({"toolchain": "candidate"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if scope.pinned_action(step.get("uses")) == scope.CHECKOUT_ACTION)["with"].update({"submodules": True}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if scope.pinned_action(step.get("uses")) == scope.CHECKOUT_ACTION)["with"].update({"ref": "main"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if scope.pinned_action(step.get("uses")) == scope.CHECKOUT_ACTION)["with"].update({"path": "decoy"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if scope.pinned_action(step.get("uses")) == scope.CHECKOUT_ACTION).update({"working-directory": "decoy"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if scope.pinned_action(step.get("uses")) == scope.RUST_TOOLCHAIN_ACTION)["with"].update({"toolchain": "candidate"}),
         ):
             with self.subTest(mutate=mutate):
                 candidate = workflow()
@@ -264,11 +270,74 @@ class ReleaseBuildValidation(unittest.TestCase):
                 self.assert_rejected(candidate)
 
 
+class PinnedActionRevisions(unittest.TestCase):
+    """Dependabot revision bumps pass; every structural uses change still fails."""
+
+    def assert_rejected(self, candidate: dict) -> None:
+        with mock.patch.object(scope, "validate_release_repository"):
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validated_release_builds(candidate)
+
+    def pinned_steps(self, candidate: dict, action: str | None = None) -> list[dict]:
+        steps = []
+        for job in candidate["jobs"].values():
+            if not isinstance(job, dict):
+                continue
+            for step in job.get("steps", []):
+                match = PINNED_USES.match(step.get("uses", "")) if isinstance(step, dict) else None
+                if match and action in (None, match.group("action")):
+                    steps.append(step)
+        return steps
+
+    def test_bumping_every_pinned_revision_keeps_the_job_shapes_trusted(self) -> None:
+        candidate = workflow()
+        steps = self.pinned_steps(candidate)
+        self.assertGreater(len(steps), 4)
+        for step in steps:
+            action = PINNED_USES.match(step["uses"]).group("action")
+            step["uses"] = f"{action}@{BUMPED_REVISION}"
+        with mock.patch.object(scope, "validate_release_repository"):
+            builds = scope.validated_release_builds(candidate)
+        self.assertEqual([build.package for build in builds], ["aletheia", "aletheia"])
+
+    def test_sbom_job_action_identity_and_pinning_changes_are_rejected(self) -> None:
+        def sbom_generate(candidate: dict) -> dict:
+            return next(
+                step for step in candidate["jobs"]["sbom"]["steps"]
+                if PINNED_USES.match(step.get("uses", ""))
+                and PINNED_USES.match(step["uses"]).group("action") == "anchore/sbom-action"
+            )
+
+        for uses in (
+            f"forged/sbom-action@{BUMPED_REVISION}",
+            "anchore/sbom-action@v0.24.2",
+            "anchore/sbom-action@e22c38",
+        ):
+            with self.subTest(uses=uses):
+                candidate = workflow()
+                sbom_generate(candidate)["uses"] = uses
+                self.assert_rejected(candidate)
+
+    def test_build_job_pin_removal_and_identity_swap_are_rejected(self) -> None:
+        for uses in (
+            "taiki-e/install-action@v2.87.1",
+            f"forged/install-action@{BUMPED_REVISION}",
+        ):
+            with self.subTest(uses=uses):
+                candidate = workflow()
+                install = self.pinned_steps(
+                    {"jobs": {"build": candidate["jobs"]["build"]}}, "taiki-e/install-action"
+                )
+                self.assertEqual(len(install), 1)
+                install[0]["uses"] = uses
+                self.assert_rejected(candidate)
+
+
 class PublicationIntake(unittest.TestCase):
     def downloads(self, candidate: dict) -> list[dict]:
         return [
             step for step in candidate["jobs"]["publish-release"]["steps"]
-            if step.get("uses") == scope.DOWNLOAD_ARTIFACT_ACTION
+            if scope.pinned_action(step.get("uses")) == scope.DOWNLOAD_ARTIFACT_ACTION
         ]
 
     def assert_intake_rejected(self, candidate: dict) -> None:
@@ -298,7 +367,7 @@ class PublicationIntake(unittest.TestCase):
                 self.downloads(candidate)[-1]
             ),
             lambda candidate: candidate["jobs"]["publish-release"]["steps"].append(
-                {"uses": scope.DOWNLOAD_ARTIFACT_ACTION, "with": {"name": "release-shaped-diagnostic", "path": "release-assets"}}
+                {"uses": f"{scope.DOWNLOAD_ARTIFACT_ACTION}@{BUMPED_REVISION}", "with": {"name": "release-shaped-diagnostic", "path": "release-assets"}}
             ),
             lambda candidate: self.downloads(candidate)[0]["with"].update({"merge-multiple": True}),
         )
