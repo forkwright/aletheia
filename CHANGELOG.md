@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.46.0](https://github.com/forkwright/aletheia/compare/v0.45.0...v0.46.0) (2026-09-02)
+
+
+### Features
+
+* **hermeneus:** hard admission cap with typed saturation refusal for local providers ([#7156](https://github.com/forkwright/aletheia/issues/7156)) ([176d7c5](https://github.com/forkwright/aletheia/commit/176d7c5ad10059e7e7eaa7f1bf018e9924b70c91))
+* **hermeneus:** stateful front door for on-demand local providers ([#7159](https://github.com/forkwright/aletheia/issues/7159)) ([326dd9a](https://github.com/forkwright/aletheia/commit/326dd9ab335cf63eaa0e91301fea68fc101a42ce))
+* **taxis:** launch-contract token-budget clamp for the local provider path ([#7158](https://github.com/forkwright/aletheia/issues/7158)) ([6ee4524](https://github.com/forkwright/aletheia/commit/6ee4524af0aa495be9c48bb663f16d6a7efae2ff))
+
+
+### Bug Fixes
+
+* **ci:** bind release trusted graph to job shape, not action pin revisions ([#7154](https://github.com/forkwright/aletheia/issues/7154)) ([3430c9f](https://github.com/forkwright/aletheia/commit/3430c9f5840bd405db53031d27bbba4c3a5c6e1d))
+* **ci:** scope release builds to shipped binary ([#7145](https://github.com/forkwright/aletheia/issues/7145)) ([534a7bd](https://github.com/forkwright/aletheia/commit/534a7bd39f686305cdfbd6a725f5a36f9fb3b2bd))
+* **fuzz:** refresh itertools lock ([#7149](https://github.com/forkwright/aletheia/issues/7149)) ([7263b2d](https://github.com/forkwright/aletheia/commit/7263b2d2ed8712427cf41a0670b41145fb81dbc4))
+* **krites:** repair HNSW deletes and escape severed level-0 islands ([#7129](https://github.com/forkwright/aletheia/issues/7129)) ([76a1ca8](https://github.com/forkwright/aletheia/commit/76a1ca8d42b87876446df6644efe5875bffba8f3))
+* **poiesis:** migrate quick-xml consumers to the 0.42 str-based API ([#7155](https://github.com/forkwright/aletheia/issues/7155)) ([6e3e063](https://github.com/forkwright/aletheia/commit/6e3e063a8c0306f400053cd06ccac9361f0cceef))
+* **taxis:** resolve embedding dimension per provider instead of a flat 384 ([#7131](https://github.com/forkwright/aletheia/issues/7131)) ([19bd313](https://github.com/forkwright/aletheia/commit/19bd313d2619a34dfb52f5218983538a9483a569))
+
 ## [0.45.0](https://github.com/forkwright/aletheia/compare/v0.44.0...v0.45.0) (2026-08-31)
 
 
