@@ -6,17 +6,12 @@
 
 | Type | Purpose |
 |------|---------|
-| `AgentSdkConfig` | Current public type or boundary; see L3/source for exact fields |
-| `McpServerConfig` | Current public type or boundary; see L3/source for exact fields |
-| `AgentSdkEngine` | Current public type or boundary; see L3/source for exact fields |
-| `new` | Current public type or boundary; see L3/source for exact fields |
-| `default_model` | Current public type or boundary; see L3/source for exact fields |
+| `DispatchEngine` | Current public type or boundary; see L3/source for exact fields |
+| `HttpEngine` | Current public type or boundary; see L3/source for exact fields |
+| `StewardBackend` | Current public type or boundary; see L3/source for exact fields |
 
 ## Public API surface
 
-- `energeia::agent_sdk` - public items from `src/agent_sdk.rs`
-- `energeia::backend/backend_impl` - public items from `src/backend/backend_impl.rs`
-- `energeia::backend` - public items from `src/backend.rs`
 - `energeia::budget` - public items from `src/budget.rs`
 - `energeia::cost_ledger` - public items from `src/cost_ledger.rs`
 

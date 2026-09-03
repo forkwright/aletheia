@@ -4,7 +4,7 @@
 //! resumed, and streamed. The only production implementation, `HttpEngine`
 //! (in `crate::http`), is a Claude CLI subprocess wrapper — there is no
 //! Anthropic-hosted "Agent SDK" HTTP/SSE endpoint to target instead (see
-//! `crate::agent_sdk` for why). `MockEngine` exists for tests.
+//! the `crate::http` module docs for why). `MockEngine` exists for tests.
 
 use std::future::Future;
 use std::path::PathBuf;
