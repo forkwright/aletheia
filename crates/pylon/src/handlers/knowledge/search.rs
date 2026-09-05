@@ -332,6 +332,7 @@ pub async fn timeline(
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
     query.limit = query.limit.min(max_facts_limit);
 
+    let timeline_fetch_limit = candidate_fetch_limit(query.limit);
     let timeline_query = FactsQuery {
         nous_id: query.nous_id,
         sort: default_sort(),
@@ -339,11 +340,12 @@ pub async fn timeline(
         filter: None,
         fact_type: None,
         tier: None,
-        limit: candidate_fetch_limit(query.limit),
+        limit: timeline_fetch_limit,
         offset: 0,
         include_forgotten: false,
     };
-    let facts = get_stored_facts(&state, &policy, &timeline_query).await?;
+    let fetch_limit = i64::try_from(timeline_fetch_limit).unwrap_or(i64::MAX);
+    let facts = get_stored_facts(&state, &policy, &timeline_query, fetch_limit).await?;
     let mut events: Vec<TimelineEvent> = Vec::new();
 
     for fact in &facts {
@@ -391,15 +393,25 @@ pub async fn timeline(
     Ok(Json(TimelineResponse { events, total }))
 }
 
+// WHY(#7164): `fetch_limit` is a caller-supplied parameter, not derived from
+// `query.offset + query.limit` internally. The two callers want genuinely different
+// things: `timeline` wants a bounded relevance-window fetch (`candidate_fetch_limit`,
+// capped at `MAX_CANDIDATE_FETCH` for cost control -- it is fine for that view to only
+// ever see recent history). `list_facts` wants the complete matching set: its `total`
+// field and its text/type/tier/forgotten filters are computed in Rust over whatever
+// this returns, so anything short of "every matching fact" makes both the reported
+// total and the offset/limit page window wrong -- silently, since a truncated fetch
+// still returns `Ok`. Folding both needs through one `MAX_CANDIDATE_FETCH`-clamped
+// formula (the pre-fix behavior) capped every store at 2,000 fetched rows regardless
+// of what the caller actually asked for.
 pub(super) async fn get_stored_facts(
     state: &KnowledgeState,
     policy: &super::KnowledgeReadPolicy<'_>,
     query: &FactsQuery,
+    fetch_limit: i64,
 ) -> Result<Vec<mneme::knowledge::Fact>, ApiError> {
     #[cfg(feature = "knowledge-store")]
     if let Some(store) = state.knowledge_store.clone() {
-        let fetch_limit = i64::try_from((query.offset + query.limit).min(MAX_CANDIDATE_FETCH))
-            .unwrap_or(i64::MAX);
         let nous_id = query.nous_id.clone();
         // WHY(#5680): the store list/audit scans are synchronous and grow with the stored fact
         // count; run them on the blocking pool so a large store cannot stall the async runtime
@@ -423,7 +435,7 @@ pub(super) async fn get_stored_facts(
     }
     #[cfg(not(feature = "knowledge-store"))]
     {
-        let _ = (state, policy, query);
+        let _ = (state, policy, query, fetch_limit);
         std::future::ready(()).await;
     }
     // WHY(#6821) an error rather than an empty Vec: "the store holds nothing" and "there
@@ -547,6 +559,14 @@ pub(super) fn get_similar_facts(
     Vec::new()
 }
 
+// WHY(#7164): every arm breaks ties on `id` after the primary comparison. Without a
+// deterministic tiebreaker, facts sharing a sort-key value (common for `confidence`
+// and `created` on bulk-recorded facts) sort in whatever order the store happened to
+// return them in, which two fetches of the same data are not guaranteed to agree on.
+// offset/limit paging over such an order is not well-defined: a row can land on either
+// side of a page boundary from one call to the next. Breaking ties on `id` (a stable,
+// unique key) makes the order a genuine total order, so the same query always slices
+// the same way.
 pub(super) fn sort_facts(facts: &mut [mneme::knowledge::Fact], sort: &str, order: &str) {
     let desc = order == "desc";
     match sort {
@@ -556,19 +576,23 @@ pub(super) fn sort_facts(facts: &mut [mneme::knowledge::Fact], sort: &str, order
                 .confidence
                 .partial_cmp(&b.provenance.confidence)
                 .unwrap_or(std::cmp::Ordering::Equal);
-            if desc { cmp.reverse() } else { cmp }
+            let cmp = if desc { cmp.reverse() } else { cmp };
+            cmp.then_with(|| a.id.cmp(&b.id))
         }),
         "recency" => facts.sort_by(|a, b| {
             let cmp = a.access.last_accessed_at.cmp(&b.access.last_accessed_at);
-            if desc { cmp.reverse() } else { cmp }
+            let cmp = if desc { cmp.reverse() } else { cmp };
+            cmp.then_with(|| a.id.cmp(&b.id))
         }),
         "created" => facts.sort_by(|a, b| {
             let cmp = a.temporal.recorded_at.cmp(&b.temporal.recorded_at);
-            if desc { cmp.reverse() } else { cmp }
+            let cmp = if desc { cmp.reverse() } else { cmp };
+            cmp.then_with(|| a.id.cmp(&b.id))
         }),
         "access_count" => facts.sort_by(|a, b| {
             let cmp = a.access.access_count.cmp(&b.access.access_count);
-            if desc { cmp.reverse() } else { cmp }
+            let cmp = if desc { cmp.reverse() } else { cmp };
+            cmp.then_with(|| a.id.cmp(&b.id))
         }),
         "fsrs_review" => facts.sort_by(|a, b| {
             let cmp = a
@@ -576,10 +600,14 @@ pub(super) fn sort_facts(facts: &mut [mneme::knowledge::Fact], sort: &str, order
                 .stability_hours
                 .partial_cmp(&b.provenance.stability_hours)
                 .unwrap_or(std::cmp::Ordering::Equal);
-            if desc { cmp.reverse() } else { cmp }
+            let cmp = if desc { cmp.reverse() } else { cmp };
+            cmp.then_with(|| a.id.cmp(&b.id))
         }),
         _ => {
-            // NOTE: unrecognized sort field, facts retain original order
+            // NOTE: unrecognized sort field; still break ties on `id` so paging over
+            // it is well-defined (validate_sort_order rejects this from the public API,
+            // but get_stored_facts callers other than list_facts do not go through it).
+            facts.sort_by(|a, b| a.id.cmp(&b.id));
         }
     }
 }
@@ -707,7 +735,8 @@ mod relevance_fetch_tests {
             include_forgotten: true,
         };
 
-        let native = get_stored_facts(&state, &policy, &native_query)
+        let native_fetch_limit = i64::try_from(fetch_limit).expect("fetch_limit fits i64");
+        let native = get_stored_facts(&state, &policy, &native_query, native_fetch_limit)
             .await
             .expect("configured store must answer");
         assert!(
