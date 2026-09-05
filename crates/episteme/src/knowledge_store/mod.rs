@@ -634,6 +634,77 @@ impl crate::query_rewrite::HasRrfScore for HybridResult {
     }
 }
 
+/// fjall's own bookkeeping subdirectory. Present as a top-level sibling of
+/// cohort directories only under the pre-cohort-split legacy layout (see
+/// [`KnowledgeStore::migrate_to_cohort_layout`]) while it is being migrated
+/// away -- never itself a knowledge-store cohort.
+#[cfg(feature = "storage-fjall")]
+const FJALL_INTERNAL_DIR_NAME: &str = "keyspaces";
+
+/// Whether `path` is a genuine cohort directory under a knowledge-store
+/// root: it carries fjall's own `version` marker, and is neither fjall's
+/// internal bookkeeping directory nor a verified-copy snapshot
+/// ([`snapshot::is_snapshot_dir`]).
+///
+/// The one shared predicate for every knowledge-root walker (aletheia#7165).
+/// Before it, `aletheia memory reembed`'s own hand-rolled copy of this
+/// check excluded only [`FJALL_INTERNAL_DIR_NAME`] by name, so a
+/// `psyche.pre-migration-snapshot` sibling directory -- which also carries
+/// a `version` file, since [`KnowledgeStore::protect_pre_migration`] snapshots
+/// via a raw filesystem copy of the cohort it protects -- was enumerated as
+/// an ordinary cohort. Sorted, that snapshot landed between two real
+/// cohorts and halted a re-embed walk partway, silently, with the larger
+/// cohort never reached. A second, independently written cohort enumerator
+/// disagreed with `reembed` on the same question for the same reason: no
+/// shared definition existed. This function is that definition; every
+/// current and future caller should ask it rather than re-deriving the
+/// answer from a naming convention.
+#[cfg(feature = "storage-fjall")]
+#[must_use]
+pub fn is_cohort_dir(path: &std::path::Path) -> bool {
+    path.is_dir()
+        && path.file_name() != Some(std::ffi::OsStr::new(FJALL_INTERNAL_DIR_NAME))
+        && path.join(snapshot::FJALL_VERSION_MARKER).is_file()
+        && !snapshot::is_snapshot_dir(path)
+}
+
+/// Outcome of [`KnowledgeStore::probe_migration_state`]'s pre-migration
+/// protection probe (aletheia#7165): both *whether* to take a snapshot, and
+/// *what it is worth* if the real open that follows still fails.
+#[cfg(feature = "storage-fjall")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MigrationProbe {
+    /// The stamped version already matches
+    /// [`KnowledgeStore::SCHEMA_VERSION`]: no migration will run, nothing to
+    /// protect.
+    NoneNeeded,
+    /// A stamped version was read and confirmed to differ from
+    /// [`KnowledgeStore::SCHEMA_VERSION`]: a migration will definitely run.
+    /// A snapshot taken for this reason is real insurance and must survive
+    /// even if the migration -- or anything after it -- subsequently fails;
+    /// that is exactly the scenario it exists to recover from.
+    Confirmed,
+    /// The probe could not positively determine the store's schema state
+    /// (probe-open failure, unreadable `schema_version` relation, no
+    /// stamped version found). Protected defensively, but a snapshot taken
+    /// for this reason protected nothing if the real open that follows
+    /// fails anyway — see [`KnowledgeStore::open_fjall`] (aletheia#7165: a
+    /// failed probe against an unstamped, unopenable store left a stray
+    /// `*.pre-migration-snapshot` sibling behind that a later `memory
+    /// reembed` mistook for an ordinary cohort).
+    Uncertain,
+}
+
+/// A pre-migration snapshot [`KnowledgeStore::protect_pre_migration`] took
+/// during this call.
+#[cfg(feature = "storage-fjall")]
+struct TakenSnapshot {
+    path: std::path::PathBuf,
+    /// Whether this snapshot is confirmed protective and must survive even
+    /// if the real open that follows still fails — see [`MigrationProbe`].
+    confirmed: bool,
+}
+
 /// Typed wrapper around the Datalog engine providing domain-level knowledge operations.
 ///
 /// Holds an `Arc<Db>` internally. Callers share via `Arc<KnowledgeStore>`.
@@ -747,7 +818,46 @@ impl KnowledgeStore {
         // an opt-in can be forgotten at any of the ~12 call sites, and this
         // review's own F4 finding is exactly that mistake (11 of 12 already
         // were).
-        Self::protect_pre_migration(path)?;
+        let taken_snapshot = Self::protect_pre_migration(path)?;
+        Self::open_fjall_after_protection(path, config).inspect_err(|_err| {
+            // WHY(aletheia#7165): protection necessarily runs before the
+            // real handle opens below (quiescence -- see the `snapshot`
+            // module docs), so a refusal can only be discovered after any
+            // snapshot this call took already exists on disk. A snapshot
+            // taken for a *confirmed* pending migration is real insurance
+            // and stays no matter what happens next -- that is exactly the
+            // scenario it exists to recover from. One taken only against
+            // probe *uncertainty* protected nothing if the real open still
+            // failed, and must not be left behind for a later knowledge-root
+            // walk to mistake for a cohort: proven live, a failed probe
+            // against an unstamped, unopenable store left a stray
+            // `*.pre-migration-snapshot` sibling that halted the next
+            // `memory reembed` partway before it reached the store holding
+            // 91% of the data.
+            if let Some(taken) = &taken_snapshot
+                && !taken.confirmed
+                && let Err(cleanup_err) = std::fs::remove_dir_all(&taken.path)
+            {
+                tracing::warn!(
+                    error = %cleanup_err,
+                    path = %taken.path.display(),
+                    "failed to remove a precautionary pre-migration snapshot after a refused open"
+                );
+            }
+        })
+    }
+
+    /// The remainder of [`Self::open_fjall`] after pre-migration protection
+    /// has already run: establish the real long-lived handle, apply
+    /// migrations, and initialize the schema. Split out so
+    /// [`Self::open_fjall`] can distinguish "protection ran, then this
+    /// failed" from protection's own failure and react accordingly
+    /// (aletheia#7165).
+    #[cfg(feature = "storage-fjall")]
+    fn open_fjall_after_protection(
+        path: &std::path::Path,
+        config: KnowledgeConfig,
+    ) -> crate::error::Result<std::sync::Arc<Self>> {
         // `mut` because the hot-reload wiring below installs a rule watcher on it.
         let mut db = crate::engine::Db::open_fjall(path).map_err(|e| {
             crate::error::EngineInitSnafu {
@@ -892,22 +1002,31 @@ impl KnowledgeStore {
     ///
     /// Must run strictly before `crate::engine::Db::open_fjall(path)`
     /// establishes the long-lived handle — see `snapshot` module docs for
-    /// why the raw filesystem copy needs a quiescent source.
+    /// why the raw filesystem copy needs a quiescent source. Returns the
+    /// snapshot this call took, if any, so [`Self::open_fjall`] can decide
+    /// whether to clean it up if the real open that follows still fails
+    /// (aletheia#7165).
     #[cfg(feature = "storage-fjall")]
-    fn protect_pre_migration(path: &std::path::Path) -> crate::error::Result<()> {
+    fn protect_pre_migration(
+        path: &std::path::Path,
+    ) -> crate::error::Result<Option<TakenSnapshot>> {
         if !path.exists() {
             // Fresh cohort: nothing on disk yet, so no migration can run
             // against it (`init_schema`'s fresh-store branch stamps
             // `SCHEMA_VERSION` directly, it never calls
             // `apply_pending_migrations`) — nothing to protect.
-            return Ok(());
+            return Ok(None);
         }
-        if !Self::schema_migration_might_run(path) {
-            return Ok(());
+        let probe = Self::probe_migration_state(path);
+        if probe == MigrationProbe::NoneNeeded {
+            return Ok(None);
         }
         let snapshot_dir = path.with_extension("pre-migration-snapshot");
-        crate::knowledge_store::snapshot::pre_migration_snapshot(path, &snapshot_dir)
-            .map(|_path| ())
+        let path = crate::knowledge_store::snapshot::pre_migration_snapshot(path, &snapshot_dir)?;
+        Ok(Some(TakenSnapshot {
+            path,
+            confirmed: probe == MigrationProbe::Confirmed,
+        }))
     }
 
     /// Cheap, fail-OPEN probe: is it possible a schema migration runs
@@ -919,7 +1038,10 @@ impl KnowledgeStore {
     /// Any uncertainty (probe-open failure, missing schema relation, a
     /// version that doesn't positively match [`Self::SCHEMA_VERSION`]) is
     /// treated as "a migration might run" — the snapshot is the safety net
-    /// for exactly the cases this probe cannot rule out.
+    /// for exactly the cases this probe cannot rule out. [`MigrationProbe`]
+    /// distinguishes that from a *confirmed* pending migration so
+    /// [`Self::open_fjall`] knows which snapshots are disposable if the real
+    /// open still fails (aletheia#7165).
     ///
     /// Opens `path` with a throwaway `Db` handle that is dropped at the end
     /// of this function — strictly before the real `Db::open_fjall` call in
@@ -930,7 +1052,7 @@ impl KnowledgeStore {
     /// (`agent_io.rs` reopen-durability tests) and releases the fjall lock
     /// file cleanly before either of those runs.
     #[cfg(feature = "storage-fjall")]
-    fn schema_migration_might_run(path: &std::path::Path) -> bool {
+    fn probe_migration_state(path: &std::path::Path) -> MigrationProbe {
         use std::collections::BTreeMap;
 
         use crate::engine::{DataValue, ScriptMutability};
@@ -943,7 +1065,7 @@ impl KnowledgeStore {
                     path = %path.display(),
                     "pre-migration snapshot gate: probe open failed, protecting"
                 );
-                return true;
+                return MigrationProbe::Uncertain;
             }
         };
 
@@ -961,17 +1083,21 @@ impl KnowledgeStore {
                     path = %path.display(),
                     "pre-migration snapshot gate: schema version read failed, protecting"
                 );
-                return true;
+                return MigrationProbe::Uncertain;
             }
         };
 
         let Some(row) = rows.rows.into_iter().next() else {
-            return true; // no stamped version yet -- protect
+            return MigrationProbe::Uncertain; // no stamped version yet -- protect
         };
         let Some(version) = row.first().and_then(|v| marshal::extract_int(v).ok()) else {
-            return true;
+            return MigrationProbe::Uncertain;
         };
-        version != Self::SCHEMA_VERSION
+        if version == Self::SCHEMA_VERSION {
+            MigrationProbe::NoneNeeded
+        } else {
+            MigrationProbe::Confirmed
+        }
     }
 
     #[expect(

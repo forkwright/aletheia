@@ -270,6 +270,13 @@ pub mod knowledge_store {
         HybridQuery, KnowledgeConfig, KnowledgeStore, QueryResult, scoped_visibility_rules,
     };
 
+    /// The one shared predicate for "is this a genuine cohort directory
+    /// under a knowledge-store root" (aletheia#7165) -- every knowledge-root
+    /// walker should ask this rather than re-deriving the answer from a
+    /// naming convention. See `episteme::knowledge_store::is_cohort_dir`.
+    #[cfg(feature = "storage-fjall")]
+    pub use episteme::knowledge_store::is_cohort_dir;
+
     /// Pre-migration verified snapshot (aletheia#5779 §8.5). Taken
     /// automatically as the first statement of `KnowledgeStore::open_fjall`
     /// itself (aletheia#5779 F4) — gated on whether a schema migration
@@ -282,9 +289,9 @@ pub mod knowledge_store {
     #[cfg(feature = "storage-fjall")]
     pub mod snapshot {
         pub use episteme::knowledge_store::snapshot::{
-            MissingSource, SilentProgress, SnapshotError, SnapshotProgress, copy_excluding_psyche,
-            count_data_keyspace_rows, pre_migration_snapshot, staging_sibling,
-            verified_copy_snapshot, verify_restorable,
+            MissingSource, SNAPSHOT_MARKER_FILE, SilentProgress, SnapshotError, SnapshotProgress,
+            copy_excluding_psyche, count_data_keyspace_rows, is_snapshot_dir,
+            pre_migration_snapshot, staging_sibling, verified_copy_snapshot, verify_restorable,
         };
     }
 }
