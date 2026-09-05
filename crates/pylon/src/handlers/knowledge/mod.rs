@@ -184,7 +184,11 @@ pub async fn list_facts(
     validate_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
-    let mut facts = get_stored_facts(&state, &policy, &query).await?;
+    // WHY(#7164): fetch every fact matching this policy/nous_id, not a capped candidate
+    // window. `total` below and the text/type/tier/forgotten filters that precede it are
+    // computed over whatever this returns; anything less than the full matching set makes
+    // both the reported total and the offset/limit page silently wrong (see get_stored_facts).
+    let mut facts = get_stored_facts(&state, &policy, &query, i64::MAX).await?;
 
     if let Some(ref filter) = query.filter {
         let filter_lower = filter.to_lowercase();

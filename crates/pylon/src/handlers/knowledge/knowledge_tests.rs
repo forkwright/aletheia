@@ -1245,3 +1245,90 @@ async fn memory_health_no_store_returns_503() {
         "unexpected error: {err:?}"
     );
 }
+
+/// Regression test for #7164: `list_facts` must recover every fact in a store larger
+/// than the pre-fix `MAX_CANDIDATE_FETCH` cap (2,000), with a correct `total` on every
+/// page and no drops or duplicates, by walking the endpoint exactly as an offset/limit
+/// paging client would.
+///
+/// A fixture at or under 2,000 rows would pass against the pre-fix code (the cap never
+/// engages), so this seeds well past it. Every seeded fact also shares the exact same
+/// `recorded_at` and `confidence` (via the local `make_fact` helper), which collapses
+/// the default sort key ("confidence") to one giant tie -- the scenario the id
+/// tiebreaker in `sort_facts` exists for.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn list_facts_recovers_every_row_past_the_native_candidate_cap() {
+    use std::collections::BTreeSet;
+
+    const TOTAL_FACTS: usize = 2_209; // matches the live-instance repro in #7164
+    const PAGE_SIZE: usize = 397; // deliberately does not divide TOTAL_FACTS evenly
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let mut seeded_ids: BTreeSet<String> = BTreeSet::new();
+    for i in 0..TOTAL_FACTS {
+        let id = format!("fact-{i:05}");
+        let fact = make_fact(&id, &format!("fact number {i}"), 0.5);
+        store.insert_fact(&fact).unwrap();
+        seeded_ids.insert(id);
+    }
+    assert_eq!(seeded_ids.len(), TOTAL_FACTS, "seeded ids must be unique");
+
+    let state = knowledge_state_with_store(store);
+
+    let mut recovered_ids: BTreeSet<String> = BTreeSet::new();
+    let mut offset = 0usize;
+    let mut pages_fetched = 0usize;
+    loop {
+        let response = match list_facts(
+            State(state.clone()),
+            operator_claims(),
+            Query(FactsQuery {
+                nous_id: None,
+                sort: default_sort(),
+                order: default_order(),
+                filter: None,
+                fact_type: None,
+                tier: None,
+                limit: PAGE_SIZE,
+                offset,
+                include_forgotten: true,
+            }),
+        )
+        .await
+        {
+            Ok(response) => response.0,
+            Err(err) => panic!("list facts page at offset {offset}: {err:?}"),
+        };
+
+        assert_eq!(
+            response.total, TOTAL_FACTS,
+            "endpoint must report the true total on every page, offset={offset}"
+        );
+
+        if response.facts.is_empty() {
+            break;
+        }
+
+        for fact in &response.facts {
+            let inserted = recovered_ids.insert(fact.id.as_str().to_owned());
+            assert!(
+                inserted,
+                "fact {} returned on more than one page (offset={offset})",
+                fact.id
+            );
+        }
+
+        offset += PAGE_SIZE;
+        pages_fetched += 1;
+        assert!(
+            pages_fetched <= TOTAL_FACTS.div_ceil(PAGE_SIZE) + 1,
+            "pagination did not terminate after a sane number of pages"
+        );
+    }
+
+    assert_eq!(
+        recovered_ids, seeded_ids,
+        "must recover every seeded id exactly once, with no drops or duplicates"
+    );
+}
