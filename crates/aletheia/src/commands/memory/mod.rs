@@ -649,20 +649,73 @@ fn recovery_store_paths(oikos: &taxis::oikos::Oikos) -> Result<Vec<PathBuf>> {
     Ok(stores)
 }
 
+// WHY(aletheia#7165): delegates to the one shared cohort predicate instead
+// of a hand-rolled copy. The prior local copy excluded only fjall's
+// internal `keyspaces` directory by name, so a `psyche.pre-migration-snapshot`
+// sibling -- which also carries fjall's `version` marker -- was enumerated
+// as an ordinary cohort here while a separately written enumerator excluded
+// it. See `mneme::knowledge_store::is_cohort_dir` for the shared definition.
 #[cfg(feature = "recall")]
 fn is_recovery_cohort_dir(path: &Path) -> bool {
-    path.is_dir() && !is_fjall_internal_dir(path) && is_fjall_store_dir(path)
+    mneme::knowledge_store::is_cohort_dir(path)
 }
 
+/// Whether `path` itself (not a child entry) is a fjall store — used only
+/// to detect the pre-cohort-split legacy layout, where the knowledge root
+/// itself was a single flat fjall store rather than a parent of cohort
+/// directories. Unlike [`is_recovery_cohort_dir`], this deliberately has no
+/// snapshot/internal-dir exclusion: it answers a different question ("is
+/// this path a fjall store at all") about the root, not "is this entry a
+/// cohort" about one of the root's children.
 #[cfg(feature = "recall")]
 fn is_fjall_store_dir(path: &Path) -> bool {
     path.join("version").is_file()
 }
 
+/// Open every recovery-store cohort path up front, before any mutating work
+/// (`reembed_all` / `remove_orphaned_entities`) begins on any of them
+/// (aletheia#7165).
+///
+/// `memory reembed` and `memory gc` each open and mutate cohorts one at a
+/// time in a single loop. If the Nth cohort failed to open, the first N-1
+/// had already been mutated and had already printed their success line
+/// before the command errored out -- silent partial completion, the exact
+/// "does visible work and dies partway" failure the issue proved live (a
+/// stray snapshot that the fixed [`is_recovery_cohort_dir`] no longer
+/// mistakes for a cohort, but a corrupt or lock-contended cohort could
+/// still trigger the same loop shape). Opening a store does not mutate it,
+/// so opening every path first and refusing the whole run if any of them
+/// fails is genuinely all-or-nothing and safe: no cohort has been touched
+/// when this returns `Err`.
 #[cfg(feature = "recall")]
-fn is_fjall_internal_dir(path: &Path) -> bool {
-    path.file_name()
-        .is_some_and(|name| name == std::ffi::OsStr::new("keyspaces"))
+fn open_all_recovery_stores(
+    stores: &[PathBuf],
+    derived: &crate::knowledge_config::DerivedKnowledgeConfig,
+    allow_assumed_embedding_meta: bool,
+) -> Result<
+    Vec<(
+        PathBuf,
+        std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    )>,
+> {
+    let mut opened = Vec::with_capacity(stores.len());
+    let mut failures = Vec::new();
+    for store_path in stores {
+        match open_recovery_store(store_path, derived, allow_assumed_embedding_meta) {
+            Ok(store) => opened.push((store_path.clone(), store)),
+            Err(err) => failures.push(err.to_string()),
+        }
+    }
+    if !failures.is_empty() {
+        whatever!(
+            "refusing to run: {} of {} knowledge store cohort(s) could not be opened; \
+             no cohort was mutated:\n  {}",
+            failures.len(),
+            stores.len(),
+            failures.join("\n  ")
+        );
+    }
+    Ok(opened)
 }
 
 #[cfg(feature = "recall")]
@@ -690,12 +743,13 @@ fn run_reembed(
         );
     }
 
-    let store_count = stores.len();
-    let mut total = 0usize;
     let derived_config =
         crate::knowledge_config::derive_knowledge_config(loaded_config.as_ref().ok());
-    for store_path in stores {
-        let store = open_recovery_store(&store_path, &derived_config, true)?;
+    let opened = open_all_recovery_stores(&stores, &derived_config, true)?;
+
+    let store_count = opened.len();
+    let mut total = 0usize;
+    for (store_path, store) in opened {
         let written = store
             .reembed_all(provider.as_ref())
             .with_whatever_context(|err| {
@@ -726,9 +780,11 @@ fn run_gc(
         );
     }
 
+    let opened = open_all_recovery_stores(&stores, derived, false)?;
+
+    let store_count = opened.len();
     let mut total = 0usize;
-    for store_path in &stores {
-        let store = open_recovery_store(store_path, derived, false)?;
+    for (store_path, store) in &opened {
         let removed = store
             .remove_orphaned_entities()
             .with_whatever_context(|err| {
@@ -745,10 +801,7 @@ fn run_gc(
         total = total.saturating_add(removed);
     }
 
-    println!(
-        "Removed {total} orphaned entities across {} store(s).",
-        stores.len()
-    );
+    println!("Removed {total} orphaned entities across {store_count} store(s).");
     Ok(())
 }
 

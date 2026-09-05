@@ -17,6 +17,18 @@ fn write_fjall_marker(path: &Path) {
     marker.write_all(b"3").expect("write fjall version marker");
 }
 
+/// Marks `snapshot_dir` (already carrying a fjall `version` marker via
+/// [`write_fjall_marker`]) as a verified-copy snapshot, using the same
+/// structural marker file [`mneme::knowledge_store::snapshot::verified_copy_snapshot`]
+/// writes into every snapshot it promotes -- coupling this fixture to the
+/// real definition rather than a restated copy of the marker's name.
+fn write_snapshot_marker(snapshot_dir: &Path) {
+    std::fs::File::create(
+        snapshot_dir.join(mneme::knowledge_store::snapshot::SNAPSHOT_MARKER_FILE),
+    )
+    .expect("create snapshot marker");
+}
+
 #[test]
 fn recovery_store_paths_skips_internal_keyspaces_even_if_polluted() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -43,6 +55,251 @@ fn recovery_store_paths_maps_legacy_root_to_shared_migration_target() {
     let stores = super::recovery_store_paths(&oikos).expect("recovery stores");
 
     assert_eq!(stores, vec![root.join("shared")]);
+}
+
+/// aletheia#7165: a pre-migration snapshot sits inside the knowledge root as
+/// a sibling of the cohort it protects (`psyche.pre-migration-snapshot`
+/// next to `psyche`), carries fjall's own `version` marker just like a real
+/// cohort, and -- alphabetically -- sorts *between* `psyche` and `shared`.
+/// Before the shared predicate, `memory reembed`'s own cohort walk enumerated
+/// it as an ordinary cohort, tried to open it, and aborted before ever
+/// reaching `shared`. The snapshot is additionally marked structurally via
+/// [`mneme::knowledge_store::snapshot::SNAPSHOT_MARKER_FILE`] -- the same
+/// marker `verified_copy_snapshot` writes into every snapshot it promotes --
+/// so this test is coupled to the real definition, not a restated copy of
+/// the marker name.
+#[test]
+fn recovery_store_paths_excludes_snapshot_between_two_real_cohorts() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("data").join("knowledge.fjall");
+    let psyche = root.join("psyche");
+    let snapshot = root.join("psyche.pre-migration-snapshot");
+    let shared = root.join("shared");
+
+    write_fjall_marker(&psyche);
+    write_fjall_marker(&shared);
+    write_fjall_marker(&snapshot);
+    write_snapshot_marker(&snapshot);
+
+    assert!(
+        psyche < snapshot && snapshot < shared,
+        "fixture must sort the snapshot between the two real cohorts, as proven live in aletheia#7165"
+    );
+
+    let oikos = taxis::oikos::Oikos::from_root(tmp.path());
+    let stores = super::recovery_store_paths(&oikos).expect("recovery stores");
+
+    assert_eq!(
+        stores,
+        vec![psyche, shared],
+        "the snapshot must never be enumerated as a cohort"
+    );
+}
+
+fn mock_knowledge_config() -> mneme::knowledge_store::KnowledgeConfig {
+    mneme::knowledge_store::KnowledgeConfig {
+        dim: 4,
+        embedding_model: "mock-embedding".to_owned(),
+        ..Default::default()
+    }
+}
+
+fn mock_derived_config() -> crate::knowledge_config::DerivedKnowledgeConfig {
+    crate::knowledge_config::DerivedKnowledgeConfig {
+        dim: 4,
+        embedding_model: "mock-embedding".to_owned(),
+    }
+}
+
+/// aletheia#7165: `open_all_recovery_stores` must open every cohort path
+/// before any mutation begins, and refuse the whole run -- without mutating
+/// even the cohorts that opened fine -- if any path can't be opened.
+///
+/// The "broken" path lives under a directory with its read/execute bits
+/// stripped, so fjall cannot create the store files it needs there. Skips
+/// itself when running as root, which bypasses permission-bit enforcement
+/// entirely (same guard as `add_nous::run_rejects_unwritable_config_before_scaffolding`).
+#[test]
+fn open_all_recovery_stores_refuses_whole_run_if_any_cohort_cannot_be_opened() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let stores_root = tmp.path().join("stores");
+    std::fs::create_dir_all(&stores_root).expect("mkdir stores root");
+
+    let good_path = stores_root.join("good");
+    {
+        let _store =
+            mneme::knowledge_store::KnowledgeStore::open_fjall(&good_path, mock_knowledge_config())
+                .expect("pre-create good cohort");
+    }
+
+    let broken_parent = stores_root.join("broken-parent");
+    std::fs::create_dir_all(&broken_parent).expect("mkdir broken parent");
+    let broken_path = broken_parent.join("broken");
+
+    let mut perms = std::fs::metadata(&broken_parent)
+        .expect("stat broken parent")
+        .permissions();
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        perms.set_mode(0o000);
+    }
+    std::fs::set_permissions(&broken_parent, perms).expect("chmod broken parent");
+
+    // WHY: root bypasses permission-bit checks entirely, which would make
+    // this test's premise false -- skip rather than assert a falsehood.
+    let root_probe = broken_parent.join(".root-probe");
+    let is_root = std::fs::create_dir(&root_probe).is_ok();
+    let _ = std::fs::remove_dir(&root_probe);
+    if is_root {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mut perms = std::fs::metadata(&broken_parent)
+            .expect("stat broken parent")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&broken_parent, perms).expect("restore broken parent perms");
+        eprintln!(
+            "skipping: running as root, which bypasses the permission bits this test relies on"
+        );
+        return;
+    }
+
+    let derived = mock_derived_config();
+    let result =
+        super::open_all_recovery_stores(&[good_path.clone(), broken_path.clone()], &derived, true);
+
+    // WHY: restore writable permissions before tempdir cleanup runs, and
+    // before any assertion below can panic and skip it.
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mut perms = std::fs::metadata(&broken_parent)
+            .expect("stat broken parent")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&broken_parent, perms).expect("restore broken parent perms");
+    }
+
+    let Err(err) = result else {
+        panic!("opening a cohort under an unreadable directory must fail");
+    };
+    let message = err.to_string();
+    assert!(
+        message.contains(&broken_path.display().to_string()),
+        "refusal must name the path that failed to open, got: {message}"
+    );
+
+    // The good cohort must remain untouched: no facts were ever inserted
+    // into it, so `list_all_facts` must still report zero -- proving
+    // `open_all_recovery_stores` never reached a mutation step for it.
+    let reopened =
+        mneme::knowledge_store::KnowledgeStore::open_fjall(&good_path, mock_knowledge_config())
+            .expect("reopen good cohort");
+    assert_eq!(
+        reopened.list_all_facts(i64::MAX).expect("list facts").len(),
+        0,
+        "open_all_recovery_stores must not mutate any cohort when another fails to open"
+    );
+}
+
+/// aletheia#7165, the issue's required test: a root with two real cohorts
+/// and a snapshot sorted between them; `memory reembed` must reach both,
+/// not abort after the first.
+///
+/// `insert_fact` never computes a vector (only `reembed_all` does -- see
+/// `KnowledgeStore::reembed_all`'s doc comment), so a successful
+/// `search_vectors` hit on both cohorts after `run_reembed` is a genuine
+/// proof that the reembed walk actually reached `shared`, not just that
+/// `psyche` was processed before the (now correctly excluded) snapshot.
+#[test]
+fn run_reembed_reaches_cohort_after_snapshot_between_them() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let oikos = taxis::oikos::Oikos::from_root(tmp.path());
+    let root = oikos.knowledge_db();
+
+    let psyche_path = root.join("psyche");
+    {
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &psyche_path,
+            mock_knowledge_config(),
+        )
+        .expect("open psyche cohort");
+        store
+            .insert_fact(&make_fact("fact-psyche-1", "alice", "Alice likes Rust"))
+            .expect("insert psyche fact");
+    }
+
+    let shared_path = root.join("shared");
+    {
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &shared_path,
+            mock_knowledge_config(),
+        )
+        .expect("open shared cohort");
+        store
+            .insert_fact(&make_fact("fact-shared-1", "alice", "Bob likes Python"))
+            .expect("insert shared fact");
+    }
+
+    // The unstamped snapshot between them, exactly as aletheia#7165 proved
+    // live: carries fjall's `version` marker but is not a real store.
+    let snapshot_path = root.join("psyche.pre-migration-snapshot");
+    write_fjall_marker(&snapshot_path);
+    write_snapshot_marker(&snapshot_path);
+
+    let config = taxis::config::AletheiaConfig {
+        embedding: taxis::config::EmbeddingSettings {
+            provider: "mock".to_owned(),
+            dimension: Some(4),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let loaded_config: std::result::Result<taxis::config::AletheiaConfig, taxis::error::Error> =
+        Ok(config);
+
+    super::run_reembed(&oikos, &loaded_config).expect("reembed should reach both cohorts");
+
+    let provider = mneme::embedding::create_provider(&mneme::embedding::EmbeddingConfig {
+        provider: "mock".to_owned(),
+        model: None,
+        dimension: Some(4),
+        api_key: None,
+        base_url: None,
+    })
+    .expect("create mock provider");
+
+    let psyche_store =
+        mneme::knowledge_store::KnowledgeStore::open_fjall(&psyche_path, mock_knowledge_config())
+            .expect("reopen psyche cohort");
+    let psyche_hits = psyche_store
+        .search_vectors(
+            provider
+                .embed("Alice likes Rust")
+                .expect("embed psyche query"),
+            5,
+            20,
+        )
+        .expect("search psyche cohort");
+    assert!(
+        psyche_hits.iter().any(|r| r.source_id == "fact-psyche-1"),
+        "psyche cohort must have been reembedded: {psyche_hits:?}"
+    );
+
+    let shared_store =
+        mneme::knowledge_store::KnowledgeStore::open_fjall(&shared_path, mock_knowledge_config())
+            .expect("reopen shared cohort");
+    let shared_hits = shared_store
+        .search_vectors(
+            provider
+                .embed("Bob likes Python")
+                .expect("embed shared query"),
+            5,
+            20,
+        )
+        .expect("search shared cohort");
+    assert!(
+        shared_hits.iter().any(|r| r.source_id == "fact-shared-1"),
+        "reembed must reach the cohort after the snapshot, not abort on it: {shared_hits:?}"
+    );
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
