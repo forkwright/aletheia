@@ -363,6 +363,17 @@ pub mod recall {
     }
 }
 
+/// Read-time confidence floor for recall (aletheia#7163): refuses a fact
+/// below a caller-declared [`Stakes`](recall_gate::Stakes) level, naming the
+/// remedy, instead of silently serving whatever [`recall`] ranked highest.
+/// The read-time counterpart to [`admission`]'s write-time gate.
+pub mod recall_gate {
+    pub use episteme::recall_gate::{
+        RecallConfidence, RecallRefusal, Remedy, Stakes, derive_confidence, derive_node_stakes,
+        effective_stakes, evaluate,
+    };
+}
+
 /// Bayesian-surprise calculator (`EM-LLM`) for topic-shift detection: a
 /// session-scoped running-distribution scorer threaded into recall scoring.
 pub mod surprise {

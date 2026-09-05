@@ -88,6 +88,9 @@ pub mod query;
 pub mod query_rewrite;
 /// 11-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
+/// Read-time confidence floor: refuses low-confidence or stale facts below a
+/// caller-declared stakes level, naming the remedy (aletheia#7163).
+pub mod recall_gate;
 /// Reinforcement-learning readiness types for future memory-policy training.
 pub mod rl;
 /// Steward rule proposal generation from observed tool-usage patterns.
