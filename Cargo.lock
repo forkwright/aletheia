@@ -4843,6 +4843,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "koinon"
+version = "0.3.0"
+source = "git+https://github.com/forkwright/koinon.git?tag=v0.3.0#a6cdf2bffbc6c153d47420ea5169756ecd329ed0"
+dependencies = [
+ "snafu 0.9.2",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "kparse"
 version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11578,6 +11588,7 @@ version = "0.45.0"
 dependencies = [
  "jiff",
  "koina",
+ "koinon",
  "mneme",
  "rmcp",
  "schemars",
@@ -11589,7 +11600,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
