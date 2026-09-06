@@ -25,9 +25,25 @@ pub(crate) struct SessionCreateArgs {
     /// Client-chosen key for session deduplication.
     #[arg(long, default_value = DEFAULT_SESSION_KEY)]
     pub key: String,
+
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    pub url: String,
 }
 
-pub(crate) fn run(instance_root: Option<&PathBuf>, args: &SessionCreateArgs) -> Result<()> {
+/// The REST route this command's direct-store write can be routed through
+/// instead — passed to [`crate::commands::guard_knowledge_lock`] so its
+/// "server holds the lock" message names a real recovery path (#7205).
+const SESSION_LOCK_KNOWN_ENDPOINTS: &[&str] = &["/api/v1/sessions"];
+
+pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &SessionCreateArgs) -> Result<()> {
+    // WHY(#7205): this command opens SessionStore directly below,
+    // "bypassing the HTTP API" per the module doc — refuse up-front rather
+    // than crash with a confusing `FjallError::Locked` if the server holds
+    // the same lock POST /api/v1/sessions takes.
+    crate::commands::guard_knowledge_lock(&args.url, SESSION_LOCK_KNOWN_ENDPOINTS).await?;
+
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
@@ -143,8 +159,9 @@ mod tests {
         assert!(msg.contains("exceeds maximum length"), "got: {msg}");
     }
 
-    #[test]
-    fn run_rejects_reserved_cross_key_without_persisting() {
+    #[tokio::test]
+    async fn run_rejects_reserved_cross_key_without_persisting() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
@@ -164,9 +181,10 @@ workspace = "/tmp/alice"
         let args = SessionCreateArgs {
             nous_id: NousId::new("alice").unwrap(),
             key: "cross:victim".to_owned(),
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        let result = run(Some(&root.to_path_buf()), &args);
+        let result = run(Some(&root.to_path_buf()), &args).await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("reserved internal prefix"), "got: {msg}");
@@ -179,8 +197,9 @@ workspace = "/tmp/alice"
         );
     }
 
-    #[test]
-    fn run_creates_session_and_prints_json() {
+    #[tokio::test]
+    async fn run_creates_session_and_prints_json() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
@@ -203,9 +222,10 @@ workspace = "/tmp/alice"
         let args = SessionCreateArgs {
             nous_id: NousId::new("alice").unwrap(),
             key: "cli-test-key".to_owned(),
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        run(Some(&root.to_path_buf()), &args).unwrap();
+        run(Some(&root.to_path_buf()), &args).await.unwrap();
 
         // Verify the session exists in the store.
         let store = SessionStore::open(&Oikos::from_root(root).sessions_db()).unwrap();
@@ -219,8 +239,9 @@ workspace = "/tmp/alice"
         assert_eq!(session.model.as_deref(), Some("mock-model"));
     }
 
-    #[test]
-    fn run_rejects_unknown_nous() {
+    #[tokio::test]
+    async fn run_rejects_unknown_nous() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
@@ -240,16 +261,18 @@ workspace = "/tmp/alice"
         let args = SessionCreateArgs {
             nous_id: NousId::new("bob").unwrap(),
             key: "main".to_owned(),
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        let result = run(Some(&root.to_path_buf()), &args);
+        let result = run(Some(&root.to_path_buf()), &args).await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("not found in configuration"), "got: {msg}");
     }
 
-    #[test]
-    fn run_returns_conflict_on_duplicate_key() {
+    #[tokio::test]
+    async fn run_returns_conflict_on_duplicate_key() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
@@ -269,16 +292,62 @@ workspace = "/tmp/alice"
         let args = SessionCreateArgs {
             nous_id: NousId::new("alice").unwrap(),
             key: "dup-key".to_owned(),
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        run(Some(&root.to_path_buf()), &args).unwrap();
+        run(Some(&root.to_path_buf()), &args).await.unwrap();
 
-        let result = run(Some(&root.to_path_buf()), &args);
+        let result = run(Some(&root.to_path_buf()), &args).await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("already exists"),
             "expected conflict error, got: {msg}"
+        );
+    }
+
+    /// Regression for #7205: `session-create` — module doc says "bypassing
+    /// the HTTP API" — opened `SessionStore` directly with no liveness
+    /// check, unlike every other direct-store command in this crate.
+    #[tokio::test]
+    async fn run_refuses_when_server_holds_the_lock() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::write(
+            root.join("config/aletheia.toml"),
+            r#"
+[[agents.list]]
+id = "alice"
+name = "Alice"
+workspace = "/tmp/alice"
+"#,
+        )
+        .unwrap();
+
+        let args = SessionCreateArgs {
+            nous_id: NousId::new("alice").unwrap(),
+            key: "lock-guard-test".to_owned(),
+            url: stub_url,
+        };
+
+        let result = run(Some(&root.to_path_buf()), &args).await;
+        server.await.unwrap();
+
+        assert!(result.is_err(), "must refuse while the stub server is up");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("holds an exclusive lock"), "got: {msg}");
+
+        let store = SessionStore::open(&Oikos::from_root(root).sessions_db()).unwrap();
+        let persisted = store.find_session("alice", "lock-guard-test").unwrap();
+        assert!(
+            persisted.is_none(),
+            "session-create must not persist a session when the server holds the lock"
         );
     }
 }

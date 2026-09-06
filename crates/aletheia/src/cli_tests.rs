@@ -12,7 +12,6 @@ use super::{
     commands::credential,
     commands::maintenance,
     commands::memory,
-    commands::session_create::SessionCreateArgs,
     commands::session_export::ExportFormat,
     commands::session_store,
     commands::tls,
@@ -228,9 +227,13 @@ fn export_with_output_parses() {
 fn session_create_defaults_parses() {
     let cli = Cli::parse_from(["aletheia", "session-create", "alice"]);
     match cli.command {
-        Some(Command::SessionCreate(SessionCreateArgs { nous_id, key })) => {
-            assert_eq!(nous_id.as_str(), "alice", "nous_id should be set");
-            assert_eq!(key, "main", "key should default to main");
+        Some(Command::SessionCreate(args)) => {
+            assert_eq!(args.nous_id.as_str(), "alice", "nous_id should be set");
+            assert_eq!(args.key, "main", "key should default to main");
+            assert_eq!(
+                args.url, "http://127.0.0.1:18789",
+                "url should default to localhost"
+            );
         }
         _ => panic!("expected SessionCreate command"),
     }
@@ -240,9 +243,9 @@ fn session_create_defaults_parses() {
 fn session_create_with_key_parses() {
     let cli = Cli::parse_from(["aletheia", "session-create", "bob", "--key", "custom-key"]);
     match cli.command {
-        Some(Command::SessionCreate(SessionCreateArgs { nous_id, key })) => {
-            assert_eq!(nous_id.as_str(), "bob", "nous_id should be set");
-            assert_eq!(key, "custom-key", "key should be set");
+        Some(Command::SessionCreate(args)) => {
+            assert_eq!(args.nous_id.as_str(), "bob", "nous_id should be set");
+            assert_eq!(args.key, "custom-key", "key should be set");
         }
         _ => panic!("expected SessionCreate command"),
     }

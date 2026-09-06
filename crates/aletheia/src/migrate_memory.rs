@@ -53,6 +53,7 @@ pub(crate) async fn run(
     knowledge_path: Option<&PathBuf>,
     review_file: Option<&PathBuf>,
     dry_run: bool,
+    url: &str,
 ) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
@@ -114,6 +115,13 @@ pub(crate) async fn run(
         KnowledgeStore::open_mem_with_config(knowledge_config)
             .whatever_context("failed to open in-memory knowledge store")?
     } else {
+        // WHY(#7205): this opens the persistent KnowledgeStore directly two
+        // functions below `guard_knowledge_lock`'s definition, with no
+        // liveness check at all — refuse up-front rather than crash with a
+        // confusing `FjallError::Locked` if the server holds the same lock.
+        // `--dry-run` uses an in-memory store above and is exempt.
+        crate::commands::agent_io::guard_knowledge_lock(url).await?;
+
         let path = knowledge_path
             .cloned()
             .unwrap_or_else(|| oikos.knowledge_cohort_db("shared"));
@@ -382,4 +390,61 @@ fn write_review_file(path: &Path, flagged: &[String]) -> Result<()> {
         writeln!(f, "- {item}").whatever_context("failed to write review file")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture writes a temporary config file before exercising async run()"
+)]
+mod tests {
+    use super::*;
+
+    /// Regression for #7205: `migrate-memory` opened the persistent
+    /// `KnowledgeStore` directly, with no check that the running server
+    /// doesn't hold the same fjall lock — unlike every other direct-store
+    /// command in this crate.
+    #[tokio::test]
+    async fn run_refuses_when_server_holds_the_lock() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::write(
+            root.join("config/aletheia.toml"),
+            r#"
+[[agents.list]]
+id = "alice"
+name = "Alice"
+workspace = "/tmp/alice"
+"#,
+        )
+        .unwrap();
+
+        let result = run(
+            Some(&root.to_path_buf()),
+            "http://127.0.0.1:1",
+            "aletheia_memories",
+            None,
+            None,
+            false,
+            &stub_url,
+        )
+        .await;
+        server.await.unwrap();
+
+        assert!(result.is_err(), "must refuse while the stub server is up");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("holds an exclusive lock"), "got: {msg}");
+
+        let knowledge_path = Oikos::from_root(root).knowledge_cohort_db("shared");
+        assert!(
+            !knowledge_path.exists(),
+            "migrate-memory must not open the knowledge store when the server holds the lock"
+        );
+    }
 }
