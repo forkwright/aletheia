@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest};
+use mneme::store::test_support::inject_raw_tool_audit_row;
+use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore};
 use mneme::types::{Role as MnemeRole, UsageRecord};
 use tower::ServiceExt;
 use tracing::Instrument;
@@ -885,6 +886,62 @@ async fn replay_export_includes_tool_usage_turn_and_failure_fields() {
     );
     assert_eq!(body["turnAttempts"][0]["status"], "failed");
     assert_eq!(body["turnAttempts"][0]["errorCode"], "tool_failed");
+}
+
+#[tokio::test]
+async fn replay_survives_a_corrupt_tool_audit_row_elsewhere_in_the_partition() {
+    // WHY(#7217): `/replay` used to 500 the moment ANY row anywhere in the
+    // shared `tool_audit` partition failed to decode -- including for a
+    // session, like this one, that never itself used a tool. That is the
+    // issue's own repro (`ops/tools` 500'd before any message was even
+    // sent in the reporting session).
+    let session_dir = tempfile::TempDir::new().expect("session store tempdir");
+    let store_path = session_dir.path().join("sessions");
+    {
+        let store = SessionStore::open(&store_path).expect("open store");
+        store
+            .create_session("ses-replay-survives", "syn", "main", None, None)
+            .expect("create session");
+        // `store` drops here, releasing the fjall lock, before the raw
+        // injection below opens its own handle on the same path.
+    }
+    inject_raw_tool_audit_row(
+        &store_path,
+        "00000000000000099999",
+        br#"{"id":99999,"session_id":"ses-other","nous_id":"syn","turn_seq":1,
+             "tool_call_id":"tc-unrelated","tool_name":null,"duration_ms":1,
+             "is_error":false,"outcome":"error","result":null,"approval":null,
+             "receipt":"","created_at":"2026-09-06T00:00:00.000Z"}"#,
+    )
+    .expect("raw corrupt tool_audit row injected");
+    let corrupt_store = SessionStore::open(&store_path).expect("corrupt session store opens");
+
+    let (state, _dir) = test_state().await;
+    {
+        let mut store = state.session_store.lock().await;
+        *store = corrupt_store;
+    }
+    let app = build_router(state, &test_security_config());
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/sessions/ses-replay-survives/replay"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["session"]["id"], "ses-replay-survives");
+    assert!(
+        body["toolAuditRecords"]
+            .as_array()
+            .expect("toolAuditRecords array")
+            .is_empty(),
+        "ses-replay-survives has no tool_audit rows of its own"
+    );
+    assert_eq!(
+        body["toolAuditCorruptCount"], 1,
+        "the unrelated corrupt row must be disclosed, not hidden"
+    );
 }
 
 #[tokio::test]

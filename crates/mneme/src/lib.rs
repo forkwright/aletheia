@@ -130,10 +130,12 @@ pub mod portability {
 
 /// Session store — fjall LSM-tree backend.
 pub mod store {
-    pub use graphe::store::{FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord};
+    pub use graphe::store::{
+        CorruptToolAuditRecord, FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord,
+    };
     pub use graphe::store::{
         FinalizeTurnRecordSpec, FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest,
-        SessionStatusCounts, SessionStore,
+        SessionStatusCounts, SessionStore, ToolAuditScan,
     };
 
     /// Atomic per-session agent-import entry points (issue #5033). Gated on
@@ -148,7 +150,7 @@ pub mod store {
     /// Test helpers for backend-agnostic session-store fixtures.
     #[cfg(any(test, feature = "test-support"))]
     pub mod test_support {
-        pub use graphe::store::test_support::inject_raw_session_row;
+        pub use graphe::store::test_support::{inject_raw_session_row, inject_raw_tool_audit_row};
     }
 }
 

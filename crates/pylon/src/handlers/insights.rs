@@ -423,7 +423,7 @@ pub async fn get_tool_stats(
     }
 
     let state_clone = state.clone();
-    let records = tokio::task::spawn_blocking(move || {
+    let scan = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
         store
             .recent_tool_audit_records(TOOL_AUDIT_FETCH_LIMIT)
@@ -438,13 +438,20 @@ pub async fn get_tool_stats(
     })
     // WHY(#5760 precedent): propagate storage failures as a 500 instead of
     // an empty stats response that reads as "no tool calls" when the real
-    // state is "could not read the audit log".
+    // state is "could not read the audit log". A single malformed row is
+    // NOT a storage failure (aletheia#7217): it comes back in `scan.corrupt`
+    // and only widens `data_unavailable` below, never a 500.
     ?;
 
     let today = jiff::Timestamp::now()
         .to_zoned(jiff::tz::TimeZone::UTC)
         .date();
-    Ok(Json(build_tool_stats(&records, &query, today)))
+    Ok(Json(build_tool_stats(
+        &scan.records,
+        scan.corrupt.len(),
+        &query,
+        today,
+    )))
 }
 
 // ── Computation helpers ──
@@ -1436,25 +1443,42 @@ fn select_tool_detail(
 }
 
 /// Disclose when the tool-audit snapshot itself is bounded (see
-/// [`TOOL_AUDIT_FETCH_LIMIT`]), so wide-window totals are never silently
-/// presented as complete.
-fn tool_stats_data_unavailable(record_count: usize, days: u32) -> Vec<UnavailableMetric> {
-    if record_count < TOOL_AUDIT_FETCH_LIMIT {
-        return Vec::new();
+/// [`TOOL_AUDIT_FETCH_LIMIT`]) or partially corrupt (aletheia#7217), so
+/// wide-window totals are never silently presented as complete.
+fn tool_stats_data_unavailable(
+    record_count: usize,
+    corrupt_count: usize,
+    days: u32,
+) -> Vec<UnavailableMetric> {
+    let mut unavailable = Vec::new();
+    if record_count >= TOOL_AUDIT_FETCH_LIMIT {
+        unavailable.push(UnavailableMetric {
+            metric: "long_window_completeness".to_owned(),
+            reason: format!(
+                "tool-audit snapshot bounded to the {TOOL_AUDIT_FETCH_LIMIT} most recent \
+                 records; week/month/{days}-day totals may undercount on a busy install"
+            ),
+        });
     }
-    vec![UnavailableMetric {
-        metric: "long_window_completeness".to_owned(),
-        reason: format!(
-            "tool-audit snapshot bounded to the {TOOL_AUDIT_FETCH_LIMIT} most recent \
-             records; week/month/{days}-day totals may undercount on a busy install"
-        ),
-    }]
+    if corrupt_count > 0 {
+        unavailable.push(UnavailableMetric {
+            metric: "tool_audit_corrupt".to_owned(),
+            reason: format!(
+                "{corrupt_count} tool-audit record(s) failed to decode and were excluded \
+                 from these aggregates"
+            ),
+        });
+    }
+    unavailable
 }
 
 /// Build the full `/api/tool-stats` response from a bounded newest-first
-/// record snapshot (see [`TOOL_AUDIT_FETCH_LIMIT`]).
+/// record snapshot (see [`TOOL_AUDIT_FETCH_LIMIT`]). `corrupt_count` is the
+/// number of rows in the same scan that failed to decode and are therefore
+/// absent from `records` (aletheia#7217).
 fn build_tool_stats(
     records: &[ToolAuditRecord],
+    corrupt_count: usize,
     query: &ToolStatsQuery,
     today: jiff::civil::Date,
 ) -> ToolStatsResponse {
@@ -1511,7 +1535,7 @@ fn build_tool_stats(
         tools,
         time_series,
         invocations,
-        data_unavailable: tool_stats_data_unavailable(records.len(), days),
+        data_unavailable: tool_stats_data_unavailable(records.len(), corrupt_count, days),
     }
 }
 
@@ -1915,5 +1939,37 @@ mod tests {
         };
         let response = costs_from_tokens(&tokens);
         assert!(response.data_unavailable.iter().any(|u| u.metric == "cost"));
+    }
+
+    #[test]
+    fn tool_stats_data_unavailable_discloses_corrupt_rows() {
+        // WHY(#7217): `/tool-stats` used to 500 outright the moment ANY
+        // `tool_audit` row was corrupt (WHY(#5760 precedent) in
+        // `get_tool_stats`). Now a corrupt row is data, not a read
+        // failure, and must be disclosed the same way the existing
+        // bounded-snapshot caveat already is.
+        let unavailable = tool_stats_data_unavailable(5, 3, 7);
+        assert_eq!(unavailable.len(), 1);
+        let entry = first_item(&unavailable, "data_unavailable");
+        assert_eq!(entry.metric, "tool_audit_corrupt");
+        assert!(entry.reason.contains('3'));
+    }
+
+    #[test]
+    fn tool_stats_data_unavailable_reports_both_caveats_together() {
+        let unavailable = tool_stats_data_unavailable(TOOL_AUDIT_FETCH_LIMIT, 2, 30);
+        assert_eq!(unavailable.len(), 2);
+        assert!(
+            unavailable
+                .iter()
+                .any(|u| u.metric == "long_window_completeness")
+        );
+        assert!(unavailable.iter().any(|u| u.metric == "tool_audit_corrupt"));
+    }
+
+    #[test]
+    fn tool_stats_data_unavailable_is_empty_when_clean_and_unbounded() {
+        let unavailable = tool_stats_data_unavailable(5, 0, 7);
+        assert!(unavailable.is_empty());
     }
 }

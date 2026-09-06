@@ -2403,6 +2403,7 @@ mod tests {
                 "approval": "auto",
                 "createdAt": "2026-01-01T00:00:00Z"
             }],
+            "toolAuditCorruptCount": 0,
             "turnAttempts": [{
                 "version": 1,
                 "turnId": "t1",
@@ -2434,6 +2435,9 @@ mod tests {
             .expect("one tool audit record");
         assert!(audit.is_error);
         assert_eq!(audit.approval.as_deref(), Some("auto"));
+        // WHY(#7217): the replay DTO discloses corrupt tool_audit rows
+        // alongside the ones it could decode; a clean response reports 0.
+        assert_eq!(replay.tool_audit_corrupt_count, 0);
         let attempt = replay.turn_attempts.first().expect("one turn attempt");
         assert_eq!(attempt.status, "complete");
     }

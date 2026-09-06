@@ -2136,7 +2136,13 @@ async fn subsystem_tool_execution_history(
         .await
         .recent_tool_audit_records(1);
     match result {
-        Ok(_) => SubsystemStatus {
+        // WHY(#7217): a corrupt row no longer fails this read (see
+        // `decode_tool_audit_row`), so "healthy" alone would hide a real
+        // backlog from the operator; report "degraded" when the bounded
+        // canary scan turned up any corrupt rows along the way. This is a
+        // lower bound, not the true backlog size -- see `aletheia
+        // session-store tool-audit-check` for a full count.
+        Ok(scan) if scan.corrupt.is_empty() => SubsystemStatus {
             id: "tool_execution_history".to_owned(),
             name: "Tool Execution History".to_owned(),
             status: "healthy".to_owned(),
@@ -2148,6 +2154,27 @@ async fn subsystem_tool_execution_history(
             failure_reason: None,
             details: None,
             suggested_action: None,
+        },
+        Ok(scan) => SubsystemStatus {
+            id: "tool_execution_history".to_owned(),
+            name: "Tool Execution History".to_owned(),
+            status: "degraded".to_owned(),
+            owner: "crates/mneme::store".to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: Some(format!(
+                "{} tool_audit row(s) failed to decode during this check; run `aletheia \
+                 session-store tool-audit-check` for the full backlog",
+                scan.corrupt.len()
+            )),
+            failure_reason: None,
+            details: None,
+            suggested_action: Some(
+                "Run `aletheia session-store tool-audit-check` to size the corrupt-row \
+                 backlog."
+                    .to_owned(),
+            ),
         },
         Err(e) => SubsystemStatus {
             id: "tool_execution_history".to_owned(),

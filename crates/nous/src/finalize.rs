@@ -861,7 +861,8 @@ mod tests {
 
         let audit = store
             .recent_tool_audit_records(10)
-            .expect("tool audit records");
+            .expect("tool audit records")
+            .records;
         assert_eq!(audit.len(), 5);
         let failed = audit
             .iter()

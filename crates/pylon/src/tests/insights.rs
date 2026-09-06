@@ -1,6 +1,7 @@
 //! Integration tests for meta-insights endpoints.
 
 use axum::http::StatusCode;
+use mneme::store::test_support::inject_raw_tool_audit_row;
 use mneme::store::{SessionStore, test_support::inject_raw_session_row};
 use tower::ServiceExt;
 
@@ -222,6 +223,51 @@ async fn get_quality_metrics_returns_500_when_session_scan_fails() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn get_tool_stats_survives_a_corrupt_tool_audit_row() {
+    // WHY(#7217): unlike `/api/v1/metrics/quality` above (a genuine
+    // session-scan failure, which correctly stays a 500), a single
+    // malformed `tool_audit` row is not a storage failure -- WHY(#5760
+    // precedent) in `get_tool_stats` reserves the 500 for the read itself
+    // failing outright, and a corrupt row must surface through
+    // `data_unavailable` instead.
+    let session_dir = tempfile::TempDir::new().expect("session store tempdir");
+    let store_path = session_dir.path().join("sessions");
+    inject_raw_tool_audit_row(
+        &store_path,
+        "00000000000000000001",
+        br#"{"id":1,"session_id":"ses-x","nous_id":"alice","turn_seq":1,
+             "tool_call_id":"tc-corrupt","tool_name":null,"duration_ms":1,
+             "is_error":false,"outcome":"error","result":null,"approval":null,
+             "receipt":"","created_at":"2026-09-06T00:00:00.000Z"}"#,
+    )
+    .expect("raw corrupt tool_audit row injected");
+    SessionStore::stamp_legacy_schema_manifest(&store_path)
+        .expect("legacy schema manifest stamped over injected row");
+    let corrupt_store = SessionStore::open(&store_path).expect("corrupt session store opens");
+
+    let (state, _dir) = test_state().await;
+    {
+        let mut store = state.session_store.lock().await;
+        *store = corrupt_store;
+    }
+    let app = build_router(state, &test_security_config());
+
+    let resp = app.oneshot(authed_get("/api/tool-stats")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let unavailable = body["data_unavailable"]
+        .as_array()
+        .expect("data_unavailable array");
+    assert!(
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "tool_audit_corrupt"),
+        "corrupt row must be disclosed; body={body}"
+    );
 }
 
 #[tokio::test]

@@ -124,6 +124,95 @@ fn encode_u64(v: u64) -> [u8; 8] {
     v.to_be_bytes()
 }
 
+/// One `tool_audit` row that failed to decode (aletheia#7217).
+///
+/// Carries enough to find and explain the row without ever failing the read
+/// that encountered it — see [`ToolAuditScan`] and [`decode_tool_audit_row`].
+#[derive(Debug, Clone)]
+pub struct CorruptToolAuditRecord {
+    /// The raw partition key of the undecodable row.
+    pub key: String,
+    /// The decode error's `Display` text.
+    pub error: String,
+}
+
+/// Result of scanning some or all of the `tool_audit` partition: rows that
+/// decoded successfully, plus a side channel for rows that did not.
+///
+/// WHY a side channel, not a hard error (aletheia#7217): a single malformed
+/// `tool_audit` row must never take down a session's next turn, session
+/// deletion, `/replay`, `/tool-stats`, or `/ops/tools`. Every reader of the
+/// `tool_audit` partition goes through [`decode_tool_audit_row`] and
+/// collects into this type instead of propagating a `serde_json::Error`
+/// from a single row via `?`.
+#[derive(Debug, Clone, Default)]
+pub struct ToolAuditScan {
+    /// Rows that decoded successfully, in scan order.
+    pub records: Vec<ToolAuditRecord>,
+    /// Rows that failed to decode, in scan order. Partition-wide: a row
+    /// that fails to decode has no readable `session_id`, so a
+    /// session-scoped scan cannot exclude corrupt rows that belong to a
+    /// different session.
+    pub corrupt: Vec<CorruptToolAuditRecord>,
+}
+
+/// Hard cap on `tool_audit` rows examined by one bounded ("recent N") scan.
+///
+/// Before aletheia#7217, a single corrupt row short-circuited the scan
+/// immediately via `?` — fast, but wrong. Now the scan keeps looking past a
+/// corrupt row for `limit` decodable ones, which on a partition with
+/// widespread corruption could otherwise degrade into a full-partition scan
+/// on every `/ops/tools` or `/tool-stats` poll. This bound trades a
+/// possibly-short "recent" result for a bounded read.
+const MAX_TOOL_AUDIT_ROWS_SCANNED: usize = 5_000;
+
+/// Keys already WARN-logged for a `tool_audit` decode failure this process
+/// lifetime (aletheia#7217).
+///
+/// The history stage re-reads the same corrupt row on every subsequent turn
+/// of an affected session, and `/ops/tools`, `/tool-stats`, and the health
+/// check poll it repeatedly; without this dedup, one corrupt row would
+/// flood the log forever. The `aletheia_tool_audit_corrupt_total` metric
+/// (incremented on every decode failure, not just the first) is the
+/// cumulative signal; this set exists only to bound the log.
+static WARNED_CORRUPT_TOOL_AUDIT_KEYS: std::sync::OnceLock<
+    Mutex<std::collections::HashSet<String>>,
+> = std::sync::OnceLock::new();
+
+/// Decode one `tool_audit` row, tolerating a decode failure by returning it
+/// as a [`CorruptToolAuditRecord`] instead of propagating the error
+/// (aletheia#7217).
+///
+/// Every reader of the `tool_audit` partition (the recent-N scan, the
+/// per-session scan, and the session-delete key scan) calls this instead of
+/// `serde_json::from_slice::<ToolAuditRecord>(..)` directly, so a malformed
+/// row is handled identically everywhere: counted via
+/// `aletheia_tool_audit_corrupt_total`, WARN-logged the first time this key
+/// is seen to be corrupt, and returned as data rather than as an error.
+fn decode_tool_audit_row(
+    key: &[u8],
+    bytes: &[u8],
+) -> std::result::Result<ToolAuditRecord, CorruptToolAuditRecord> {
+    serde_json::from_slice::<ToolAuditRecord>(bytes).map_err(|source| {
+        let key = String::from_utf8_lossy(key).into_owned();
+        let error = source.to_string();
+        metrics::record_tool_audit_corrupt();
+        let first_time_seen = WARNED_CORRUPT_TOOL_AUDIT_KEYS
+            .get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(key.clone());
+        if first_time_seen {
+            warn!(
+                key = %key,
+                error = %error,
+                "tool_audit record failed to decode; skipping (aletheia#7217)"
+            );
+        }
+        CorruptToolAuditRecord { key, error }
+    })
+}
+
 /// ISO 8601 timestamp string for "now".
 fn now_iso() -> String {
     koina::fjall::now_iso()
@@ -1324,6 +1413,12 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Never fails on a malformed row (aletheia#7217): see
+    /// [`decode_tool_audit_row`]. A corrupt row has no readable `session_id`
+    /// and is therefore never selected for deletion here — it is left in
+    /// place rather than guessed at, and deleting `session_id`'s own rows
+    /// proceeds regardless of unrelated corruption elsewhere in the
+    /// partition.
     fn tool_audit_keys_for_session_in_tx(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         tool_audit_part: &fjall::SingleWriterTxKeyspace,
@@ -1336,8 +1431,9 @@ impl SessionStore {
             let (k, v) = guard
                 .into_inner()
                 .map_err(|e| storage_error(format!("fjall delete_session tool_audit scan: {e}")))?;
-            let record =
-                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?;
+            let Ok(record) = decode_tool_audit_row(&k, &v) else {
+                continue;
+            };
             if record.session_id == session_id {
                 keys.push(k.to_vec());
             }
@@ -3180,58 +3276,110 @@ impl SessionStore {
     }
 
     /// Get recent tool audit records, newest first bounded by `limit`.
+    ///
+    /// Never fails on a malformed row (aletheia#7217): see
+    /// [`decode_tool_audit_row`]. Scanning continues past corrupt rows
+    /// looking for `limit` decodable ones, bounded by
+    /// [`MAX_TOOL_AUDIT_ROWS_SCANNED`] so a partition with widespread
+    /// corruption cannot turn this into a full-partition scan on every
+    /// call.
     #[instrument(skip(self))]
-    pub fn recent_tool_audit_records(&self, limit: usize) -> Result<Vec<ToolAuditRecord>> {
+    pub fn recent_tool_audit_records(&self, limit: usize) -> Result<ToolAuditScan> {
         use fjall::Readable;
 
         const MAX_RECENT_TOOL_AUDIT_RECORDS: usize = 200;
         let limit = limit.min(MAX_RECENT_TOOL_AUDIT_RECORDS);
         if limit == 0 {
-            return Ok(Vec::new());
+            return Ok(ToolAuditScan::default());
         }
 
         let tool_audit_part = self.partition("tool_audit")?;
         let snap = self.db.read_tx();
 
-        let mut records = Vec::with_capacity(limit);
+        let mut scan = ToolAuditScan::default();
+        let mut scanned = 0usize;
         for guard in snap.range::<&str, _>(&tool_audit_part, ..).rev() {
-            let (_k, v) = guard
+            let (k, v) = guard
                 .into_inner()
                 .map_err(|e| storage_error(format!("fjall recent_tool_audit_records: {e}")))?;
-            records.push(
-                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?,
-            );
-            if records.len() >= limit {
+            match decode_tool_audit_row(&k, &v) {
+                Ok(record) => scan.records.push(record),
+                Err(corrupt) => scan.corrupt.push(corrupt),
+            }
+            scanned += 1;
+            if scan.records.len() >= limit || scanned >= MAX_TOOL_AUDIT_ROWS_SCANNED {
                 break;
             }
         }
 
-        Ok(records)
+        Ok(scan)
     }
 
     /// Get all tool audit records for a session, ordered by turn sequence and
     /// audit insertion order.
+    ///
+    /// Never fails on a malformed row (aletheia#7217): see
+    /// [`decode_tool_audit_row`]. A row that fails to decode has no readable
+    /// `session_id`, so [`ToolAuditScan::corrupt`] here is partition-wide,
+    /// not scoped to `session_id` — callers that need a per-session corrupt
+    /// count should treat it as "unknown, disclose the total" rather than
+    /// attribute it to this session specifically.
     #[instrument(skip(self))]
-    pub fn tool_audit_records_for_session(&self, session_id: &str) -> Result<Vec<ToolAuditRecord>> {
+    pub fn tool_audit_records_for_session(&self, session_id: &str) -> Result<ToolAuditScan> {
         use fjall::Readable;
 
         let tool_audit_part = self.partition("tool_audit")?;
         let snap = self.db.read_tx();
 
-        let mut records = Vec::new();
+        let mut scan = ToolAuditScan::default();
         for guard in snap.range::<&str, _>(&tool_audit_part, ..) {
-            let (_k, v) = guard
+            let (k, v) = guard
                 .into_inner()
                 .map_err(|e| storage_error(format!("fjall tool_audit_records_for_session: {e}")))?;
-            let record =
-                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?;
+            let record = match decode_tool_audit_row(&k, &v) {
+                Ok(record) => record,
+                Err(corrupt) => {
+                    scan.corrupt.push(corrupt);
+                    continue;
+                }
+            };
             if record.session_id == session_id {
-                records.push(record);
+                scan.records.push(record);
             }
         }
 
-        records.sort_by(|a, b| a.turn_seq.cmp(&b.turn_seq).then_with(|| a.id.cmp(&b.id)));
-        Ok(records)
+        scan.records
+            .sort_by(|a, b| a.turn_seq.cmp(&b.turn_seq).then_with(|| a.id.cmp(&b.id)));
+        Ok(scan)
+    }
+
+    /// Scan the entire `tool_audit` partition, decoding every row.
+    ///
+    /// Unlike [`Self::recent_tool_audit_records`] (bounded, newest-first)
+    /// and [`Self::tool_audit_records_for_session`] (filtered to one
+    /// session), this is the unfiltered, unbounded "how big is the
+    /// corruption backlog" query (aletheia#7217) backing `aletheia
+    /// session-store tool-audit-check`. It is meant to be run out-of-band
+    /// (an operator-invoked CLI check against a chosen store), not on every
+    /// request, so it has no `limit` and does not stop early.
+    #[instrument(skip(self))]
+    pub fn scan_tool_audit_records(&self) -> Result<ToolAuditScan> {
+        use fjall::Readable;
+
+        let tool_audit_part = self.partition("tool_audit")?;
+        let snap = self.db.read_tx();
+
+        let mut scan = ToolAuditScan::default();
+        for guard in snap.range::<&str, _>(&tool_audit_part, ..) {
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall scan_tool_audit_records: {e}")))?;
+            match decode_tool_audit_row(&k, &v) {
+                Ok(record) => scan.records.push(record),
+                Err(corrupt) => scan.corrupt.push(corrupt),
+            }
+        }
+        Ok(scan)
     }
 
     /// Get all usage records for a session, ordered by turn sequence.
@@ -3357,6 +3505,7 @@ impl SessionStore {
 
         let tool_audit_ids = self
             .tool_audit_records_for_session(session_id)?
+            .records
             .into_iter()
             .filter(|t| t.turn_seq == legacy_turn_seq)
             .map(|t| t.id)

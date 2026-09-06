@@ -10,8 +10,9 @@ mod fjall_store;
 pub mod test_support;
 
 pub use fjall_store::{
-    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRecordSpec,
-    FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest, SessionStatusCounts, SessionStore,
+    CorruptToolAuditRecord, FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord,
+    FinalizeTurnRecordSpec, FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest,
+    SessionStatusCounts, SessionStore, ToolAuditScan,
 };
 // WHY(#4414): the four portability-only types below are gated behind
 // `#[cfg(feature = "portability")]` in fjall_store.rs; this re-export must

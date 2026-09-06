@@ -384,6 +384,38 @@ fn session_store_stamp_with_yes_parses() {
 }
 
 #[test]
+fn session_store_tool_audit_check_defaults_parses() {
+    let cli = Cli::parse_from(["aletheia", "session-store", "tool-audit-check"]);
+    match cli.command {
+        Some(Command::SessionStore {
+            action: session_store::Action::ToolAuditCheck { path },
+        }) => {
+            assert!(path.is_none(), "path should default to none");
+        }
+        _ => panic!("expected SessionStore ToolAuditCheck command"),
+    }
+}
+
+#[test]
+fn session_store_tool_audit_check_with_path_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "session-store",
+        "tool-audit-check",
+        "--path",
+        "/tmp/some-sessions.db",
+    ]);
+    match cli.command {
+        Some(Command::SessionStore {
+            action: session_store::Action::ToolAuditCheck { path },
+        }) => {
+            assert_eq!(path, Some(PathBuf::from("/tmp/some-sessions.db")));
+        }
+        _ => panic!("expected SessionStore ToolAuditCheck command"),
+    }
+}
+
+#[test]
 fn init_non_interactive_with_instance_path_parses() {
     let cli = Cli::parse_from([
         "aletheia",
