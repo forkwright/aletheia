@@ -127,6 +127,28 @@ def test_missing_required_file_fails() -> None:
     )
 
 
+def test_manifest_features_without_tls_fails() -> None:
+    # WHY(#5109): a release built without `tls` (e.g. a reverted build line)
+    # must be rejected here, not discovered downstream. Rewrite only the
+    # metadata line so file digests still match their rows.
+    def mutate(package: Path) -> None:
+        manifest = package / "PACKAGE-MANIFEST.txt"
+        text = manifest.read_text(encoding="utf-8")
+        stripped = text.replace(f"features={CHECKER.FEATURES}", "features=recall,embed-candle")
+        expect(stripped != text, "fixture manifest should contain the features= line")
+        manifest.write_text(stripped, encoding="utf-8")
+
+    errors = _run_fixture(mutate)
+    expect(
+        any(
+            "features='recall,embed-candle'" in error
+            and CHECKER.FEATURES in error
+            for error in errors
+        ),
+        f"manifest built without tls should fail: {errors}",
+    )
+
+
 def test_stale_manifest_mode_fails() -> None:
     def mutate(package: Path) -> None:
         (package / "aletheia").chmod(0o644)
@@ -255,6 +277,7 @@ def main() -> int:
         test_valid_tarball_passes,
         test_stale_manifest_content_fails,
         test_missing_required_file_fails,
+        test_manifest_features_without_tls_fails,
         test_stale_manifest_mode_fails,
         test_self_consistent_non_executable_binary_fails,
         test_wrong_source_commit_fails,

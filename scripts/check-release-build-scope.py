@@ -56,7 +56,7 @@ CROSS_PRE_BUILD = 'pre-build = "./scripts/install-cargo-auditable-cross.sh"'
 CROSS_TOOLCHAIN_CARGO = 'exec /rust/bin/cargo auditable "$@"'
 SHIPPED_PACKAGE = "aletheia"
 SHIPPED_BIN = "aletheia"
-RELEASE_FEATURES = "recall,embed-candle"
+RELEASE_FEATURES = "recall,embed-candle,tls"
 BUILD_TARGET_ENV = "$BUILD_TARGET"
 TEST_HARNESS_MEMBER = "integration-tests"
 FORBIDDEN_FEATURES = frozenset(
@@ -184,8 +184,11 @@ TRUSTED_RELEASE_JOB_IDS = frozenset(
 )
 ARTIFACT_FLOW_JOB_IDS = frozenset({"build", "sbom", "publish-release"})
 TRUSTED_BUILD_STEP_DIGESTS = {
-    "Build (native)": "d93be08a02ad6d7580059f7cd104cb9568dfdd1e876d7c0980c735645265986d",
-    "Build (cross)": "b082568fcb69bca5c417cea6bec6862b84333e1a06b948251e10dec2c8173e55",
+    # WHY(#5109): regenerated for the `tls` feature addition to both release
+    # build commands. `step_digest()` hashes only the parsed step mapping
+    # (name/if/run/env), so surrounding comment text does not affect these.
+    "Build (native)": "a9a037cd2b93c624dabcf708464e9f7833f86c18bc6782633547cbf4e6ffed17",
+    "Build (cross)": "7b494d34277c3ae721038c2cfbe0a3483d20d84e4f1fbab8ffba0db1df3d26bd",
 }
 TRUSTED_CROSS_INPUTS = {
     CROSS_CONFIG: "c59f137bd29a0c72e07313f4ac636e00a2a5c8e5b5a61a2204465b5977724b17",
@@ -207,7 +210,9 @@ SAFE_STEP_DIGESTS = (
     None,
     None,
     "5607e468ff4514fcf140d884db9fdcc42b58871295c011c86e125222debbb1a1",
-    "c42d24aeef4b2d84c8f69ae4d8049a64b9758405e0839f08506222b680d93794",
+    # WHY(#5109): "Package tarball" regenerated -- PACKAGE_FEATURES now
+    # carries `tls` to match the build commands' feature list above.
+    "0426ab3981560abe0e2bfab11b53affda40058226abe0a6fd27f7f133f008247",
     "0b56c93b63fcb891d122031530ef9751b9efdc42a21aafd5177141987fe9490a",
     "23fc0a3e1a4dcc48f200568a82a405b1cac43562e0dd333bb9275f9ac4dc30c2",
     "254a9b665907991c0bb9c10b063964b7eef36cc908816269e1382cb9f3137d5e",

@@ -343,20 +343,25 @@ jobs:
       # feature line never declares.
       #
       # This build attests only package `aletheia`, bin `aletheia`, and
-      # `recall,embed-candle` plus that package's defaults. It does not attest
-      # other workspace members, bins, or feature combinations; those are
-      # checked but not shipped. check-release-build-scope.py replays this
-      # resolution in PR CI and fails if this scope or its clean feature graph
-      # drifts.
+      # `recall,embed-candle,tls` plus that package's defaults. It does not
+      # attest other workspace members, bins, or feature combinations; those
+      # are checked but not shipped. check-release-build-scope.py replays
+      # this resolution in PR CI and fails if this scope or its clean feature
+      # graph drifts.
+      #
+      # WHY(#5109) tls: axum-server pulls only the rustls TLS backend, and
+      # the shipped binary is otherwise built with no way to terminate TLS
+      # itself. `full-headless` in release-feature-policy.toml already
+      # proves `recall,embed-candle,tls` (plus defaults) compiles.
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo auditable build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cargo auditable build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle,tls
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cross build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle,tls
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
@@ -388,7 +393,7 @@ jobs:
           PACKAGE_VERSION="${version}" \
           PACKAGE_TARGET="${BUILD_TARGET}" \
           PACKAGE_ARTIFACT="${ARTIFACT}" \
-          PACKAGE_FEATURES="recall,embed-candle" \
+          PACKAGE_FEATURES="recall,embed-candle,tls" \
           PACKAGE_RUSTC="${{ steps.rustc-version.outputs.version }}" \
           PACKAGE_CROSS_VERSION="${{ matrix.cross && '0.2.5' || 'n/a (native build)' }}" \
           PACKAGE_SOURCE_COMMIT="$RELEASE_SHA" \

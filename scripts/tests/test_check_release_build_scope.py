@@ -32,7 +32,7 @@ SPEC.loader.exec_module(scope)
 
 NATIVE = (
     "cargo auditable build --locked --release -p aletheia --bin aletheia "
-    '--target "$BUILD_TARGET" --features recall,embed-candle'
+    '--target "$BUILD_TARGET" --features recall,embed-candle,tls'
 )
 
 PINNED_USES = re.compile(
@@ -71,7 +71,7 @@ class ReleaseBuildValidation(unittest.TestCase):
         with mock.patch.object(scope, "validate_release_repository"):
             builds = scope.validated_release_builds(workflow())
         self.assertEqual([build.package for build in builds], ["aletheia", "aletheia"])
-        self.assertEqual([build.features for build in builds], ["recall,embed-candle"] * 2)
+        self.assertEqual([build.features for build in builds], ["recall,embed-candle,tls"] * 2)
         self.assertEqual(
             [build.expected.matrix_target for build in builds],
             ["aarch64-apple-darwin", "x86_64-unknown-linux-musl"],
@@ -79,11 +79,11 @@ class ReleaseBuildValidation(unittest.TestCase):
 
     def test_rejects_extra_features_all_features_prefixes_and_repeats(self) -> None:
         for extra in (
-            "--features recall,embed-candle,test-support",
+            "--features recall,embed-candle,tls,test-support",
             "--all-features",
             "-p aletheia",
             "--bin aletheia",
-            "--features recall,embed-candle",
+            "--features recall,embed-candle,tls",
         ):
             with self.subTest(extra=extra):
                 candidate = workflow()

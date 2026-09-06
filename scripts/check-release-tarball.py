@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
-FEATURES = "recall,embed-candle"
+FEATURES = "recall,embed-candle,tls"
 REQUIRED_PATHS = (
     "aletheia",
     "LICENSE",
