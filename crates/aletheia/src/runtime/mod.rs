@@ -744,10 +744,34 @@ impl RuntimeBuilder {
         }
         let missing = tool_manifest.missing_required_count();
         if missing > 0 {
-            warn!(
-                count = missing,
-                "required external tools unavailable -- agents will degrade gracefully"
-            );
+            // WHY comparing against `Degraded` rather than matching
+            // `FailStartup` by name: `RequiredFailureMode` is
+            // `#[non_exhaustive]` in taxis, so a variant added there
+            // compiles here without anyone deciding what it means. Failing
+            // closed is the only safe default -- a mode this build does not
+            // understand must not silently continue in a degraded state
+            // with required tools missing. `FailStartup` is also the enum's
+            // `#[default]`, so the `else` arm below is that default plus
+            // every future variant, not just `FailStartup` by name.
+            if self.config.tools.required_failure_mode == RequiredFailureMode::Degraded {
+                warn!(
+                    count = missing,
+                    "required external tools unavailable -- agents will degrade gracefully"
+                );
+            } else {
+                let missing_names = tool_manifest
+                    .required
+                    .iter()
+                    .filter(|entry| !entry.available)
+                    .map(|entry| entry.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                snafu::whatever!(
+                    "required external tool(s) unavailable: {missing_names} (set \
+                     tools.required_failure_mode = \"degraded\" to continue startup \
+                     instead)"
+                );
+            }
         }
 
         // WHY: `tool_schema` was registered during built-in tool setup with a
@@ -1473,14 +1497,14 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::{LazyLock, Mutex};
 
-    use taxis::config::AletheiaConfig;
+    use taxis::config::{AletheiaConfig, ExternalToolEntry, RequiredFailureMode};
     use taxis::oikos::Oikos;
     use tempfile::TempDir;
     use thesauros::loader::load_packs;
 
     use super::{
-        build_recall_source_registry, failed_required_pack_names, prosoche_task_def,
-        resolve_pack_paths, sandbox_config,
+        RuntimeBuilder, build_recall_source_registry, failed_required_pack_names,
+        prosoche_task_def, resolve_pack_paths, sandbox_config,
     };
 
     static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -1769,6 +1793,85 @@ mod tests {
             registry.source_count(),
             2,
             "an explicit opt-in must register both the local and network sources"
+        );
+    }
+
+    /// A minimal instance layout `Oikos::validate` accepts, plus a config
+    /// with one required-but-unregistered external tool (an `http` entry
+    /// with no `endpoint`, so `register_external_tools` marks it
+    /// unavailable) under the given `required_failure_mode`.
+    ///
+    /// `config_strict: false` skips `validate_config`, which enforces its
+    /// own, separate rule that a required `http` tool declare an `endpoint`
+    /// — orthogonal to this test, which exercises the runtime-side
+    /// availability check `build()` performs after registration is
+    /// attempted, not config-shape validation.
+    fn missing_required_tool_builder(
+        instance: &TempDir,
+        mode: RequiredFailureMode,
+    ) -> RuntimeBuilder {
+        fs::create_dir_all(instance.path().join("config")).expect("create config dir");
+        fs::create_dir_all(instance.path().join("data")).expect("create data dir");
+
+        let mut config = AletheiaConfig::default();
+        // WHY: sidesteps `JwtConfig::validate_for_auth_mode`'s insecure-key
+        // check, which is unrelated to what this test exercises.
+        config.gateway.auth.mode = "none".to_owned();
+        config.tools.required_failure_mode = mode;
+        config
+            .tools
+            .required
+            .insert("missing-tool".to_owned(), ExternalToolEntry::default());
+
+        RuntimeBuilder {
+            oikos: std::sync::Arc::new(Oikos::from_root(instance.path())),
+            config,
+            config_strict: false,
+            credentials: false,
+            embedding: false,
+            tool_services: false,
+            domain_packs: false,
+            daemons: false,
+        }
+    }
+
+    /// PROOF(#7083): a required-but-unregistered external tool fails
+    /// startup under the default `FailStartup` mode, naming the missing
+    /// tool, instead of only ever warning.
+    #[tokio::test]
+    async fn build_fails_startup_on_missing_required_tool_by_default() {
+        let instance = TempDir::new().expect("instance temp directory");
+        let builder = missing_required_tool_builder(&instance, RequiredFailureMode::FailStartup);
+
+        let result = Box::pin(builder.build()).await;
+
+        // WHY `.err().expect(...)` rather than `.expect_err(...)`: `Runtime`
+        // (the `Ok` type) has no `Debug` impl, which `expect_err` requires --
+        // clippy's `err_expect` lint already accounts for this and does not
+        // fire here.
+        let err = result
+            .err()
+            .expect("build() must fail when a required tool is unavailable under FailStartup");
+        let message = err.to_string();
+        assert!(
+            message.contains("missing-tool"),
+            "error should name the missing required tool, got: {message}"
+        );
+    }
+
+    /// PROOF(#7083): the same missing required tool only warns and lets
+    /// startup continue when `required_failure_mode = "degraded"`.
+    #[tokio::test]
+    async fn build_succeeds_degraded_on_missing_required_tool() {
+        let instance = TempDir::new().expect("instance temp directory");
+        let builder = missing_required_tool_builder(&instance, RequiredFailureMode::Degraded);
+
+        let result = Box::pin(builder.build()).await;
+
+        assert!(
+            result.is_ok(),
+            "build() should succeed when required_failure_mode = \"degraded\", got: {:?}",
+            result.err()
         );
     }
 }
