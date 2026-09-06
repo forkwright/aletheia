@@ -4,21 +4,30 @@
 
 ## System dependencies
 
-The desktop crate uses Dioxus with a WebView backend, which requires GTK3 and webkit2gtk system libraries.
+The desktop crate uses Dioxus with a WebView backend (wry, over GTK3 and
+webkit2gtk on Linux), which requires GTK3, webkit2gtk, libxdo, and librsvg
+system libraries. This list is derived from — and must be kept identical to —
+the packages `.github/workflows/desktop.yml` installs for desktop CI; there is
+no `nix flake check`-style enforcement across the two, so re-derive from that
+workflow's `Install GTK/WebKit system dependencies` step if this drifts.
 
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install gtk3-devel webkit2gtk4.1-devel libxdo-devel
+sudo dnf install webkit2gtk4.1-devel gtk3-devel libxdo-devel librsvg2-devel
 ```
 
 **macOS:** No additional dependencies. WebKit is bundled with the OS.
+
+**Nix:** `nix develop .#proskenion` (see below) provisions the same GTK3/
+webkit2gtk/libxdo/librsvg stack via `flake.nix`'s `gtkWebkitNativeDeps`,
+rather than system packages.
 
 ## Build
 

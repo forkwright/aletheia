@@ -47,25 +47,33 @@
 
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-          wgpuNativeDeps = [
-            pkgs.vulkan-loader
-            pkgs.libxkbcommon
-            pkgs.wayland
-
-            pkgs.xorg.libX11
-            pkgs.xorg.libXcursor
-            pkgs.xorg.libXrandr
-            pkgs.xorg.libXi
-            pkgs.xorg.libxcb
-
-            pkgs.fontconfig
-            pkgs.freetype
+          # WHY(aletheia#7204): proskenion is a GTK3/webkit2gtk desktop app
+          # (dioxus "desktop" feature -> wry -> gtk-rs + webkit2gtk-rs +
+          # soup3), not a wgpu/Vulkan renderer — Cargo.lock carries no
+          # wgpu/vulkan/wayland crate at all. This list must mirror the apt
+          # packages `.github/workflows/desktop.yml` installs for desktop CI
+          # (libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev); see
+          # also docs/DESKTOP.md.
+          #
+          # NOTE: docs/design/graph-3d.md specs a *planned* wgpu-rendered 3D
+          # graph view that does not exist in this crate yet (no wgpu/vulkan
+          # crate in Cargo.lock). That is almost certainly why a wgpu/Vulkan
+          # stack ended up here originally. If/when that feature actually
+          # lands (Cargo.lock gains a wgpu dependency), add its native deps
+          # back here rather than assuming this list is stale.
+          gtkWebkitNativeDeps = [
+            pkgs.gtk3 # libgtk-3-dev / gtk3-devel
+            pkgs.webkitgtk_4_1 # libwebkit2gtk-4.1-dev / webkit2gtk4.1-devel — also provides javascriptcoregtk-4.1 and libsoup-3.0
+            pkgs.xdotool # libxdo-dev / libxdo-devel — libxdo-sys links `-lxdo` for muda's global-shortcut/menu-accelerator support
+            pkgs.librsvg # librsvg2-dev / librsvg2-devel — gdk-pixbuf SVG loader for the app icon/assets
           ];
 
+          # WHY: no crate in Cargo.lock depends on `bindgen` or `cmake` — the
+          # gtk-rs/webkit2gtk-rs sys crates resolve their C libraries through
+          # `pkg-config`/`system-deps` only, so pulling in a bindgen/clang
+          # toolchain here would just be dead weight in the build closure.
           nativeBuildDeps = [
             pkgs.pkg-config
-            pkgs.cmake
-            pkgs.rustPlatform.bindgenHook
             pkgs.pandoc
           ];
 
@@ -82,7 +90,7 @@
             inherit src;
             strictDeps = true;
             nativeBuildInputs = nativeBuildDeps;
-            buildInputs = wgpuNativeDeps;
+            buildInputs = gtkWebkitNativeDeps;
             cargoExtraArgs = proskenionCargoArgs;
           };
 
@@ -101,9 +109,11 @@
               pname = proskenionName;
               version = proskenionVersion;
 
-              # WHY: Nix sandbox has no GPU. The build only needs headers and
-              # link stubs, not a running GPU. Runtime GPU access is the user's
-              # responsibility.
+              # WHY: the Nix build sandbox has no X11/Wayland display or
+              # D-Bus session for GTK/WebKit to attach to. The build only
+              # needs headers and link stubs to compile and link
+              # successfully; running the app is the user's responsibility
+              # outside the sandbox (see docs/DESKTOP.md).
               doCheck = false;
             }
           );
@@ -116,14 +126,15 @@
               pkgs.cargo-deny
               pkgs.cargo-watch
               pkgs.pandoc
-              pkgs.wayland-protocols
-              pkgs.wayland-scanner
             ];
 
-            # WHY: WGPU discovers the Vulkan ICD loader and GPU-adjacent
-            # libraries via LD_LIBRARY_PATH at runtime. Without this, the
-            # desktop app cannot find the Vulkan driver on NixOS.
-            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath wgpuNativeDeps;
+            # WHY: `cargo build`/`cargo run`/`dx serve` inside this shell
+            # link against the GTK3/webkit2gtk shared libraries but, unlike
+            # `nix build`'s output, are not run through nixpkgs' stdenv
+            # fixup (no automatic RPATH patching), so the dynamic linker
+            # needs them on LD_LIBRARY_PATH to resolve libgtk-3.so.0,
+            # libwebkit2gtk-4.1.so, libsoup-3.0.so, etc. at runtime.
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath gtkWebkitNativeDeps;
           };
 
           proskenionMetadataCheck = pkgs.runCommand "proskenion-flake-metadata" { } ''

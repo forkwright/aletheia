@@ -1,9 +1,9 @@
 //! Reusable div-based chart components for the metrics views.
 //!
 // NOTE: Div-based rendering (CSS bars, conic-gradient donut) was chosen over
-// SVG because Blitz SVG support is not confirmed for this build target.
-// If SVG support is validated, these can be migrated to inline-SVG for
-// smoother path rendering.
+// SVG because SVG rendering fidelity in the wry/webkit2gtk desktop webview is
+// not confirmed for this build target. If SVG support is validated, these
+// can be migrated to inline-SVG for smoother path rendering.
 
 use dioxus::prelude::*;
 
