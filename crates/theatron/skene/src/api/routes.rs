@@ -86,6 +86,19 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/sessions/{session_id}/approvals",
     },
     ClientRouteContract {
+        // WHY(#7207): the read half of the same model as the POST above --
+        // same `{session_id}` spelling, same reason (pylon's utoipa doc
+        // names it that way; the contract test matches literally).
+        method: "GET",
+        path_template: "/api/v1/sessions/{session_id}/approvals",
+    },
+    ClientRouteContract {
+        // WHY(#7207): the nous-scoped listing for a caller holding only a
+        // scoped token, which has no session id to enumerate against.
+        method: "GET",
+        path_template: "/api/v1/approvals",
+    },
+    ClientRouteContract {
         method: "GET",
         path_template: "/api/v1/events",
     },

@@ -1406,6 +1406,19 @@ pub async fn stream_turn(
                                         &approval_turn_id,
                                         tool_id.clone(),
                                         approval_tx_for_bridge.clone(),
+                                        // WHY(#7207): captured here so the
+                                        // pending-approval reconciliation read
+                                        // (`GET .../approvals`) can report the
+                                        // same tool id, risk, and a deadline
+                                        // derived from this turn's own gate
+                                        // timeout to a client that never saw
+                                        // this live event.
+                                        crate::approval_registry::PendingApprovalMeta {
+                                            nous_id: bridge_nous_id.clone(),
+                                            tool_name: tool_name.clone(),
+                                            risk: risk.clone(),
+                                            timeout_secs: approval_timeout_secs,
+                                        },
                                     )
                                     .await;
                                 // WHY(#6813): published after `register_tool`

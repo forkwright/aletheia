@@ -6,7 +6,7 @@
 )]
 mod tests {
     use super::super::test_helpers::*;
-    use super::super::{App, DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH};
+    use super::super::{AgentStatus, App, DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH};
     use crate::config::{Config, CredentialLabel};
     use crate::state::{ChatMessage, OpsState};
     use std::collections::HashMap;
@@ -406,4 +406,83 @@ mod tests {
     // client-rebuild half. The two failure-path tests above cover
     // `reauthenticate` itself because both return before `store_new_token`
     // is ever called.
+
+    // ── #7207: reload_agents seeds the AwaitingApproval badge from the
+    // pending-approval reconciliation read ──
+
+    #[tokio::test]
+    async fn reload_agents_seeds_awaiting_approval_badge_from_pending_reconciliation_read() {
+        let (url, _server) = routing_server(vec![
+            ("/api/v1/nous".into(), r#"{"nous":[{"id":"syn","name":"Syn"}]}"#.into()),
+            (
+                "/api/v1/approvals".into(),
+                r#"{"approvals":[{"session_id":"ses-1","turn_id":"turn-1","tool_id":"tool-1","tool_name":"shell_execute","risk":"critical","requested_at":"2026-01-01T00:00:00Z","deadline":"2026-01-01T00:02:00Z"}]}"#.into(),
+            ),
+        ])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+
+        let count = app
+            .reload_agents()
+            .await
+            .expect("reload_agents should succeed");
+
+        assert_eq!(count, 1);
+        assert_eq!(app.dashboard.agents.len(), 1);
+        let agent = &app.dashboard.agents[0];
+        assert_eq!(
+            agent.status,
+            AgentStatus::AwaitingApproval,
+            "a pending approval discovered on reconnect must set the badge \
+             even though this client never saw the live event"
+        );
+        assert_eq!(agent.awaiting_approval_tool_id, Some("tool-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn reload_agents_leaves_badge_idle_when_nothing_pending() {
+        let (url, _server) = routing_server(vec![
+            (
+                "/api/v1/nous".into(),
+                r#"{"nous":[{"id":"syn","name":"Syn"}]}"#.into(),
+            ),
+            ("/api/v1/approvals".into(), r#"{"approvals":[]}"#.into()),
+        ])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+
+        app.reload_agents()
+            .await
+            .expect("reload_agents should succeed");
+
+        let agent = &app.dashboard.agents[0];
+        assert_eq!(agent.status, AgentStatus::Idle);
+        assert_eq!(agent.awaiting_approval_tool_id, None);
+    }
+
+    #[tokio::test]
+    async fn reload_agents_tolerates_pending_approvals_fetch_failure() {
+        // WHY(#7207): only "/api/v1/nous" is routed -- the approvals fetch
+        // hits the routing server's unmatched-path 500 fallback. The
+        // roster reload itself must still succeed; a badge staying
+        // unseeded is the acceptable cost of a degraded reconciliation
+        // call, not a reason to fail agent loading.
+        let (url, _server) = routing_server(vec![(
+            "/api/v1/nous".into(),
+            r#"{"nous":[{"id":"syn","name":"Syn"}]}"#.into(),
+        )])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+
+        let count = app
+            .reload_agents()
+            .await
+            .expect("a failed reconciliation fetch must not fail the roster reload");
+
+        assert_eq!(count, 1);
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+    }
 }

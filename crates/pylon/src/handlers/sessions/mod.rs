@@ -5,7 +5,9 @@ pub(crate) mod approvals;
 pub(crate) mod streaming;
 pub(crate) mod types;
 
-pub use approvals::{approve_tool, deny_tool, resolve as resolve_approval};
+pub use approvals::{
+    approve_tool, deny_tool, list_nous_pending, list_session_pending, resolve as resolve_approval,
+};
 pub use streaming::{events, reconnect_turn, send_message, stream_turn};
 
 use types::{

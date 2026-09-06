@@ -514,7 +514,58 @@ impl App {
         // WHY: sorted alphabetically so the default selection is deterministic.
         self.dashboard.agents.sort_by(|a, b| a.name.cmp(&b.name));
         self.dashboard.agents_load_failed = false;
-        Ok(self.dashboard.agents.len())
+        let count = self.dashboard.agents.len();
+
+        // WHY(#7207): the `AwaitingApproval` badge is otherwise only ever
+        // set by the live `tool.approval_required` domain-bus event
+        // (`handle_sse_tool_approval_required`) -- an approval that fired
+        // while this client was disconnected, or before this process even
+        // started, would sit undiscovered until the operator happened to
+        // reopen that exact session. Reconciling here, on the one path
+        // shared by startup, SSE reconnection, and `:reconnect`, means
+        // every entry into a connected state re-derives the badge from the
+        // backend instead of only from events this client happened to see.
+        self.seed_pending_approvals().await;
+
+        Ok(count)
+    }
+
+    /// Reconcile each agent's `AwaitingApproval` badge against pylon's
+    /// pending-approval read (#7207) rather than only against
+    /// `tool.approval_required` events this client happened to observe
+    /// live. Best-effort per agent: one agent's fetch failing logs and
+    /// moves on rather than failing the whole roster reload over what is,
+    /// at worst, a badge staying unseeded until the next reload.
+    async fn seed_pending_approvals(&mut self) {
+        let client = self.client.clone();
+        let agent_ids: Vec<ApiNousId> =
+            self.dashboard.agents.iter().map(|a| a.id.clone()).collect();
+        for agent_id in agent_ids {
+            let response = match client.pending_approvals_for_nous(agent_id.as_str()).await {
+                Ok(response) => response,
+                Err(e) => {
+                    tracing::warn!(
+                        %agent_id,
+                        error = %e,
+                        "failed to reconcile pending approvals for agent"
+                    );
+                    continue;
+                }
+            };
+            // WHY: the badge tracks one `tool_id` (aletheia#6807); a
+            // reconnect finding more than one pending approval for the same
+            // agent is a multi-turn edge case the badge cannot represent
+            // today, so this seeds the oldest (`approvals` is already
+            // sorted oldest-first by the registry) and leaves the rest to
+            // be discovered live as their own turns stream.
+            let Some(approval) = response.approvals.into_iter().next() else {
+                continue;
+            };
+            if let Some(agent) = self.dashboard.agents.iter_mut().find(|a| a.id == agent_id) {
+                agent.status = AgentStatus::AwaitingApproval;
+                agent.awaiting_approval_tool_id = Some(approval.tool_id);
+            }
+        }
     }
 
     /// Retry the startup connection sequence behind `:reconnect` (#6814):

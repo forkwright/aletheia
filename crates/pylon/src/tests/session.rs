@@ -1168,12 +1168,16 @@ async fn list_sessions_implicitly_filters_to_scope_when_no_query() {
 /// read handler that forgets `require_role` will not appear here; see the
 /// PR description for the follow-up that walks the full `OpenAPI` document
 /// instead of this hand-maintained list.
-fn session_read_routes(id: &str) -> [String; 4] {
+fn session_read_routes(id: &str) -> [String; 5] {
     [
         "/api/v1/sessions".to_owned(),
         format!("/api/v1/sessions/{id}"),
         format!("/api/v1/sessions/{id}/replay"),
         format!("/api/v1/sessions/{id}/history"),
+        // WHY(#7207): the pending-approval reconciliation read is session
+        // content the same way history/replay are -- it belongs in this
+        // table for the same reason they do.
+        format!("/api/v1/sessions/{id}/approvals"),
     ]
 }
 

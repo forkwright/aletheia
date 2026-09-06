@@ -268,10 +268,10 @@ schema, so it is gated the same way `/metrics` is (#5174).
 ## Sessions
 
 All session endpoints require a valid Bearer token (`Claims` extractor). Reads (list,
-detail, history, replay) additionally require `Role::Agent` or above -- `Role::Readonly`
-is dashboard-only and cannot read session content -- and are scoped to the caller's own
-`nous_id` when the token carries one. State-changing endpoints also require CSRF header
-when CSRF is enabled.
+detail, history, replay, pending approvals) additionally require `Role::Agent` or above --
+`Role::Readonly` is dashboard-only and cannot read session content -- and are scoped to
+the caller's own `nous_id` when the token carries one. State-changing endpoints also
+require CSRF header when CSRF is enabled.
 
 ```
 POST /api/v1/sessions/{id}/messages  ─── Idempotency-Key header (optional, max 64 chars)
@@ -657,6 +657,47 @@ to grant or deny a queued tool call.
 ```
 
 **Response `200 OK`** - Acknowledgement with updated approval state.
+
+---
+
+### `GET /api/v1/sessions/{id}/approvals`
+
+Pending-approval reconciliation read (#7207): list every tool approval still pending for a
+session, oldest first. The read half of the route above — same `ApprovalRegistry`, same
+session-ownership check — for a client that connects late, restarts, or reconnects after missing
+the live `tool_approval_required` SSE event. Pending approvals live in memory only (never
+persisted), so a pylon restart clears them exactly as it already clears the registry's senders.
+Requires `Role::Agent` or above (#7200/#7227's floor for every session-content read in this
+module).
+
+**Response `200 OK`** - `PendingApprovalsResponse`:
+```json
+{
+  "approvals": [
+    {
+      "session_id": "01JXKQ2S...",
+      "turn_id": "01JXKQ2T...",
+      "tool_id": "toolu_123",
+      "tool_name": "shell_execute",
+      "risk": "critical",
+      "requested_at": "2026-01-01T00:00:00Z",
+      "deadline": "2026-01-01T00:02:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/v1/approvals?nous_id=…`
+
+Pending-approval reconciliation read, nous-scoped (#7207): list every tool approval still pending
+across every session belonging to one agent. For a caller holding only a nous-scoped token, which
+has no session id to enumerate against. `nous_id` is required; a scoped token's own agent id must
+match it. Requires `Role::Agent` or above, matching `list_sessions`'s floor for the same
+unscoped-listing shape.
+
+**Response `200 OK`** - `PendingApprovalsResponse` (same shape as above).
 
 ---
 

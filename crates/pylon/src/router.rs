@@ -139,7 +139,15 @@ pub fn build_router_with(
         .route("/sessions/{id}/name", axum::routing::put(sessions::rename))
         .route("/sessions/{id}/messages", post(sessions::send_message))
         // WHY(#3958, ADR-005): operator-decision pass-through for the approval gate.
-        .route("/sessions/{id}/approvals", post(sessions::resolve_approval))
+        // WHY(#7207): GET is the reconciliation read — the same route, the
+        // read half of the same model as the POST beside it.
+        .route(
+            "/sessions/{id}/approvals",
+            get(sessions::list_session_pending).post(sessions::resolve_approval),
+        )
+        // WHY(#7207): the nous-scoped listing for a caller holding only a
+        // scoped token, which has no session id to enumerate against.
+        .route("/approvals", get(sessions::list_nous_pending))
         .route(
             "/turns/{turn_id}/tools/{tool_id}/approve",
             post(sessions::approve_tool),
