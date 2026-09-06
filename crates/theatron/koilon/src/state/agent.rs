@@ -9,6 +9,11 @@ pub enum AgentStatus {
     Working,
     Streaming,
     Compacting,
+    /// A tool call is blocked awaiting operator approval (aletheia#6807),
+    /// set from the global `tool.approval_required` SSE event. Paired with
+    /// [`AgentState::awaiting_approval_tool_id`], which the resolving event
+    /// must match before clearing this status back to `Working`.
+    AwaitingApproval,
 }
 
 /// Backend actor lifecycle for this agent, independent of the TUI's local
@@ -82,6 +87,11 @@ pub struct AgentState {
     pub unread_count: u32,
     /// Available tools and their enablement state, fetched from the API.
     pub tools: Vec<ToolSummary>,
+    /// `tool_id` of the call this agent is blocked on when
+    /// `status == AgentStatus::AwaitingApproval` (aletheia#6807). Keyed
+    /// alongside `status` so a `ToolApprovalResolved` for a stale/superseded
+    /// `tool_id` cannot clear a newer pending approval.
+    pub awaiting_approval_tool_id: Option<String>,
 }
 
 #[cfg(test)]

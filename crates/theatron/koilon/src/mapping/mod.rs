@@ -431,6 +431,22 @@ mod tests {
                 event_type: "future.event".to_string(),
                 raw_data: "{}".to_string(),
             },
+            SseEvent::ToolApprovalRequired {
+                session_id: "ses-1".into(),
+                nous_id: "syn".into(),
+                turn_id: "turn-1".into(),
+                tool_id: "tool-1".to_string(),
+                tool_name: "bash".to_string(),
+                risk: "critical".to_string(),
+                reason: "destructive command".to_string(),
+            },
+            SseEvent::ToolApprovalResolved {
+                session_id: "ses-1".into(),
+                nous_id: "syn".into(),
+                turn_id: "turn-1".into(),
+                tool_id: "tool-1".to_string(),
+                decision: "approved".to_string(),
+            },
         ];
         for event in events {
             let debug = format!("{event:?}");

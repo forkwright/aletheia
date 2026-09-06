@@ -104,6 +104,9 @@ fn render_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 crate::state::AgentStatus::Compacting => {
                     ("\u{25cf}", Style::default().fg(theme.status.compacting))
                 }
+                crate::state::AgentStatus::AwaitingApproval => {
+                    ("\u{25cf}", Style::default().fg(theme.status.warning))
+                }
             };
 
             let session_count = agent.sessions.len();
