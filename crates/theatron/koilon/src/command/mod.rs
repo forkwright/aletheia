@@ -409,6 +409,7 @@ mod tests {
             distill_completed_at: None,
             unread_count: 0,
             tools: Vec::new(),
+            awaiting_approval_tool_id: None,
         }];
         let results = build_suggestions("syn", &agents);
         assert!(results.iter().any(|r| r.execute_as == "agent syn"));

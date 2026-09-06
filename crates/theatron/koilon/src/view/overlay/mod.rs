@@ -386,6 +386,10 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
                     Style::default().fg(theme.status.compacting),
                 )
             }
+            AgentStatus::AwaitingApproval => Span::styled(
+                "awaiting approval",
+                Style::default().fg(theme.status.warning),
+            ),
         };
 
         let emoji = agent.emoji.as_deref().unwrap_or("");

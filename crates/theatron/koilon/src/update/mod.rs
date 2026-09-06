@@ -222,6 +222,12 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         }
         Msg::SseDistillAfter { nous_id } => sse::handle_sse_distill_after(app, nous_id).await,
         Msg::SseStreamLagged { dropped } => sse::handle_sse_stream_lagged(app, dropped).await,
+        Msg::SseToolApprovalRequired { nous_id, tool_id } => {
+            sse::handle_sse_tool_approval_required(app, nous_id, tool_id)
+        }
+        Msg::SseToolApprovalResolved { nous_id, tool_id } => {
+            sse::handle_sse_tool_approval_resolved(app, nous_id, tool_id)
+        }
 
         Msg::StreamTurnStart {
             turn_id, nous_id, ..

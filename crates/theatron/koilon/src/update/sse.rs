@@ -168,6 +168,40 @@ pub(crate) fn handle_sse_status_update(app: &mut App, nous_id: ApiNousId, status
     }
 }
 
+/// Global `tool.approval_required` EventBus notification (aletheia#6807):
+/// fires for any agent, regardless of TUI focus, unlike the per-turn
+/// `StreamEvent::ToolApprovalRequired` which only reaches the currently
+/// attached stream.
+#[tracing::instrument(skip_all, fields(%nous_id, %tool_id))]
+pub(crate) fn handle_sse_tool_approval_required(
+    app: &mut App,
+    nous_id: ApiNousId,
+    tool_id: String,
+) {
+    if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
+        agent.status = AgentStatus::AwaitingApproval;
+        agent.awaiting_approval_tool_id = Some(tool_id);
+    }
+}
+
+/// Pairs with [`handle_sse_tool_approval_required`]. Only clears the
+/// `AwaitingApproval` status when the resolved `tool_id` matches the one
+/// that set it -- a stale or superseded resolution must not clobber a newer
+/// pending approval on the same agent.
+#[tracing::instrument(skip_all, fields(%nous_id, %tool_id))]
+pub(crate) fn handle_sse_tool_approval_resolved(
+    app: &mut App,
+    nous_id: ApiNousId,
+    tool_id: String,
+) {
+    if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id)
+        && agent.awaiting_approval_tool_id.as_deref() == Some(tool_id.as_str())
+    {
+        agent.awaiting_approval_tool_id = None;
+        agent.status = AgentStatus::Working;
+    }
+}
+
 #[tracing::instrument(skip_all, fields(%nous_id))]
 pub(crate) async fn handle_sse_session_created(app: &mut App, nous_id: ApiNousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id)
@@ -408,6 +442,55 @@ mod tests {
         handle_sse_tool_failed(&mut app, "syn".into());
 
         assert!(app.dashboard.agents[0].active_tool.is_none());
+    }
+
+    #[test]
+    fn sse_tool_approval_required_sets_awaiting_approval() {
+        let mut app = test_app();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_tool_approval_required(&mut app, "syn".into(), "tool-1".to_string());
+
+        assert_eq!(
+            app.dashboard.agents[0].status,
+            AgentStatus::AwaitingApproval
+        );
+        assert_eq!(
+            app.dashboard.agents[0].awaiting_approval_tool_id.as_deref(),
+            Some("tool-1")
+        );
+    }
+
+    #[test]
+    fn sse_tool_approval_resolved_clears_awaiting_approval() {
+        let mut app = test_app();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_tool_approval_required(&mut app, "syn".into(), "tool-1".to_string());
+        handle_sse_tool_approval_resolved(&mut app, "syn".into(), "tool-1".to_string());
+
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Working);
+        assert!(app.dashboard.agents[0].awaiting_approval_tool_id.is_none());
+    }
+
+    #[test]
+    fn sse_tool_approval_resolved_ignores_mismatched_tool_id() {
+        // WHY(#6807): a resolution for a stale/superseded tool_id must not
+        // clear a newer pending approval on the same agent.
+        let mut app = test_app();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_tool_approval_required(&mut app, "syn".into(), "tool-2".to_string());
+        handle_sse_tool_approval_resolved(&mut app, "syn".into(), "tool-1".to_string());
+
+        assert_eq!(
+            app.dashboard.agents[0].status,
+            AgentStatus::AwaitingApproval
+        );
+        assert_eq!(
+            app.dashboard.agents[0].awaiting_approval_tool_id.as_deref(),
+            Some("tool-2")
+        );
     }
 
     #[test]

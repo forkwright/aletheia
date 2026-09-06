@@ -209,6 +209,20 @@ pub enum Msg {
     SseStreamLagged {
         dropped: u64,
     },
+    /// Global `tool.approval_required` EventBus notification: a tool call for
+    /// `nous_id` is blocked awaiting operator approval. Unlike
+    /// `StreamToolApprovalRequired` (scoped to the currently-attached turn
+    /// stream), this fires for every agent regardless of TUI focus.
+    SseToolApprovalRequired {
+        nous_id: ApiNousId,
+        tool_id: String,
+    },
+    /// Global `tool.approval_resolved` EventBus notification pairing with
+    /// [`Msg::SseToolApprovalRequired`] above.
+    SseToolApprovalResolved {
+        nous_id: ApiNousId,
+        tool_id: String,
+    },
 
     StreamTurnStart {
         #[expect(dead_code, reason = "planned TUI feature")]

@@ -182,6 +182,7 @@ pub(crate) fn test_agent(id: &str, name: &str) -> AgentState {
         distill_completed_at: None,
         unread_count: 0,
         tools: Vec::new(),
+        awaiting_approval_tool_id: None,
     }
 }
 

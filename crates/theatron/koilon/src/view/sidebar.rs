@@ -52,6 +52,9 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             AgentStatus::Compacting => {
                 Span::styled("◉", Style::default().fg(theme.status.compacting))
             }
+            AgentStatus::AwaitingApproval => {
+                Span::styled("!", Style::default().fg(theme.status.warning))
+            }
         };
 
         let name_style = if is_focused {
@@ -140,6 +143,15 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                         Span::styled(format!("{label} {elapsed_str}"), theme.style_muted()),
                     ]));
                 }
+            }
+            AgentStatus::AwaitingApproval => {
+                lines.push(Line::from(vec![
+                    Span::raw("     "),
+                    Span::styled(
+                        "awaiting approval",
+                        Style::default().fg(theme.status.warning),
+                    ),
+                ]));
             }
             AgentStatus::Idle | AgentStatus::Compacting => {}
         }

@@ -197,6 +197,18 @@ impl App {
                 kind: NotificationKind::Info,
                 duration_secs: 5,
             },
+            // WHY(#6807): these two are global `EventBus` notifications (any
+            // agent, regardless of TUI focus), distinct from the per-turn
+            // `StreamEvent::ToolApprovalRequired`/`Resolved` pair which only
+            // fires on the currently-attached stream. Previously fell
+            // through the catch-all below and never surfaced a sidebar
+            // indication that an unfocused agent was blocked.
+            SseEvent::ToolApprovalRequired {
+                nous_id, tool_id, ..
+            } => Msg::SseToolApprovalRequired { nous_id, tool_id },
+            SseEvent::ToolApprovalResolved {
+                nous_id, tool_id, ..
+            } => Msg::SseToolApprovalResolved { nous_id, tool_id },
             _ => Msg::Tick,
         }
     }

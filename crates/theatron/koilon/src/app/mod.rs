@@ -506,6 +506,7 @@ impl App {
                     distill_completed_at: None,
                     unread_count,
                     tools: Vec::new(),
+                    awaiting_approval_tool_id: None,
                 }
             })
             .collect();
