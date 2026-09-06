@@ -160,6 +160,7 @@ fn tool_result_matches_duplicate_tool_names_by_id() {
 #[test]
 fn tool_approval_opens_overlay() {
     let mut app = test_app();
+    app.dashboard.focused_session_id = Some("ses-1".into());
 
     handle_stream_tool_approval_required(
         &mut app,
@@ -175,6 +176,10 @@ fn tool_approval_opens_overlay() {
     if let Some(Overlay::ToolApproval(ref approval)) = app.layout.overlay {
         assert_eq!(approval.tool_name, "dangerous_tool");
         assert_eq!(approval.risk, "high");
+        // WHY(#7202): the session-scoped approval route needs this;
+        // it must be captured from the focused session at overlay
+        // construction time, not left empty.
+        assert_eq!(approval.session_id, Some("ses-1".into()));
     }
 }
 
@@ -182,6 +187,7 @@ fn tool_approval_opens_overlay() {
 fn tool_approval_resolved_closes_overlay() {
     let mut app = test_app();
     app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+        session_id: Some("s1".into()),
         turn_id: "t1".into(),
         tool_id: "tool1".into(),
         tool_name: "test".to_string(),

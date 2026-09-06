@@ -5,9 +5,11 @@ pub use providers::{ProviderInfo, ProviderListResponse, ProviderRouteResponse};
 
 pub mod knowledge;
 pub use knowledge::{
-    EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier, Fact,
-    FactDetailResponse, FactSensitivity, FactVisibility, FactsResponse, Relationship,
-    RelationshipDirection, RelationshipsResponse, SimilarFact, TimelineEvent, TimelineResponse,
+    EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier,
+    ExplainCandidate, ExplainDecision, ExplainResponse, Fact, FactDetailResponse, FactSensitivity,
+    FactVisibility, FactorScoreBreakdown, FactsResponse, RecallWeightsView, Relationship,
+    RelationshipDirection, RelationshipsResponse, SearchResponse, SearchResult, SimilarFact,
+    TimelineEvent, TimelineResponse,
 };
 
 pub mod insights;

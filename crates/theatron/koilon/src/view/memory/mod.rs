@@ -132,6 +132,11 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     reason = "end = min(start + height, len) ensures start..end is always a valid slice range"
 )]
 fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    if !app.layout.memory.search.search_results.is_empty() {
+        render_search_results(app, frame, area, theme);
+        return;
+    }
+
     let mut lines: Vec<Line> = Vec::new();
 
     let header_style = theme.style_dim().add_modifier(Modifier::BOLD);
@@ -234,6 +239,58 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 Span::styled(content, content_style),
             ]));
         }
+    }
+
+    let block = Block::default().borders(Borders::NONE);
+    let paragraph = Paragraph::new(lines).block(block);
+    frame.render_widget(paragraph, area);
+}
+
+/// Render semantic search results (#7197) in place of the normal fact
+/// list, on the Facts tab, while `search.search_results` is non-empty.
+/// Read-only: unlike the fact table, results have no selection cursor or
+/// drill-in yet -- `Esc` clears them via `Msg::MemorySearchClose` and
+/// returns to the normal fact list (see `mapping::keyboard`).
+fn render_search_results(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+    let mut lines: Vec<Line> = vec![
+        Line::from(vec![Span::styled(
+            format!(
+                "  {} result{} for \"{}\" — esc to clear",
+                app.layout.memory.search.search_results.len(),
+                if app.layout.memory.search.search_results.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                },
+                app.layout.memory.search.search_query
+            ),
+            theme.style_dim().add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("Score  ", theme.style_dim().add_modifier(Modifier::BOLD)),
+            Span::styled("Conf  ", theme.style_dim().add_modifier(Modifier::BOLD)),
+            Span::styled("Tier ", theme.style_dim().add_modifier(Modifier::BOLD)),
+            Span::styled("Content", theme.style_dim().add_modifier(Modifier::BOLD)),
+        ]),
+    ];
+
+    let content_width = usize::from(area.width.saturating_sub(RESERVED_COLUMN_WIDTH + 7));
+    for result in &app.layout.memory.search.search_results {
+        let score_str = format!("{:<6.2} ", result.score);
+        let conf_str = format!("{:.0}%   ", result.confidence * 100.0);
+        let conf_style = confidence_style(theme, result.confidence);
+        let tier_str = format!("{} ", MemoryInspectorState::tier_abbrev(&result.tier));
+        let tier_sty = tier_style(theme, &result.tier);
+        let content = truncate(&result.content.replace('\n', " "), content_width);
+
+        lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(score_str, theme.style_dim()),
+            Span::styled(conf_str, conf_style),
+            Span::styled(tier_str, tier_sty),
+            Span::styled(content, theme.style_fg()),
+        ]));
     }
 
     let block = Block::default().borders(Borders::NONE);

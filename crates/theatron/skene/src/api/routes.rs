@@ -77,12 +77,13 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/sessions/{id}/name",
     },
     ClientRouteContract {
+        // WHY: pylon's utoipa doc for this one route names the path param
+        // `{session_id}`, not `{id}` like its session sub-resource siblings
+        // (crates/pylon/src/handlers/sessions/approvals.rs) -- the contract
+        // test matches this literally against pylon's generated OpenAPI
+        // path key, so it must mirror that spelling exactly.
         method: "POST",
-        path_template: "/api/v1/turns/{turn_id}/tools/{tool_id}/approve",
-    },
-    ClientRouteContract {
-        method: "POST",
-        path_template: "/api/v1/turns/{turn_id}/tools/{tool_id}/deny",
+        path_template: "/api/v1/sessions/{session_id}/approvals",
     },
     ClientRouteContract {
         method: "GET",
@@ -163,6 +164,14 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     ClientRouteContract {
         method: "GET",
         path_template: "/api/v1/knowledge/timeline",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/search",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/search/explain",
     },
     ClientRouteContract {
         method: "GET",
@@ -261,6 +270,19 @@ pub mod sessions {
     /// [`session_replay_path`] to build an encoded path.
     pub const SESSION_REPLAY_TEMPLATE: &str = "/api/v1/sessions/{id}/replay";
 
+    /// Template for the session-scoped, ownership-verifying tool-approval
+    /// route (#7202). `{id}` is a placeholder - do not interpolate
+    /// directly. Use [`session_approvals_path`] to build an encoded path.
+    ///
+    /// WHY: named `{id}` here for consistency with every other constant in
+    /// this module, even though pylon's own utoipa doc for this one route
+    /// names the same path segment `{session_id}` (see the
+    /// `SKENE_CLIENT_ROUTE_CONTRACTS` entry above, which must mirror
+    /// pylon's spelling exactly because the contract test matches it
+    /// literally) -- this constant is documentation, never compared against
+    /// pylon's `OpenAPI` output.
+    pub const SESSION_APPROVALS_TEMPLATE: &str = "/api/v1/sessions/{id}/approvals";
+
     /// Build the path for listing or creating sessions.
     #[must_use]
     pub fn sessions_path() -> &'static str {
@@ -306,6 +328,13 @@ pub mod sessions {
     pub fn session_replay_path(id: &str) -> String {
         let encoded = encoding::path_segment(id);
         format!("{SESSIONS_TEMPLATE}/{encoded}/replay")
+    }
+
+    /// Build the path for the session-scoped tool-approval route (#7202).
+    #[must_use]
+    pub fn session_approvals_path(id: &str) -> String {
+        let encoded = encoding::path_segment(id);
+        format!("{SESSIONS_TEMPLATE}/{encoded}/approvals")
     }
 }
 

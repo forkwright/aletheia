@@ -19,5 +19,5 @@ pub(crate) use handlers::{
     handle_page_up, handle_pop_back, handle_restore, handle_search_backspace, handle_search_close,
     handle_search_input, handle_search_open, handle_search_submit, handle_select_down,
     handle_select_first, handle_select_last, handle_select_up, handle_sort_cycle, handle_tab_next,
-    handle_tab_prev,
+    handle_tab_prev, run_search,
 };

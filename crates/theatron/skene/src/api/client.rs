@@ -14,11 +14,11 @@ use super::error::{
 };
 use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
-    Agent, AgentsResponse, CostMetricsResponse, EntitiesResponse, FactDetailResponse,
-    FactsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest, NousTool,
-    NousToolsResponse, PaginatedSessionsResponse, ProviderListResponse, ProviderRouteResponse,
-    RelationshipsResponse, Session, SessionReplayResponse, SessionsResponse, TimelineResponse,
-    TokenMetricsResponse,
+    Agent, AgentsResponse, CostMetricsResponse, EntitiesResponse, ExplainResponse,
+    FactDetailResponse, FactsResponse, HealthResponse, HistoryMessage, HistoryResponse,
+    ListSessionsRequest, NousTool, NousToolsResponse, PaginatedSessionsResponse,
+    ProviderListResponse, ProviderRouteResponse, RelationshipsResponse, SearchResponse, Session,
+    SessionReplayResponse, SessionsResponse, TimelineResponse, TokenMetricsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -576,51 +576,51 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Approve a tool invocation awaiting user consent.
+    /// Resolve a pending tool approval via the session-scoped,
+    /// ownership-verifying route (#7202): `POST
+    /// /api/v1/sessions/{session_id}/approvals`.
+    ///
+    /// WHY(#7202): replaces the legacy `approve_tool`/`deny_tool` methods,
+    /// which `POST`ed `/api/v1/turns/{turn_id}/tools/{tool_id}/{approve,deny}`
+    /// -- a route with no session id at all, so pylon rejects it outright
+    /// for any token carrying a `nous_id` (`SECURITY(#5340)` at
+    /// `crates/pylon/src/handlers/sessions/approvals.rs`). This route
+    /// carries `session_id` so pylon can verify the caller's token owns the
+    /// session's agent before routing the decision, working for both scoped
+    /// and unscoped tokens -- there is no remaining first-party use for the
+    /// legacy route, so it was not kept as a fallback.
+    ///
+    /// `decision` is the wire vocabulary pylon expects: `"approved"` or
+    /// `"denied"`.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
-        let t = keryx::url::encode_path_segment(turn_id);
-        let d = keryx::url::encode_path_segment(tool_id);
+    pub async fn resolve_session_approval(
+        &self,
+        session_id: &str,
+        turn_id: &str,
+        tool_id: &str,
+        decision: &str,
+    ) -> Result<()> {
         let resp = self
             .request(
                 reqwest::Method::POST,
-                &format!("/api/v1/turns/{t}/tools/{d}/approve"),
+                &super::routes::sessions::session_approvals_path(session_id),
             )
+            .json(&serde_json::json!({
+                "turn_id": turn_id,
+                "tool_id": tool_id,
+                "decision": decision,
+            }))
             .send()
             .await
             .context(HttpSnafu {
-                operation: "approve tool",
+                operation: "resolve session approval",
             })?;
-        Self::check_status(resp, "approve request").await?;
-        Ok(())
-    }
-
-    /// Deny a tool invocation awaiting user consent.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
-        let t = keryx::url::encode_path_segment(turn_id);
-        let d = keryx::url::encode_path_segment(tool_id);
-        let resp = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/turns/{t}/tools/{d}/deny"),
-            )
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "deny tool",
-            })?;
-        Self::check_status(resp, "deny request").await?;
+        Self::check_status(resp, "session approval request").await?;
         Ok(())
     }
 
@@ -882,6 +882,85 @@ impl ApiClient {
         })
     }
 
+    /// Semantic/relevance search over the knowledge store (#7197).
+    ///
+    /// WHY(#7197): pylon has registered `GET /api/v1/knowledge/search` since
+    /// before this method existed; the endpoint was never the gap. Both
+    /// first-party UIs disabled their search entry points citing a missing
+    /// pylon route that was never true — the actual gap was this client
+    /// method. `nous_id` scopes results to one agent; `None` searches across
+    /// every agent's facts, matching how the rest of the memory inspector
+    /// (`knowledge_facts`, `knowledge_timeline`) already reads globally.
+    /// `limit` is left to pylon's own default (20) when `None`.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_search(
+        &self,
+        q: &str,
+        nous_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<SearchResponse> {
+        let mut params: Vec<(&str, String)> = vec![("q", q.to_string())];
+        if let Some(id) = nous_id {
+            params.push(("nous_id", id.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/search")
+            .query(&params)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "knowledge search",
+            })?;
+        let resp = Self::check_status(resp, "knowledge search request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "knowledge search response",
+        })
+    }
+
+    /// Explainable recall scoring for the same query [`Self::knowledge_search`]
+    /// runs, reporting every candidate's per-factor score and why it was
+    /// selected, filtered, or dropped (#7197).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_search_explain(
+        &self,
+        q: &str,
+        nous_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<ExplainResponse> {
+        let mut params: Vec<(&str, String)> = vec![("q", q.to_string())];
+        if let Some(id) = nous_id {
+            params.push(("nous_id", id.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/search/explain")
+            .query(&params)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "knowledge search explain",
+            })?;
+        let resp = Self::check_status(resp, "knowledge search explain request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "knowledge search explain response",
+        })
+    }
+
     /// Update the confidence score for a knowledge fact.
     #[must_use]
     #[expect(
@@ -1100,6 +1179,8 @@ mod tests {
     use std::net::TcpListener;
     use std::time::Duration;
 
+    use crate::api::types::ExplainDecision;
+
     use super::*;
 
     fn serve_http_error_once(
@@ -1182,6 +1263,132 @@ mod tests {
         assert!(
             request.contains(r#"{"sensitivity":"confidential"}"#),
             "body must carry the requested sensitivity value, got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn knowledge_search_gets_the_pylon_search_route_with_query_params() {
+        // WHY(#7197): before this method existed, koilon's `/` and `:recall`
+        // both claimed pylon had no search endpoint. It always did
+        // (`GET /api/v1/knowledge/search`) -- this asserts skene actually
+        // reaches it with the caller's query text, agent scope, and limit as
+        // URL-encoded query parameters, and parses the ranked result set.
+        crate::install_test_crypto_provider();
+        let body = r#"{"results":[{"id":"f-1","content":"hello world","confidence":0.9,"tier":"verified","fact_type":"knowledge","score":1.5}]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .knowledge_search("hello world", Some("syn"), Some(5))
+            .await
+            .expect("knowledge search should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/knowledge/search?"),
+            "must GET pylon's search route, got: {request}"
+        );
+        assert!(request.contains("q=hello+world") || request.contains("q=hello%20world"));
+        assert!(request.contains("nous_id=syn"));
+        assert!(request.contains("limit=5"));
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].id, "f-1");
+        assert!((response.results[0].score - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn knowledge_search_omits_optional_params_when_absent() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"results":[]}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .knowledge_search("q", None, None)
+            .await
+            .expect("knowledge search should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(!request.contains("nous_id="), "got: {request}");
+        assert!(!request.contains("limit="), "got: {request}");
+    }
+
+    #[tokio::test]
+    async fn knowledge_search_explain_gets_the_pylon_explain_route() {
+        crate::install_test_crypto_provider();
+        // WHY: pylon serializes these DTOs with plain (snake_case) field
+        // names (crates/pylon/src/handlers/knowledge/dto.rs has no
+        // `rename_all`) -- this body uses that wire casing directly so the
+        // test fails if skene's types ever drifted to expect camelCase.
+        let body = r#"{
+            "query": "hello",
+            "weights": {
+                "vector_similarity": 0.3, "decay": 0.1, "relevance": 0.2,
+                "epistemic_tier": 0.1, "access_frequency": 0.1,
+                "relationship_proximity": 0.1, "graph_importance": 0.1,
+                "serendipity": 0.0, "surprise": 0.0, "evidence_coverage": 0.0,
+                "convergence": 0.0
+            },
+            "total_candidates": 1,
+            "selected": [{
+                "id": "f-1", "content": "hello", "confidence": 0.9,
+                "tier": "verified", "fact_type": "knowledge", "score": 1.2,
+                "decision": "selected", "reasons": ["matched"],
+                "factors": {
+                    "vector_similarity": 0.3, "decay": 0.1, "relevance": 0.2,
+                    "epistemic_tier": 0.1, "access_frequency": 0.1,
+                    "relationship_proximity": 0.1, "graph_importance": 0.1
+                }
+            }],
+            "dropped": []
+        }"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .knowledge_search_explain("hello", None, None)
+            .await
+            .expect("knowledge search explain should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/knowledge/search/explain?"),
+            "must GET pylon's explain route, got: {request}"
+        );
+        assert_eq!(response.total_candidates, 1);
+        assert_eq!(response.selected.len(), 1);
+        assert!(matches!(
+            response.selected[0].decision,
+            ExplainDecision::Selected
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_session_approval_posts_the_session_scoped_route() {
+        // WHY(#7202): before this method existed, koilon and proskenion both
+        // called approve_tool/deny_tool against the legacy
+        // /api/v1/turns/{turn_id}/tools/{tool_id}/{approve,deny} route, which
+        // pylon rejects for any token carrying a nous_id (SECURITY(#5340)).
+        // This asserts the session-scoped route is actually hit, with the
+        // session id in the path and turn_id/tool_id/decision in the body.
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"decision":"approved"}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .resolve_session_approval("ses-1", "turn-1", "tool-1", "approved")
+            .await
+            .expect("session approval should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/sessions/ses-1/approvals"),
+            "must POST pylon's session-scoped approval route, got: {request}"
+        );
+        assert!(request.contains(r#""turn_id":"turn-1""#), "got: {request}");
+        assert!(request.contains(r#""tool_id":"tool-1""#), "got: {request}");
+        assert!(
+            request.contains(r#""decision":"approved""#),
+            "got: {request}"
         );
     }
 

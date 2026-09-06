@@ -119,6 +119,7 @@ mod tests {
     fn current_contexts_tool_approval_overlay() {
         let mut app = test_app();
         app.layout.overlay = Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+            session_id: Some("s1".into()),
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "test_tool".to_string(),

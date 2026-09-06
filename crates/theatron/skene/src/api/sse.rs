@@ -1,9 +1,11 @@
 //! Domain-event SSE subscription to `GET /api/v1/events/subscribe`.
 //!
-//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`, and
-//! `nous.lifecycle`, providing cross-session awareness: newly created facts,
-//! completed turns, and agent lifecycle changes. The legacy `GET /api/v1/events`
-//! endpoint is keepalive-only and is not used here.
+//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`,
+//! `nous.lifecycle`, `tool.approval_required`, and `tool.approval_resolved`,
+//! providing cross-session awareness: newly created facts, completed turns,
+//! agent lifecycle changes, and tool calls blocked on approval in any
+//! session. The legacy `GET /api/v1/events` endpoint is keepalive-only and
+//! is not used here.
 //!
 //! Auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
 //! silence as a stale connection.
@@ -15,6 +17,7 @@
 use futures_util::StreamExt;
 use reqwest::Client;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use crate::id::{ApiNousId, ApiSessionId, TurnId};
@@ -30,7 +33,17 @@ use super::types::SseEvent;
 const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Topics subscribed to on the domain-event SSE endpoint.
-const SUBSCRIBE_TOPICS: &str = "fact.created,turn.complete,nous.lifecycle";
+///
+/// WHY(#7196): `tool.approval_required`/`tool.approval_resolved` mirror the
+/// per-turn stream events of the same name (WHY(#6813) at
+/// `crate::events::StreamEvent`) but on the always-open domain bus, so a
+/// tool call blocked on approval in *any* session — not just the one whose
+/// turn stream a client happens to hold open — is observable here. Without
+/// these two topics in the subscribe list, pylon's strict topic filter
+/// (`crates/pylon/src/handlers/events.rs`) drops both events silently and no
+/// first-party client can ever learn an agent is waiting on approval.
+pub const SUBSCRIBE_TOPICS: &str =
+    "fact.created,turn.complete,nous.lifecycle,tool.approval_required,tool.approval_resolved";
 
 /// Manages the global SSE connection to `/api/v1/events/subscribe`.
 /// Runs in a background task, sends parsed events through a channel.
@@ -44,8 +57,33 @@ impl SseConnection {
     /// Connect using the streaming HTTP client from `ApiClient::streaming_client()`.
     /// Auth headers are already embedded in the client. `Accept: text/event-stream`
     /// is set per-request to override the client-level `Accept: application/json` default.
+    ///
+    /// Equivalent to [`Self::connect_with_cancellation`] with a token that is
+    /// never triggered: the background task runs until the returned
+    /// `SseConnection` (and its receiver) is dropped, exactly as before this
+    /// method gained a cancellable sibling.
     #[tracing::instrument(skip_all)]
     pub fn connect(client: Client, base_url: &str) -> Self {
+        Self::connect_with_cancellation(client, base_url, CancellationToken::new())
+    }
+
+    /// Connect exactly as [`Self::connect`], but honor `cancel` for
+    /// deterministic shutdown of the reconnect loop.
+    ///
+    /// Mirrors the cancellation shape `stream_message` (#7187) already
+    /// uses: `cancel` is checked before connecting, before each backoff
+    /// sleep, and before each event read via a `tokio::select!`, so a caller
+    /// that triggers it stops the background task within one poll instead
+    /// of waiting for the receiver-dropped path to be noticed on the next
+    /// `tx.send` (which can be delayed up to `READ_TIMEOUT` or the current
+    /// backoff sleep).
+    #[tracing::instrument(skip_all)]
+    pub fn connect_with_cancellation(
+        // kanon:ignore RUST/pub-visibility
+        client: Client,
+        base_url: &str,
+        cancel: CancellationToken,
+    ) -> Self {
         // kanon:ignore RUST/pub-visibility
         let (tx, rx) = mpsc::channel(256);
         let url = format!(
@@ -56,102 +94,7 @@ impl SseConnection {
 
         let span = tracing::info_span!("sse_connection", %url);
         // kanon:ignore RUST/spawn-no-instrument — future is instrumented with `.instrument(span)` before being passed to spawn
-        let handle = tokio::spawn(
-            async move {
-                let mut backoff_secs: u64 = 1;
-                // WHY: sent as Last-Event-ID on reconnect so the server can
-                // replay missed events from the last acknowledged cursor.
-                let mut last_event_id: Option<String> = None;
-
-                loop {
-                    let mut req = client.get(&url).header("Accept", "text/event-stream");
-                    if let Some(ref id) = last_event_id {
-                        req = req.header("Last-Event-ID", id.as_str());
-                    }
-                    let resp = match req.send().await {
-                        Ok(resp) => resp,
-                        Err(e) => {
-                            tracing::error!("SSE connection failed: {e}");
-                            if tx.send(SseEvent::Disconnected).await.is_err() {
-                                return;
-                            }
-                            tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
-                            backoff_secs = (backoff_secs * 2).min(30);
-                            continue;
-                        }
-                    };
-
-                    if !resp.status().is_success() {
-                        let status = resp.status();
-                        // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
-                        let body = resp.text().await.unwrap_or_default();
-                        let message = reconnect_error_message(status, &body);
-                        tracing::warn!("SSE error: {message}");
-                        if tx.send(SseEvent::Disconnected).await.is_err() {
-                            return;
-                        }
-                        backoff_secs = (backoff_secs * 2).min(30);
-                        tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
-                        continue;
-                    }
-
-                    if tx.send(SseEvent::Connected).await.is_err() {
-                        return;
-                    }
-                    tracing::info!("SSE connected");
-                    backoff_secs = 1;
-                    let mut es = SseStream::new(resp.bytes_stream());
-
-                    loop {
-                        let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
-                        let event = match maybe_event {
-                            Ok(Some(Ok(event))) => event,
-                            Ok(Some(Err(e))) => {
-                                // WHY: keryx v1.4.0 surfaces mid-stream
-                                // transport failures as Err items. Treat the
-                                // feed as dropped and fall through to the
-                                // Disconnected + backoff reconnect path below.
-                                tracing::warn!(
-                                    error = %e,
-                                    "SSE transport error — treating as disconnect"
-                                );
-                                break;
-                            }
-                            Ok(None) => break,
-                            Err(_elapsed) => {
-                                // WHY: No event received within READ_TIMEOUT. A healthy
-                                // server sends pings more frequently than this window, so
-                                // silence here indicates a hung or dropped connection.
-                                tracing::warn!(
-                                    timeout_secs = READ_TIMEOUT.as_secs(),
-                                    "SSE read timeout — treating as disconnect"
-                                );
-                                break;
-                            }
-                        };
-
-                        // Track the last event ID for Last-Event-ID on reconnect.
-                        if let Some(id) = event.id.clone() {
-                            last_event_id = Some(id);
-                        }
-
-                        if let Some(parsed) = parse_sse_event(&event.event, &event.data)
-                            && tx.send(parsed).await.is_err()
-                        {
-                            // WHY: receiver dropped: shut down the SSE loop
-                            return;
-                        }
-                    }
-
-                    if tx.send(SseEvent::Disconnected).await.is_err() {
-                        return;
-                    }
-                    tracing::info!("SSE reconnecting in {backoff_secs}s");
-                    tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
-                }
-            }
-            .instrument(span),
-        );
+        let handle = tokio::spawn(reconnect_loop(client, url, cancel, tx).instrument(span));
 
         SseConnection {
             rx,
@@ -163,6 +106,192 @@ impl SseConnection {
     #[tracing::instrument(skip_all)]
     pub async fn next(&mut self) -> Option<SseEvent> {
         self.rx.recv().await
+    }
+}
+
+/// Outcome of one connection attempt (WHY: split out of the reconnect loop
+/// to keep both under clippy's line-count limit -- see [`attempt_connect`]).
+enum ConnectAttempt {
+    /// Cancelled, or the receiver was dropped: the background task must
+    /// exit entirely.
+    Stop,
+    /// The attempt failed and the backoff sleep already ran; loop again.
+    Retry,
+    /// Connected successfully; the body is the open stream to read.
+    Connected(reqwest::Response),
+}
+
+/// Send the subscribe request and validate the response, sending
+/// `Disconnected` and sleeping through backoff on any failure.
+///
+/// Split out of [`reconnect_loop`] purely to keep both functions under
+/// clippy's `too_many_lines` limit; the two are one logical state machine.
+async fn attempt_connect(
+    client: &Client,
+    url: &str,
+    cancel: &CancellationToken,
+    last_event_id: Option<&str>,
+    backoff_secs: &mut u64,
+    tx: &mpsc::Sender<SseEvent>,
+) -> ConnectAttempt {
+    let mut req = client.get(url).header("Accept", "text/event-stream");
+    if let Some(id) = last_event_id {
+        req = req.header("Last-Event-ID", id);
+    }
+    let resp = tokio::select! {
+        biased;
+        () = cancel.cancelled() => {
+            tracing::info!("SSE connection cancelled before connect");
+            return ConnectAttempt::Stop;
+        }
+        result = req.send() => result,
+    };
+    let resp = match resp {
+        Ok(resp) => resp,
+        Err(e) => {
+            tracing::error!("SSE connection failed: {e}");
+            if tx.send(SseEvent::Disconnected).await.is_err() {
+                return ConnectAttempt::Stop;
+            }
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => return ConnectAttempt::Stop,
+                () = tokio::time::sleep(std::time::Duration::from_secs(*backoff_secs)) => {}
+            }
+            *backoff_secs = (*backoff_secs * 2).min(30);
+            return ConnectAttempt::Retry;
+        }
+    };
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
+        let body = resp.text().await.unwrap_or_default();
+        let message = reconnect_error_message(status, &body);
+        tracing::warn!("SSE error: {message}");
+        if tx.send(SseEvent::Disconnected).await.is_err() {
+            return ConnectAttempt::Stop;
+        }
+        *backoff_secs = (*backoff_secs * 2).min(30);
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => return ConnectAttempt::Stop,
+            () = tokio::time::sleep(std::time::Duration::from_secs(*backoff_secs)) => {}
+        }
+        return ConnectAttempt::Retry;
+    }
+
+    if tx.send(SseEvent::Connected).await.is_err() {
+        return ConnectAttempt::Stop;
+    }
+    tracing::info!("SSE connected");
+    *backoff_secs = 1;
+    ConnectAttempt::Connected(resp)
+}
+
+/// Read parsed events from one established connection until it ends,
+/// errors, times out, or `cancel` fires.
+///
+/// Returns `true` if the caller should stop entirely (cancelled, or the
+/// receiver was dropped), `false` if the caller should reconnect. Split out
+/// of [`reconnect_loop`] purely to keep both functions under clippy's
+/// `too_many_lines` limit; the two are one logical state machine.
+async fn stream_until_disconnect(
+    resp: reqwest::Response,
+    cancel: &CancellationToken,
+    tx: &mpsc::Sender<SseEvent>,
+    last_event_id: &mut Option<String>,
+) -> bool {
+    let mut es = SseStream::new(resp.bytes_stream());
+
+    loop {
+        let maybe_event = tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                tracing::info!("SSE connection cancelled");
+                return true;
+            }
+            event = tokio::time::timeout(READ_TIMEOUT, es.next()) => event,
+        };
+        let event = match maybe_event {
+            Ok(Some(Ok(event))) => event,
+            Ok(Some(Err(e))) => {
+                // WHY: keryx v1.4.0 surfaces mid-stream transport failures
+                // as Err items. Treat the feed as dropped and fall through
+                // to the Disconnected + backoff reconnect path below.
+                tracing::warn!(error = %e, "SSE transport error — treating as disconnect");
+                break;
+            }
+            Ok(None) => break,
+            Err(_elapsed) => {
+                // WHY: No event received within READ_TIMEOUT. A healthy
+                // server sends pings more frequently than this window, so
+                // silence here indicates a hung or dropped connection.
+                tracing::warn!(
+                    timeout_secs = READ_TIMEOUT.as_secs(),
+                    "SSE read timeout — treating as disconnect"
+                );
+                break;
+            }
+        };
+
+        // Track the last event ID for Last-Event-ID on reconnect.
+        if let Some(id) = event.id.clone() {
+            *last_event_id = Some(id);
+        }
+
+        if let Some(parsed) = parse_sse_event(&event.event, &event.data)
+            && tx.send(parsed).await.is_err()
+        {
+            // WHY: receiver dropped: shut down the SSE loop
+            return true;
+        }
+    }
+    false
+}
+
+/// The background reconnect loop backing [`SseConnection::connect_with_cancellation`].
+///
+/// WHY: sent as `Last-Event-ID` on reconnect so the server can replay
+/// missed events from the last acknowledged cursor.
+async fn reconnect_loop(
+    client: Client,
+    url: String,
+    cancel: CancellationToken,
+    tx: mpsc::Sender<SseEvent>,
+) {
+    let mut backoff_secs: u64 = 1;
+    let mut last_event_id: Option<String> = None;
+
+    loop {
+        let resp = match attempt_connect(
+            &client,
+            &url,
+            &cancel,
+            last_event_id.as_deref(),
+            &mut backoff_secs,
+            &tx,
+        )
+        .await
+        {
+            ConnectAttempt::Stop => return,
+            ConnectAttempt::Retry => continue,
+            ConnectAttempt::Connected(resp) => resp,
+        };
+
+        if stream_until_disconnect(resp, &cancel, &tx, &mut last_event_id).await {
+            return;
+        }
+
+        if tx.send(SseEvent::Disconnected).await.is_err() {
+            return;
+        }
+        tracing::info!("SSE reconnecting in {backoff_secs}s");
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => return,
+            () = tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)) => {}
+        }
     }
 }
 
@@ -824,5 +953,88 @@ mod tests {
         assert!(
             matches!(events[3], SseEvent::NousLifecycle { restart_required, .. } if restart_required)
         );
+    }
+
+    // ── #7196: SUBSCRIBE_TOPICS must carry both approval topics ──
+
+    #[test]
+    fn subscribe_topics_includes_tool_approval_topics() {
+        assert!(SUBSCRIBE_TOPICS.contains("tool.approval_required"));
+        assert!(SUBSCRIBE_TOPICS.contains("tool.approval_resolved"));
+    }
+
+    // ── #7196: connect_with_cancellation stops the reconnect loop
+    // deterministically, mirroring stream_message's cancellation (#7187) ──
+
+    #[tokio::test]
+    async fn connect_with_cancellation_exits_within_one_poll_when_already_cancelled() {
+        crate::install_test_crypto_provider();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        // WHY: an unreachable address is safe here — a token cancelled
+        // before `connect_with_cancellation` is even called must win the
+        // `select!` on the very first poll, so `req.send()` is never
+        // actually awaited.
+        let mut conn =
+            SseConnection::connect_with_cancellation(client, "http://127.0.0.1:1", cancel);
+
+        let event = tokio::time::timeout(Duration::from_millis(200), conn.next())
+            .await
+            .expect("a pre-cancelled connection must exit within one poll, not hang");
+        assert!(
+            event.is_none(),
+            "cancelled connection must close the channel with no events"
+        );
+    }
+
+    fn serve_sse_hold_open(hold: Duration) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n",
+                )
+                .expect("write SSE headers");
+            // WHY: holds the socket open with no further bytes so the test
+            // can prove cancellation wins over READ_TIMEOUT (45s), not a
+            // natural end-of-stream racing it.
+            std::thread::sleep(hold);
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn connect_with_cancellation_exits_within_one_poll_mid_stream() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_sse_hold_open(Duration::from_secs(2));
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let cancel = CancellationToken::new();
+        let mut conn = SseConnection::connect_with_cancellation(client, &base_url, cancel.clone());
+
+        let connected = tokio::time::timeout(Duration::from_secs(1), conn.next())
+            .await
+            .expect("should connect within timeout");
+        assert!(matches!(connected, Some(SseEvent::Connected)));
+
+        cancel.cancel();
+        let after_cancel = tokio::time::timeout(Duration::from_millis(300), conn.next())
+            .await
+            .expect("cancelling mid-stream must exit within one poll, not wait for READ_TIMEOUT");
+        assert!(
+            after_cancel.is_none(),
+            "cancelled connection must close the channel with no more events"
+        );
+
+        drop(conn);
+        server.join().expect("test server thread should finish");
     }
 }

@@ -130,6 +130,19 @@ impl ControlMutationStatus {
 
 #[derive(Debug)]
 pub struct ToolApprovalOverlay {
+    /// WHY(#7202): required by the session-scoped `POST
+    /// /api/v1/sessions/{id}/approvals` route so pylon can verify the
+    /// caller's token owns the nous this approval belongs to -- the legacy
+    /// per-turn route this overlay used to call has no session id at all,
+    /// which is exactly why pylon rejects it outright for any scoped token
+    /// (`approvals.rs` `SECURITY(#5340)`). Captured at construction time
+    /// from the focused session rather than read back from `App` when the
+    /// operator acts, so a session switch while the dialog is open cannot
+    /// silently retarget the approval. `None` only if a tool-approval stream
+    /// event somehow arrived with no focused session -- structurally
+    /// shouldn't happen (the stream belongs to that session's turn), but the
+    /// approve/deny action refuses rather than sending a fabricated id.
+    pub session_id: Option<ApiSessionId>,
     pub turn_id: TurnId,
     pub tool_id: ToolId,
     pub tool_name: String,
@@ -269,6 +282,7 @@ mod tests {
     #[test]
     fn tool_approval_overlay_fields() {
         let overlay = ToolApprovalOverlay {
+            session_id: Some("s1".into()),
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "write_file".to_string(),
