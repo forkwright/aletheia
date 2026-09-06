@@ -26,12 +26,17 @@ const COMMAND_RECORD_SCHEMA: &str = "aletheia.agora.command.v1";
 ///
 /// Runs until the receiver channel closes (all senders dropped).
 /// Per-message dispatch tasks are tracked in a `JoinSet` and drained on exit.
+/// Concurrency is capped at `max_concurrent_handlers` (from
+/// `MessagingConfig`): a message is not dispatched until a handler slot is
+/// free, so a flood of inbound messages cannot spawn unbounded dispatch (and
+/// model-call) work.
 pub(crate) fn spawn_dispatcher(
     mut rx: mpsc::Receiver<InboundMessage>,
     router: Arc<MessageRouter>,
     nous_manager: Arc<NousManager>,
     channel_registry: Arc<ChannelRegistry>,
     session_store: Arc<tokio::sync::Mutex<SessionStore>>,
+    max_concurrent_handlers: usize,
     mut ready_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!("message_dispatcher");
@@ -64,6 +69,23 @@ pub(crate) fn spawn_dispatcher(
                     );
                     continue;
                 }
+
+                // WHY(#5197): `messaging.max_concurrent_handlers` was
+                // configured and threaded down to this dispatcher but never
+                // enforced -- the runtime hands `into_receiver`'s raw
+                // receiver straight to this loop, which spawned one dispatch
+                // task per inbound message with no bound. Block for a free
+                // handler slot before spawning another, mirroring the cap
+                // agora's own channel listener enforces on its consumption
+                // path (crates/agora/src/listener.rs).
+                while in_flight.len() >= max_concurrent_handlers {
+                    if let Some(result) = in_flight.join_next().await
+                        && let Err(e) = result
+                    {
+                        warn!(error = %e, "dispatch task panicked");
+                    }
+                }
+
                 let router = Arc::clone(&router);
                 let nous_mgr = Arc::clone(&nous_manager);
                 let channels = Arc::clone(&channel_registry);
@@ -77,13 +99,6 @@ pub(crate) fn spawn_dispatcher(
                     dispatch_one(msg, router, nous_mgr, channels, session_store)
                         .instrument(msg_span),
                 );
-
-                // WHY: Reap completed tasks periodically to prevent unbounded growth.
-                while let Some(result) = in_flight.try_join_next() {
-                    if let Err(e) = result {
-                        warn!(error = %e, "dispatch task panicked");
-                    }
-                }
             }
 
             // WHY: Drain remaining in-flight dispatch tasks before exiting.
@@ -846,6 +861,8 @@ mod tests {
     use std::path::PathBuf;
     use std::pin::Pin;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     #[cfg(feature = "recall")]
     use std::collections::HashMap;
@@ -984,6 +1001,64 @@ mod tests {
         }
     }
 
+    /// A channel provider whose `send` holds a handler in flight for
+    /// `delay` before completing, recording the peak number of concurrent
+    /// `send` calls it ever observed. Used by
+    /// [`spawn_dispatcher_enforces_concurrency_cap`] to observe how many
+    /// dispatch tasks `spawn_dispatcher` actually let run at once.
+    struct ConcurrencyProbeChannel {
+        current: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+        delay: Duration,
+    }
+
+    impl ChannelProvider for ConcurrencyProbeChannel {
+        fn id(&self) -> &'static str {
+            "signal"
+        }
+
+        fn name(&self) -> &'static str {
+            "Signal"
+        }
+
+        fn capabilities(&self) -> &ChannelCapabilities {
+            &RECORDING_CAPS
+        }
+
+        fn send<'a>(
+            &'a self,
+            _params: &'a SendParams,
+        ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
+            Box::pin(async move {
+                let now_in_flight = self.current.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak.fetch_max(now_in_flight, Ordering::SeqCst);
+                tokio::time::sleep(self.delay).await;
+                self.current.fetch_sub(1, Ordering::SeqCst);
+                SendResult::ok()
+            })
+        }
+
+        fn listen(
+            &self,
+            _poll_interval: Option<std::time::Duration>,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
+            let (_tx, rx) = mpsc::channel(1);
+            (rx, JoinSet::new())
+        }
+
+        fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
+            Box::pin(async {
+                ProbeResult {
+                    ok: true,
+                    latency_ms: Some(1),
+                    error: None,
+                    details: None,
+                }
+            })
+        }
+    }
+
     struct DispatchHarness {
         _dir: tempfile::TempDir,
         nous_manager: Arc<NousManager>,
@@ -1069,6 +1144,7 @@ mod tests {
             Arc::clone(&harness.nous_manager),
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
+            8,
             ready_rx,
         );
 
@@ -1093,6 +1169,89 @@ mod tests {
         }
 
         shutdown_harness(harness).await;
+    }
+
+    // WHY(#5197): proves `spawn_dispatcher` actually enforces
+    // `max_concurrent_handlers` rather than merely accepting the parameter.
+    // `ConcurrencyProbeChannel::send` is the last await point in a normal
+    // turn's dispatch, so it holds each dispatch task "in flight" for
+    // `delay` -- long enough that, absent the cap, all six flood messages
+    // would pile up inside `send` together. With the cap, at most two can.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn spawn_dispatcher_enforces_concurrency_cap() {
+        const CAP: usize = 2;
+        const FLOOD: u64 = 6;
+
+        let (dir, oikos) = make_oikos();
+        let session_store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory().expect("in-memory session store"),
+        ));
+        let mut mgr = make_dispatch_manager(oikos, None);
+        mgr.spawn(make_config(), PipelineConfig::default())
+            .await
+            .expect("spawn alice");
+        let nous_manager = Arc::new(mgr);
+        let router = Arc::new(MessageRouter::new(
+            vec![ChannelBinding {
+                channel: "signal".to_owned(),
+                source: "*".to_owned(),
+                nous_id: "alice".to_owned(),
+                session_key: "signal:{source}".to_owned(),
+            }],
+            None,
+        ));
+
+        let current = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let probe: Arc<dyn ChannelProvider> = Arc::new(ConcurrencyProbeChannel {
+            current: Arc::clone(&current),
+            peak: Arc::clone(&peak),
+            delay: Duration::from_millis(50),
+        });
+        let mut channel_registry = ChannelRegistry::new();
+        channel_registry.register(probe).expect("register channel");
+
+        let (tx, rx) = mpsc::channel(usize::try_from(FLOOD).expect("small constant fits usize"));
+        let (_ready_tx, ready_rx) = watch::channel(true);
+
+        let dispatcher = spawn_dispatcher(
+            rx,
+            router,
+            Arc::clone(&nous_manager),
+            Arc::new(channel_registry),
+            session_store,
+            CAP,
+            ready_rx,
+        );
+
+        for i in 0..FLOOD {
+            tx.send(command_message(&format!("flood {i}"), i))
+                .await
+                .expect("send flood message");
+        }
+        drop(tx);
+
+        dispatcher.await.expect("dispatcher drains and exits");
+
+        let observed_peak = peak.load(Ordering::SeqCst);
+        assert!(
+            observed_peak <= CAP,
+            "observed {observed_peak} concurrent dispatch tasks, cap was {CAP}"
+        );
+        assert_eq!(
+            observed_peak, CAP,
+            "flood of {FLOOD} messages against a cap of {CAP} should reach \
+             the cap, not merely avoid exceeding it -- got {observed_peak}"
+        );
+
+        match Arc::try_unwrap(nous_manager) {
+            Ok(mut mgr) => mgr.shutdown_all().await,
+            Err(remaining) => panic!(
+                "manager still has {} references",
+                Arc::strong_count(&remaining)
+            ),
+        }
+        drop(dir);
     }
 
     async fn command_history(harness: &DispatchHarness) -> Vec<mneme::types::Message> {
