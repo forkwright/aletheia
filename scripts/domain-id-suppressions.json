@@ -81,7 +81,6 @@
     "crates/theatron/proskenion/src/state/planning.rs": 7,
     "crates/theatron/proskenion/src/state/settings.rs": 1,
     "crates/theatron/proskenion/src/state/tool_metrics.rs": 1,
-    "crates/theatron/proskenion/src/state/verification.rs": 2,
     "crates/theatron/skene/src/api/types/verification.rs": 2,
     "crates/xenodocheion/src/tools.rs": 5
   }

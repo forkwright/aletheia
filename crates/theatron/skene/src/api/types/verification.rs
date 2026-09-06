@@ -76,6 +76,14 @@ pub struct RequirementVerification {
 ///
 /// Wire format consumed by the desktop `VerificationView` and served
 /// by pylon's `GET /api/v1/planning/projects/{id}/verification`.
+///
+/// WHY(#4565): `visibility`/`classification`/`redacted` were missing from
+/// the initial cut of this type even though pylon's handler always sends
+/// them (`crates/pylon/src/handlers/planning.rs::load_project_verification`)
+/// -- a caller deserializing the real endpoint into the bare three-field
+/// struct silently dropped the privacy labels the desktop view renders.
+/// Defaults mirror the desktop's own pre-existing fallback (private /
+/// restricted, not redacted) for a server old enough to omit the fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectVerificationResult {
     /// Project identifier.
@@ -85,6 +93,23 @@ pub struct ProjectVerificationResult {
     pub requirements: Vec<RequirementVerification>,
     /// ISO 8601 timestamp of the last verification run.
     pub last_verified_at: String,
+    /// Project visibility label surfaced for privacy review.
+    #[serde(default = "default_visibility")]
+    pub visibility: String,
+    /// Classification label surfaced for privacy review.
+    #[serde(default = "default_classification")]
+    pub classification: String,
+    /// True when evidence and gap detail have been redacted.
+    #[serde(default)]
+    pub redacted: bool,
+}
+
+fn default_visibility() -> String {
+    "private".to_string()
+}
+
+fn default_classification() -> String {
+    "restricted".to_string()
 }
 
 #[cfg(test)]
@@ -110,6 +135,9 @@ mod tests {
                 gaps: vec![],
             }],
             last_verified_at: "2026-01-01T00:00:00Z".to_string(),
+            visibility: "public".to_string(),
+            classification: "public".to_string(),
+            redacted: false,
         };
         let json = serde_json::to_string(&result).unwrap();
         let back: ProjectVerificationResult = serde_json::from_str(&json).unwrap();
@@ -173,5 +201,37 @@ mod tests {
         assert_eq!(result.project_id, "p1");
         assert!(result.requirements.is_empty());
         assert_eq!(result.last_verified_at, "pending");
+    }
+
+    /// WHY(#4565): a server old enough to omit the privacy fields must not
+    /// fail to deserialize -- defaults mirror the desktop's own
+    /// pre-existing fallback (private/restricted, not redacted) verbatim.
+    #[test]
+    fn verification_result_defaults_privacy_fields_when_absent() {
+        let json = r#"{
+            "project_id": "p1",
+            "requirements": [],
+            "last_verified_at": "pending"
+        }"#;
+        let result: ProjectVerificationResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.visibility, "private");
+        assert_eq!(result.classification, "restricted");
+        assert!(!result.redacted);
+    }
+
+    #[test]
+    fn verification_result_reads_privacy_fields_when_present() {
+        let json = r#"{
+            "project_id": "p1",
+            "requirements": [],
+            "last_verified_at": "pending",
+            "visibility": "internal",
+            "classification": "confidential",
+            "redacted": true
+        }"#;
+        let result: ProjectVerificationResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.visibility, "internal");
+        assert_eq!(result.classification, "confidential");
+        assert!(result.redacted);
     }
 }

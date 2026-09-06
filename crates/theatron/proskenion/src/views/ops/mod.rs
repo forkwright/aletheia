@@ -99,36 +99,25 @@ fn build_agent_card(entry: &AgentEntry, capabilities: Option<AgentCapabilities>)
     }
 }
 
-/// Capability subset of the `NousStatus` body returned by
-/// `GET /api/v1/nous/{id}`.
+/// Narrow the full `NousStatus` body returned by `ApiClient::agent_status`
+/// (`GET /api/v1/nous/{id}`) down to the capability fields this card needs.
 ///
-/// WARNING: `pylon::handlers::nous_dto::NousStatus` carries no
-/// `rename_all`, so these field names must stay verbatim-identical to the
-/// server's Rust field names. A rename on either side silently deserializes
-/// every field to its `Default`, rendering a card full of zeroes rather than
-/// failing.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct AgentDetailResp {
-    #[serde(default)]
-    context_window: u32,
-    #[serde(default)]
-    max_output_tokens: u32,
-    #[serde(default)]
-    thinking_enabled: bool,
-    #[serde(default)]
-    thinking_budget: u32,
-    #[serde(default)]
-    max_tool_iterations: u32,
-}
-
-impl From<AgentDetailResp> for AgentCapabilities {
-    fn from(resp: AgentDetailResp) -> Self {
+/// WHY(#4565): previously deserialized into a hand-rolled `AgentDetailResp`
+/// subset with `#[serde(default)]` on every field -- a field-name drift
+/// against `pylon::handlers::nous_dto::NousStatus` (which carries no
+/// `rename_all`) would have silently zeroed the card rather than failing.
+/// `NousStatus` is skene's canonical typed mirror of that same DTO with its
+/// required fields left required, so the same drift now fails the request
+/// (surfaced as `None` capabilities, see `refresh_dashboard`) instead of
+/// rendering a quietly-wrong card.
+impl From<skene::api::types::NousStatus> for AgentCapabilities {
+    fn from(status: skene::api::types::NousStatus) -> Self {
         Self {
-            context_window: resp.context_window,
-            max_output_tokens: resp.max_output_tokens,
-            thinking_enabled: resp.thinking_enabled,
-            thinking_budget: resp.thinking_budget,
-            max_tool_iterations: resp.max_tool_iterations,
+            context_window: status.context_window,
+            max_output_tokens: status.max_output_tokens,
+            thinking_enabled: status.thinking_enabled,
+            thinking_budget: status.thinking_budget,
+            max_tool_iterations: status.max_tool_iterations,
         }
     }
 }
@@ -136,8 +125,9 @@ impl From<AgentDetailResp> for AgentCapabilities {
 /// Client-side mirror of `pylon::handlers::nous_dto::ToolSummary`.
 ///
 /// WARNING: `ToolSummary` carries no `rename_all`, so these field names
-/// must stay verbatim-identical to the server's Rust field names (see the
-/// same warning on `AgentDetailResp` above).
+/// must stay verbatim-identical to the server's Rust field names (the same
+/// hazard `skene::api::types::NousStatus` mirrors verbatim for the agent
+/// detail endpoint, see the `From<NousStatus>` impl above).
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct ToolEntryResp {
     #[serde(default)]
@@ -475,36 +465,30 @@ pub(crate) fn Ops() -> Element {
                 }
             };
 
-            // WHY: capability limits live only on the per-agent detail
-            // endpoint, so one request per agent is unavoidable. They are
-            // issued concurrently rather than in sequence, and a failure on
-            // any single agent degrades that card to `None` instead of
-            // failing the whole dashboard refresh.
+            // WHY(#4565): capability limits live only on the per-agent detail
+            // endpoint, so one request per agent is unavoidable -- now
+            // issued through skene's typed `ApiClient` (`agent_status`)
+            // rather than a hand-built `/api/v1/nous/{id}` request on the
+            // raw client, matching ruling B. Requests still run
+            // concurrently rather than in sequence, and a failure on any
+            // single agent (including a client construction failure)
+            // degrades that card to `None` instead of failing the whole
+            // dashboard refresh.
+            let nous_client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => Some(client),
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to build nous detail client");
+                        None
+                    }
+                };
             let capabilities: Vec<Option<AgentCapabilities>> =
                 futures_util::future::join_all(agents_data.iter().map(|a| {
-                    let url = format!("{base}/api/v1/nous/{}", a.id);
-                    let client = &client;
+                    let nous_client = nous_client.as_ref();
                     async move {
-                        match client.get(&url).send().await {
-                            Ok(resp) if resp.status().is_success() => {
-                                match resp.json::<AgentDetailResp>().await {
-                                    Ok(detail) => Some(detail.into()),
-                                    Err(err) => {
-                                        tracing::warn!(
-                                            error = %err,
-                                            "failed to parse nous detail response"
-                                        );
-                                        None
-                                    }
-                                }
-                            }
-                            Ok(resp) => {
-                                tracing::warn!(
-                                    status = %resp.status(),
-                                    "nous detail endpoint returned non-success"
-                                );
-                                None
-                            }
+                        let nous_client = nous_client?;
+                        match nous_client.agent_status(&a.id).await {
+                            Ok(status) => Some(status.into()),
                             Err(err) => {
                                 tracing::warn!(error = %err, "nous detail request failed");
                                 None
@@ -1003,48 +987,36 @@ mod tests {
     use super::*;
     use crate::state::ops::HealthTier;
 
-    /// WHY: this payload is the `pylon::handlers::nous_dto::NousStatus`
-    /// wire shape. `NousStatus` carries no `rename_all`, so serde emits the
-    /// Rust field names verbatim. Every field here is deliberately
-    /// non-`Default`, so a rename on either side turns this green assertion
-    /// red instead of silently producing a card of zeroes.
+    /// A complete `pylon::handlers::nous_dto::NousStatus` wire body.
+    ///
+    /// WHY(#4565): field-name-verbatim contract coverage for `NousStatus`
+    /// itself now lives with the type in
+    /// `skene::api::types::tests::nous_status_matches_server_field_names`
+    /// -- this crate only needs enough of a valid body to exercise the
+    /// `From<NousStatus> for AgentCapabilities` conversion below. The five
+    /// capability fields are deliberately non-default so a dropped or
+    /// transposed field turns this green assertion red.
     const NOUS_STATUS_BODY: &str = r#"{
         "id": "scholiast",
         "model": "claude-opus-5",
-        "status": "active",
+        "fallback_models": [],
+        "fallback_providers": [],
+        "retries_before_fallback": 2,
+        "complexity_routing_enabled": false,
+        "complexity_no_llm_threshold": 0,
+        "complexity_low_threshold": 1000,
+        "complexity_high_threshold": 5000,
         "context_window": 200000,
         "max_output_tokens": 64000,
         "thinking_enabled": true,
         "thinking_budget": 10000,
-        "max_tool_iterations": 25
+        "max_tool_iterations": 25,
+        "status": "active",
+        "background_failure_total_count": 0,
+        "background_failure_recent_count": 0,
+        "background_health_degraded": false,
+        "address_mask": {"kind": "public", "allowed_senders": []}
     }"#;
-
-    #[test]
-    fn agent_detail_resp_matches_server_field_names() {
-        let detail: AgentDetailResp =
-            serde_json::from_str(NOUS_STATUS_BODY).expect("NousStatus body must deserialize");
-
-        assert_eq!(detail.context_window, 200_000, "context_window must map");
-        assert_eq!(
-            detail.max_output_tokens, 64_000,
-            "max_output_tokens must map"
-        );
-        assert!(detail.thinking_enabled, "thinking_enabled must map");
-        assert_eq!(detail.thinking_budget, 10_000, "thinking_budget must map");
-        assert_eq!(
-            detail.max_tool_iterations, 25,
-            "max_tool_iterations must map"
-        );
-    }
-
-    #[test]
-    fn agent_detail_resp_tolerates_absent_capability_fields() {
-        let detail: AgentDetailResp = serde_json::from_str(r#"{"id":"scholiast"}"#)
-            .expect("a NousStatus without capability fields must still deserialize");
-
-        assert_eq!(detail.context_window, 0, "absent field falls back to zero");
-        assert!(!detail.thinking_enabled, "absent bool falls back to false");
-    }
 
     /// WHY(#4772): this payload is the `pylon::handlers::nous_dto::ToolSummary`
     /// wire shape (no `rename_all`, so serde emits the Rust field names
@@ -1116,9 +1088,9 @@ mod tests {
 
     #[test]
     fn agent_capabilities_conversion_preserves_every_field() {
-        let detail: AgentDetailResp =
+        let status: skene::api::types::NousStatus =
             serde_json::from_str(NOUS_STATUS_BODY).expect("NousStatus body must deserialize");
-        let caps = AgentCapabilities::from(detail);
+        let caps = AgentCapabilities::from(status);
 
         assert_eq!(
             caps,

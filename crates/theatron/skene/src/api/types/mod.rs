@@ -46,8 +46,6 @@ pub use config::{ConfigReloadResponse, ConfigUpdateResponse};
 
 use serde::{Deserialize, Serialize};
 
-use koina::secret::SecretString;
-
 use crate::id::{ApiNousId, ApiSessionId, GitSha, PlanId, TurnId};
 
 /// Backend-owned lifecycle status for a session.
@@ -741,28 +739,6 @@ pub struct ActiveTurn {
     /// Turn identifier.
     #[serde(rename = "turnId")]
     pub turn_id: TurnId,
-}
-
-/// Server authentication mode.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthMode {
-    /// Authentication mode (e.g. "token", "none").
-    pub mode: String,
-}
-
-/// Response from the login endpoint.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct LoginResponse {
-    /// Authentication token.
-    pub token: SecretString,
-}
-
-impl std::fmt::Debug for LoginResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LoginResponse")
-            .field("token", &self.token)
-            .finish()
-    }
 }
 
 /// Wrapper for the agents list endpoint.
