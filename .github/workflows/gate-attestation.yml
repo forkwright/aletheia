@@ -638,6 +638,16 @@ jobs:
       - name: Krites sovereign-HNSW feature gate
         run: cargo test -p krites --features krites_sovereign_hnsw
 
+      # WHY(#7121, #7128): the test-only step above compiles and runs the
+      # sovereign-HNSW tree but never clippy-checks it, so land-dark code
+      # can carry deny-level lint violations for its whole soak and only
+      # surface them at wiring time (two lints found this way in #6952
+      # validation: a missing `clippy::doc_markdown` backtick and an
+      # unjustified `clippy::disallowed_methods` test-only write). Mirrors
+      # the #4414 episteme/poiesis-charts per-feature clippy pattern above.
+      - name: Krites sovereign-HNSW clippy gate
+        run: cargo clippy -p krites --features krites_sovereign_hnsw --all-targets -- -D warnings
+
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
 

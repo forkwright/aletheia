@@ -28,7 +28,7 @@
 //!   flat search (the exact-kNN oracle)
 //! - [`visited_pool`]: pooled visited-set for search traversal. Sourced
 //!   directly from the sibling `hnsw` tree's file (`#[path]` below), not a
-//!   second copy — the pool has no CozoDB lineage of its own (an original
+//!   second copy — the pool has no `CozoDB` lineage of its own (an original
 //!   perf addition to this crate, not an extraction), so there is nothing
 //!   here to reimplement independently.
 //! - `close_reopen_tests` (test-only, `storage-fjall`): E05 close/reopen
