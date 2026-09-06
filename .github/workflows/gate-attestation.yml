@@ -657,10 +657,23 @@ jobs:
       - name: Poiesis-charts Vega-Lite feature gate nextest
         run: cargo nextest run --profile ci -p poiesis-charts --features charts-vega --build-jobs 4 --test-threads 4 --no-fail-fast
 
-      - name: cargo check fuzz targets
+      # WHY(#7148): replaces the old unlocked `cargo check --manifest-path
+      # fuzz/Cargo.toml --bins` step. That command let cargo silently repair
+      # a stale fuzz/Cargo.lock during CI instead of proving the committed
+      # lock was coherent — exactly what happened when #7139 bumped Krites
+      # to itertools 0.15.0 in the root lock but left fuzz/Cargo.lock on
+      # 0.14.0; #7147 then regenerated it incidentally, with no check
+      # forcing that regeneration to happen. This validates every
+      # [workspace]-declaring manifest with --locked (root, proskenion,
+      # fuzz), not just fuzz, and fails the moment cargo would need to
+      # rewrite any of them.
+      - name: Test check-all-lockfiles-locked.py
+        run: scripts/test-check-all-lockfiles-locked.py
+
+      - name: Check all committed lockfiles are locked
         env:
           CARGO_TARGET_DIR: target
-        run: cargo check --manifest-path fuzz/Cargo.toml --bins
+        run: scripts/check-all-lockfiles-locked.py
 
   gate-coverage-sovereign-hnsw:
     name: gate-coverage-sovereign-hnsw
