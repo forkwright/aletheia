@@ -791,31 +791,6 @@ item = "is_allowed"
 count = 1
 
 [[site]]
-file = "crates/nous/src/uncertainty.rs"
-item = "brier_score"
-count = 1
-
-[[site]]
-file = "crates/nous/src/uncertainty.rs"
-item = "calibration_curve"
-count = 1
-
-[[site]]
-file = "crates/nous/src/uncertainty.rs"
-item = "open_in_memory"
-count = 1
-
-[[site]]
-file = "crates/nous/src/uncertainty.rs"
-item = "record"
-count = 1
-
-[[site]]
-file = "crates/nous/src/uncertainty.rs"
-item = "summary"
-count = 1
-
-[[site]]
 file = "crates/nous/src/working_state.rs"
 item = "CacheSafeParams"
 count = 1
