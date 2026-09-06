@@ -287,6 +287,13 @@ impl SessionTx<'_> {
         }
         for (row, tuple) in existing.into_iter().enumerate() {
             self.check_poison_at_row(row)?;
+            // WHY: gives a test a deterministic rendezvous with this batch
+            // loop instead of racing its own pace (#6987) -- a no-op unless
+            // the running thread armed `fts_reindex_test_barrier`.
+            #[cfg(test)]
+            if row == 0 {
+                crate::runtime::fts_reindex_test_barrier::wait(self.poison.as_ref())?;
+            }
             let key_part = &tuple[..rel_handle.metadata.keys.len()];
             if rel_handle.exists(self, key_part)? {
                 self.del_fts_index_item(

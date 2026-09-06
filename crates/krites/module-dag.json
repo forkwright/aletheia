@@ -337,8 +337,8 @@
     {
       "from": "runtime",
       "to": "root",
-      "count": 34,
-      "production_count": 30,
+      "count": 35,
+      "production_count": 31,
       "test_only": false,
       "first_evidence": "runtime/db.rs:38",
       "first_production_evidence": "runtime/db.rs:38"
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 207,
-  "statement_count": 1043,
+  "file_count": 208,
+  "statement_count": 1045,
   "required_edges_present": [
     [
       "runtime",

@@ -9,9 +9,9 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4` (last upstream commit 2024-12-04; pin status: pin_is_upstream_head)
-- 212 files under `src/`: 141 derived, 71 sovereign, 0 dual
+- 213 files under `src/`: 141 derived, 72 sovereign, 0 dual
 - Mean verbatim match across the 141 derived files: 43.9% (unweighted average of the per-file `verbatim_pct` column below)
-- Of the 71 sovereign files, **57 carry `method = "unknown"`** (no record of how they were written) and 14 carry a resolved, evidence-backed method — see "Authorship method" below.
+- Of the 72 sovereign files, **58 carry `method = "unknown"`** (no record of how they were written) and 14 carry a resolved, evidence-backed method — see "Authorship method" below.
 
 | File | Upstream | Verbatim | Status | Method |
 |---|---|---:|---|---|
@@ -184,6 +184,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/db.rs` | `runtime/db.rs` | 22.7% | derived | — |
 | `src/runtime/error.rs` | — | 0.0% | sovereign | unknown |
 | `src/runtime/exec.rs` | `runtime/db.rs` | 66.6% | derived | — |
+| `src/runtime/fts_reindex_test_barrier.rs` | — | 0.0% | sovereign | unknown |
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived | — |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived | — |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived | — |
@@ -207,7 +208,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/query_context_impl.rs` | — | 0.0% | sovereign | unknown |
 | `src/runtime/relation/extractors.rs` | `query/stored.rs` | 56.9% | derived | — |
 | `src/runtime/relation/handles.rs` | `runtime/relation.rs` | 68.7% | derived | — |
-| `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 61.3% | derived | — |
+| `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 60.5% | derived | — |
 | `src/runtime/relation/index_management.rs` | `runtime/relation.rs` | 57.0% | derived | — |
 | `src/runtime/relation/mod.rs` | `runtime/relation.rs` | 0.0% | derived | — |
 | `src/runtime/relation/mutation.rs` | `query/stored.rs` | 63.7% | derived | — |
@@ -217,7 +218,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived | — |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived | — |
 | `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.4% | derived | — |
-| `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 29.0% | derived | — |
+| `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 28.2% | derived | — |
 | `src/runtime/tests/mod.rs` | `runtime/tests.rs` | 0.0% | derived | — |
 | `src/runtime/tests/triggers_callbacks.rs` | `runtime/tests.rs` | 7.6% | derived | — |
 | `src/runtime/transact.rs` | `runtime/transact.rs` | 11.4% | derived | — |
@@ -258,7 +259,7 @@ Some upstream `cozo-core` files were vendored into `crates/krites/upstream-snaps
 | `attested_original` | no predecessor existed; this is aletheia's own new code |
 | `unknown` | no record exists |
 
-**57 of 71** sovereign rows carry `method = "unknown"` today. They were migrated there deliberately, not defaulted to a clean value: no evidence existed to support one, and a clean-by-default value would repeat this scheme's own history — `krites-provenance-transition.py` once hardcoded `verbatim_pct = 0.0` on every `dual` → `sovereign` transition, and 17 files that entered `sovereign` that way later re-measured at 18–41%. `unknown` is not itself a failure; it is the honest state until cleared with evidence.
+**58 of 72** sovereign rows carry `method = "unknown"` today. They were migrated there deliberately, not defaulted to a clean value: no evidence existed to support one, and a clean-by-default value would repeat this scheme's own history — `krites-provenance-transition.py` once hardcoded `verbatim_pct = 0.0` on every `dual` → `sovereign` transition, and 17 files that entered `sovereign` that way later re-measured at 18–41%. `unknown` is not itself a failure; it is the honest state until cleared with evidence.
 
 `from_spec` and `from_spec_derived_siblings` differ only in what the author read for local convention, and the ledger records that as a `consulted` list per row — the source paths read while writing, `[]` when none. It exists because most of this crate is derived, so the sibling that best demonstrates a convention is usually the sibling doing the same job. Mechanical conventions (error type, lint attributes, module layout, naming) may come from any sibling; the shape of the same algorithm may only come from a `sovereign` one. CI reads each consulted path's own status: a `from_spec` row that consulted a `derived` sibling fails, and so does a `from_spec_derived_siblings` row whose list is empty or entirely `sovereign`. What the check cannot reach is the list's completeness — nothing observes what an author opened, so an omitted path reads exactly like a path never read.
 

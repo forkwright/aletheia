@@ -230,6 +230,12 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "runtime/db.rs": "runtime/db.rs",
     "runtime/error.rs": None,
     "runtime/exec.rs": "runtime/db.rs",
+    # #6987: test-only rendezvous for the FTS-reindex kill test, compiled only
+    # under cfg(test). A wholly independent addition (upstream has no such
+    # synchronization point), not a replacement, so None here and no
+    # SOVEREIGN_VERIFY_MAP row -- same treatment as hnsw_disconnect_tests.rs
+    # below.
+    "runtime/fts_reindex_test_barrier.rs": None,
     "runtime/hnsw/adaptive.rs": "runtime/hnsw.rs",
     "runtime/hnsw/graph.rs": "runtime/hnsw.rs",
     "runtime/hnsw/mod.rs": "runtime/hnsw.rs",

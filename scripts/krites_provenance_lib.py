@@ -217,6 +217,12 @@ NO_PREDECESSOR_REASONS: dict[str, str] = {
     ),
     "query_cache.rs": "aletheia-native query cache; NOTICE.md lists it among aletheia's own sovereign additions",
     "runtime/error.rs": "cozo-core has no error.rs anywhere",
+    "runtime/fts_reindex_test_barrier.rs": (
+        "cfg(test)-only rendezvous synchronizing a test thread with the FTS "
+        "reindex batch loop's poison checkpoint (aletheia#6987); cozo-core has "
+        "no cooperative-cancellation test infrastructure of any kind, let alone "
+        "one for FTS indexing specifically"
+    ),
     "runtime/hnsw_disconnect_tests.rs": (
         "deterministic HNSW delete-disconnection regression tests (aletheia#6952), "
         "fabricating severed graph topologies directly against the shared on-disk "
