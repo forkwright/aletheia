@@ -309,6 +309,28 @@ pub fn scenarios_from_manifest(manifest: ScenarioManifest) -> Vec<Box<dyn Scenar
     result
 }
 
+/// A minimal single-scenario manifest fixture: one GET-based scenario
+/// against `/api/health` asserting the body contains `"healthy"`.
+///
+/// WHY `pub` rather than test-only: this crate's own tests use it, and it
+/// is also the smallest valid manifest a downstream crate's own
+/// `--manifest`-flag test (e.g. `aletheia eval --manifest`) can write to a
+/// temp file and run end to end, without duplicating the JSON literal or
+/// depending on this crate's `#[cfg(test)]` items (which do not exist in a
+/// normal dependency build).
+pub const HEALTH_MANIFEST_JSON: &str = r#"{
+    "schema_version": 1,
+    "scenarios": [
+        {
+            "id": "health-ok-manifest",
+            "description": "manifest-driven health check",
+            "category": "health",
+            "path": "/api/health",
+            "expected_contains": "healthy"
+        }
+    ]
+}"#;
+
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
@@ -325,19 +347,6 @@ mod tests {
             // Already installed by another test in this process.
         }
     }
-
-    const HEALTH_MANIFEST_JSON: &str = r#"{
-        "schema_version": 1,
-        "scenarios": [
-            {
-                "id": "health-ok-manifest",
-                "description": "manifest-driven health check",
-                "category": "health",
-                "path": "/api/health",
-                "expected_contains": "healthy"
-            }
-        ]
-    }"#;
 
     #[test]
     fn parse_manifest_round_trips_scenario_def() {
