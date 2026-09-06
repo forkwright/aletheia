@@ -21,10 +21,9 @@
 "crates/theatron/proskenion/src/views/files/viewer.rs" = 1
 "crates/theatron/proskenion/src/views/memory/curation.rs" = 4
 "crates/theatron/proskenion/src/views/memory/mod.rs" = 6
-"crates/theatron/proskenion/src/views/meta/mod.rs" = 16
+"crates/theatron/proskenion/src/views/meta/mod.rs" = 13
 "crates/theatron/proskenion/src/views/metrics/costs.rs" = 1
 "crates/theatron/proskenion/src/views/metrics/tokens.rs" = 1
-"crates/theatron/proskenion/src/views/ops/credentials.rs" = 1
 "crates/theatron/proskenion/src/views/ops/mod.rs" = 4
 "crates/theatron/proskenion/src/views/ops/toggles.rs" = 2
 "crates/theatron/proskenion/src/views/sessions/mod.rs" = 6
