@@ -154,6 +154,7 @@ fn write_recall_sidecar(phases: &BTreeMap<&'static str, RecallMeasurement>) {
     };
     let mut bytes = serde_json::to_vec_pretty(&sidecar).expect("serialize recall sidecar");
     bytes.push(b'\n');
+    #[expect(clippy::disallowed_methods, reason = "test-only recall-sidecar write")]
     std::fs::write(&path, bytes).unwrap_or_else(|error| {
         panic!(
             "write recall sidecar {}: {error}",

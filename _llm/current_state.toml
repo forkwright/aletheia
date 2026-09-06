@@ -10,7 +10,7 @@ source_docs = [
 
 [state]
 phase = "pre-1.0"
-version = "0.37.0"
+version = "0.45.0"
 summary = """
 Aletheia is in active pre-1.0 development. The core agent runtime, memory
 pipeline, tool registry, HTTP/SSE gateway, Signal channel, and TUI are

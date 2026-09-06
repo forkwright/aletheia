@@ -428,6 +428,17 @@ jobs:
       - name: Check for unresolved conflict markers
         run: scripts/check-conflict-markers.py
 
+      # WHY(#4034): _llm/current_state.toml is the cold-start STATE doc
+      # _llm/README.md injects into every session; its [state].version field
+      # has no write path of its own and drifted from the real release
+      # version twice with nothing to catch it. Pure-python, no compile, so
+      # it runs here with the other coverage checks.
+      - name: Test check-current-state-version.py
+        run: scripts/test-check-current-state-version.py
+
+      - name: Check current_state.toml version matches the release manifest
+        run: scripts/check-current-state-version.py
+
       # WHY: cargo silently ignores a .rs file under a crate's src/ tree
       # that no `mod` declaration reaches -- it does not compile in, so a
       # file `git mv`'d without its `mod` line following it (or one that
@@ -627,6 +638,16 @@ jobs:
       - name: Krites sovereign-HNSW feature gate
         run: cargo test -p krites --features krites_sovereign_hnsw
 
+      # WHY(#7121, #7128): the test-only step above compiles and runs the
+      # sovereign-HNSW tree but never clippy-checks it, so land-dark code
+      # can carry deny-level lint violations for its whole soak and only
+      # surface them at wiring time (two lints found this way in #6952
+      # validation: a missing `clippy::doc_markdown` backtick and an
+      # unjustified `clippy::disallowed_methods` test-only write). Mirrors
+      # the #4414 episteme/poiesis-charts per-feature clippy pattern above.
+      - name: Krites sovereign-HNSW clippy gate
+        run: cargo clippy -p krites --features krites_sovereign_hnsw --all-targets -- -D warnings
+
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
 
@@ -636,10 +657,23 @@ jobs:
       - name: Poiesis-charts Vega-Lite feature gate nextest
         run: cargo nextest run --profile ci -p poiesis-charts --features charts-vega --build-jobs 4 --test-threads 4 --no-fail-fast
 
-      - name: cargo check fuzz targets
+      # WHY(#7148): replaces the old unlocked `cargo check --manifest-path
+      # fuzz/Cargo.toml --bins` step. That command let cargo silently repair
+      # a stale fuzz/Cargo.lock during CI instead of proving the committed
+      # lock was coherent — exactly what happened when #7139 bumped Krites
+      # to itertools 0.15.0 in the root lock but left fuzz/Cargo.lock on
+      # 0.14.0; #7147 then regenerated it incidentally, with no check
+      # forcing that regeneration to happen. This validates every
+      # [workspace]-declaring manifest with --locked (root, proskenion,
+      # fuzz), not just fuzz, and fails the moment cargo would need to
+      # rewrite any of them.
+      - name: Test check-all-lockfiles-locked.py
+        run: scripts/test-check-all-lockfiles-locked.py
+
+      - name: Check all committed lockfiles are locked
         env:
           CARGO_TARGET_DIR: target
-        run: cargo check --manifest-path fuzz/Cargo.toml --bins
+        run: scripts/check-all-lockfiles-locked.py
 
   gate-coverage-sovereign-hnsw:
     name: gate-coverage-sovereign-hnsw
