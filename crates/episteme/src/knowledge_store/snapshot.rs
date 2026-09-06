@@ -97,7 +97,32 @@ const DATA_KEYSPACE: &str = "data";
 /// instead of "verifying" an empty directory (aletheia#5779 F1/F2, proven by
 /// compiling and running this exact sequence against fjall 3.1.6).
 #[cfg(feature = "storage-fjall")]
-const FJALL_VERSION_MARKER: &str = "version";
+pub(crate) const FJALL_VERSION_MARKER: &str = "version";
+
+/// Marker file [`verified_copy_snapshot`] writes into every snapshot
+/// directory it promotes (aletheia#7165). A directory carrying this file is
+/// a snapshot, full stop -- structurally, not by matching its path against
+/// a naming convention like a `.pre-migration-snapshot` suffix. That
+/// convention is exactly what a knowledge-root cohort walker
+/// (`aletheia memory reembed`'s `is_recovery_cohort_dir`, pre-#7165) and a
+/// second, independently written enumerator disagreed on: both carry
+/// fjall's own [`FJALL_VERSION_MARKER`], so only a structural check both
+/// call sites share can tell them apart correctly. See [`is_snapshot_dir`].
+#[cfg(feature = "storage-fjall")]
+pub const SNAPSHOT_MARKER_FILE: &str = ".snapshot-marker";
+
+/// Whether `path` is a verified-copy snapshot produced by
+/// [`verified_copy_snapshot`]: a structural check (the marker file that
+/// function writes into every snapshot it promotes), never a name-based
+/// heuristic. The one predicate every knowledge-root cohort walker should
+/// use to tell a snapshot apart from an ordinary cohort -- both carry
+/// fjall's own `version` marker, so name-matching is the only other option,
+/// and aletheia#7165 is exactly two call sites drifting on it.
+#[cfg(feature = "storage-fjall")]
+#[must_use]
+pub fn is_snapshot_dir(path: &Path) -> bool {
+    path.join(SNAPSHOT_MARKER_FILE).is_file()
+}
 
 /// A verified-copy-snapshot failure, carrying a fully formatted message.
 /// Deliberately caller-agnostic: [`pre_migration_snapshot`] adapts it into
@@ -267,6 +292,27 @@ pub fn verified_copy_snapshot(
         SnapshotError(format!(
             "verified snapshot copy from {} to {} failed: {e}",
             source.display(),
+            staging_dir.display()
+        ))
+    })?;
+
+    // WHY(aletheia#7165): mark the copy as a snapshot structurally, not by
+    // the caller's choice of `snapshot_dir` name. Two call sites (`memory
+    // reembed`'s cohort walk and, separately, a `knowledge-store` cohort
+    // enumerator) each grew their own naming convention for "this is a
+    // snapshot, not a cohort" and drifted: a `psyche.pre-migration-snapshot`
+    // directory carrying only fjall's own `version` marker was silently
+    // enumerated as an ordinary cohort. Writing this marker into every copy
+    // this function produces, and checking for it via [`is_snapshot_dir`]
+    // rather than matching a name pattern, gives every current and future
+    // caller one shared, name-independent answer. Written before
+    // `verify_restorable` so it is part of what gets promoted atomically
+    // below -- a snapshot is never live at `snapshot_dir` without it.
+    // WHY: `std::fs::write` is disallowed crate-wide (clippy.toml) --
+    // `File::create` produces the same empty marker file without it.
+    std::fs::File::create(staging_dir.join(SNAPSHOT_MARKER_FILE)).map_err(|e| {
+        SnapshotError(format!(
+            "failed to write snapshot marker in {}: {e}",
             staging_dir.display()
         ))
     })?;
