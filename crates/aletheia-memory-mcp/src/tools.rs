@@ -26,6 +26,7 @@ use mneme::engine::DataValue;
 use mneme::id::{EntityId, FactId};
 use mneme::knowledge::{Fact, ForgetReason};
 use mneme::knowledge_store::KnowledgeStore;
+use mneme::recall_gate::{RecallRefusal, Stakes, evaluate as evaluate_recall_gate};
 
 use crate::error::{InvalidInputSnafu, KnowledgeStoreSnafu, SerializationSnafu};
 use crate::server::MemoryServer;
@@ -51,6 +52,14 @@ pub struct NousSearchParams {
     /// Optional maximum sensitivity (`public`, `internal`, `confidential`).
     #[serde(default)]
     pub max_sensitivity: Option<String>,
+    /// How much is riding on the answer this query feeds (`advisory`,
+    /// `operational`, or `consequential`). Defaults to `advisory`, which
+    /// never refuses a result — recall's read-time confidence floor
+    /// (aletheia#7163) only refuses a fact when the caller declares
+    /// higher stakes than the fact's confidence clears. See
+    /// `mneme::recall_gate::Stakes`.
+    #[serde(default)]
+    pub stakes: Option<String>,
 }
 
 /// Parameters for `nous_list_topics`.
@@ -111,6 +120,11 @@ pub struct NousNeighborsParams {
     /// Optional maximum sensitivity filter.
     #[serde(default)]
     pub max_sensitivity: Option<String>,
+    /// How much is riding on the answer traversal from this seed feeds
+    /// (`advisory`, `operational`, or `consequential`). Defaults to
+    /// `advisory`. See [`NousSearchParams::stakes`].
+    #[serde(default)]
+    pub stakes: Option<String>,
 }
 
 /// Parameters for `nous_annotate`.
@@ -327,6 +341,21 @@ fn parse_sensitivity(
     }
 }
 
+/// Parse an optional `stakes` argument, defaulting to [`Stakes::Advisory`]
+/// so a caller that never passes `stakes` sees the read-time confidence
+/// floor (aletheia#7163) refuse nothing.
+fn parse_stakes(raw: Option<&str>) -> crate::error::Result<Stakes> {
+    match raw {
+        Some(s) if !s.is_empty() => s.parse().map_err(|e: String| {
+            InvalidInputSnafu {
+                message: format!("invalid stakes: {e}"),
+            }
+            .build()
+        }),
+        _ => Ok(Stakes::default()),
+    }
+}
+
 fn parse_project_id(
     raw: Option<&str>,
 ) -> crate::error::Result<Option<mneme::workspace::ProjectId>> {
@@ -403,6 +432,87 @@ fn matches_scope_filters(
         return false;
     }
     true
+}
+
+/// Apply the read-time confidence floor (aletheia#7163) to one recall
+/// result, annotating its JSON representation with the gate's verdict.
+///
+/// A non-fact result, or a fact whose confidence clears `caller_stakes`'s
+/// effective floor, keeps its `content` and gains `refused: false` plus a
+/// `recall_confidence` label. A fact below the floor has `content`
+/// withheld (`null`) and the structured refusal -- effective stakes,
+/// required and actual confidence, and every remedy that would clear it --
+/// attached instead. This is never a tool error: a refused result is an
+/// ordinary member of the returned array, so a caller can act on
+/// `remedies` without a failed call.
+///
+/// Best-effort by construction: a fact that cannot be re-read by id (for
+/// example forgotten between search and gate) is served with its existing
+/// content and no annotation rather than dropped. The gate only tightens
+/// what recall serves; it must never become a new way for recall itself to
+/// fail.
+fn apply_recall_gate(
+    store: &KnowledgeStore,
+    result: &mneme::knowledge::RecallResult,
+    caller_stakes: Stakes,
+    now: jiff::Timestamp,
+) -> serde_json::Value {
+    let mut value = serde_json::to_value(result).unwrap_or(serde_json::Value::Null);
+    if result.source_type != "fact" {
+        return value;
+    }
+    let Some(fact) = store
+        .read_facts_by_id(&result.source_id)
+        .ok()
+        .and_then(|facts| facts.into_iter().next())
+    else {
+        return value;
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return value;
+    };
+    match evaluate_recall_gate(&fact, caller_stakes, now) {
+        Ok(confidence) => {
+            obj.insert("refused".to_owned(), serde_json::Value::Bool(false));
+            obj.insert(
+                "recall_confidence".to_owned(),
+                serde_json::Value::String(confidence.to_string()),
+            );
+        }
+        Err(refusal) => insert_refusal(obj, &refusal),
+    }
+    value
+}
+
+/// Overwrite a gated result's JSON object with a structured refusal
+/// (aletheia#7163): withhold `content`, and name the actual and required
+/// confidence, the effective stakes that produced the refusal, and every
+/// remedy that would clear it.
+fn insert_refusal(obj: &mut serde_json::Map<String, serde_json::Value>, refusal: &RecallRefusal) {
+    obj.insert("content".to_owned(), serde_json::Value::Null);
+    obj.insert("refused".to_owned(), serde_json::Value::Bool(true));
+    obj.insert(
+        "recall_confidence".to_owned(),
+        serde_json::Value::String(refusal.actual.to_string()),
+    );
+    obj.insert(
+        "required_confidence".to_owned(),
+        serde_json::Value::String(refusal.required.to_string()),
+    );
+    obj.insert(
+        "effective_stakes".to_owned(),
+        serde_json::Value::String(refusal.effective_stakes.to_string()),
+    );
+    obj.insert(
+        "remedies".to_owned(),
+        serde_json::Value::Array(
+            refusal
+                .remedies
+                .iter()
+                .map(|r| serde_json::Value::String(r.to_string()))
+                .collect(),
+        ),
+    );
 }
 
 /// A visible fact row materialized for aggregation tools.
@@ -870,18 +980,29 @@ impl MemoryServer {
     /// content, fact type, and score. Forgotten and superseded facts are
     /// excluded.
     ///
+    /// A read-time confidence floor (aletheia#7163) runs on every result:
+    /// `stakes` declares how much is riding on the answer (`advisory`,
+    /// `operational`, or `consequential`; default `advisory`, which never
+    /// refuses). The store raises that floor on its own when a fact's
+    /// `sensitivity` or `scope` warrants more caution. A result below the
+    /// effective floor keeps its place in the array with `content: null`,
+    /// `refused: true`, and `remedies` naming what would clear it (re-verify
+    /// the fact, cite a fresher source, or lower `stakes`) — never a failed
+    /// tool call.
+    ///
     /// # Example
     ///
     /// ```json
     /// {
     ///   "name": "nous_search",
-    ///   "arguments": { "query": "fleet dispatch config", "limit": 10 }
+    ///   "arguments": { "query": "fleet dispatch config", "limit": 10, "stakes": "consequential" }
     /// }
     /// ```
     #[tool(
         name = "nous_search",
         description = "BM25 text search across active facts in the aletheia nous local knowledge store, scoped to the requesting nous; not kanon mnemosyne's durable corpus. \
-                       Returns ranked matches with fact ID, content, and score."
+                       Returns ranked matches with fact ID, content, and score. `stakes` (advisory/operational/consequential, default advisory) applies a read-time confidence floor: \
+                       a result below it keeps its place with content withheld, refused: true, and remedies naming what would clear it."
     )]
     async fn nous_search(
         &self,
@@ -919,6 +1040,8 @@ impl MemoryServer {
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
+        let stakes = parse_stakes(params.stakes.as_deref())?;
+        let now = jiff::Timestamp::now();
 
         let results = self
             .run_blocking(move |store| {
@@ -942,7 +1065,16 @@ impl MemoryServer {
                         max_sensitivity,
                     )
                 });
-                Ok(results)
+                // WHY (aletheia#7163): the read-time confidence floor runs after
+                // scope/visibility filtering (nothing below the floor should
+                // even be scored against a policy the caller cannot see) and
+                // before serialization, so a refused fact's content never
+                // reaches the response.
+                let gated: Vec<serde_json::Value> = results
+                    .iter()
+                    .map(|r| apply_recall_gate(&store, r, stakes, now))
+                    .collect();
+                Ok(gated)
             })
             .await
             .map_err(rmcp::ErrorData::from)?;
@@ -963,6 +1095,11 @@ impl MemoryServer {
     /// `src_id`, `dst_id`, `name`, `entity_type`, `relation`, and `weight`. Use
     /// this to walk outward from a known fact into the wider knowledge graph.
     ///
+    /// The seed fact passes through the same read-time confidence floor
+    /// (aletheia#7163) as `nous_search`, via `stakes` (default `advisory`):
+    /// a seed below the effective floor refuses traversal with `neighbors:
+    /// []`, `refused: true`, and remedies, rather than an error.
+    ///
     /// # Example
     ///
     /// ```json
@@ -974,7 +1111,8 @@ impl MemoryServer {
     #[tool(
         name = "nous_neighbors",
         description = "Return one-hop graph neighbors for a visible fact in the aletheia nous local knowledge store, scoped to the requesting nous; not kanon mnemosyne's durable corpus. \
-                       Each row includes src_id, dst_id, name, entity_type, relation, and weight."
+                       Each row includes src_id, dst_id, name, entity_type, relation, and weight. `stakes` (advisory/operational/consequential, default advisory) applies the same \
+                       read-time confidence floor as nous_search to the seed fact: below it, traversal is refused with an empty neighbor list and remedies."
     )]
     async fn nous_neighbors(
         &self,
@@ -997,8 +1135,10 @@ impl MemoryServer {
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
+        let stakes = parse_stakes(params.stakes.as_deref())?;
+        let now = jiff::Timestamp::now();
 
-        let neighbors = self
+        let response = self
             .run_blocking(move |store| {
                 let seed_facts = store.read_facts_by_id(&fact_id).map_err(|e| {
                     KnowledgeStoreSnafu {
@@ -1056,6 +1196,32 @@ impl MemoryServer {
                     }
                     .build());
                 }
+
+                // WHY (aletheia#7163): a caller must not traverse the graph
+                // outward from a seed fact that fails its own confidence
+                // floor -- neighbors inherit the seed's trust, not the
+                // reverse. Checked after the visibility/scope gates above so
+                // a caller with no visibility into the fact at all still
+                // gets the existing not-found/scope-mismatch error, not a
+                // confidence refusal that would leak the fact's existence.
+                // Not a tool error: a structured refusal naming the remedy,
+                // same as `nous_search`.
+                let confidence = match evaluate_recall_gate(&seed_fact, stakes, now) {
+                    Ok(confidence) => confidence,
+                    Err(refusal) => {
+                        let mut envelope = serde_json::Map::new();
+                        envelope.insert(
+                            "fact_id".to_owned(),
+                            serde_json::Value::String(fact_id.clone()),
+                        );
+                        envelope.insert(
+                            "neighbors".to_owned(),
+                            serde_json::Value::Array(Vec::new()),
+                        );
+                        insert_refusal(&mut envelope, &refusal);
+                        return Ok(serde_json::Value::Object(envelope));
+                    }
+                };
 
                 // WHY: two-step query — first resolve entities linked to the fact,
                 // then return their adjacent edges. Datalog script is embedded
@@ -1127,17 +1293,19 @@ impl MemoryServer {
                         })
                     })
                     .collect();
-                Ok(rows)
+                Ok(serde_json::json!({
+                    "fact_id": fact_id,
+                    "neighbors": rows,
+                    "refused": false,
+                    "recall_confidence": confidence.to_string(),
+                }))
             })
             .await
             .map_err(rmcp::ErrorData::from)?;
 
-        let json = serde_json::to_string_pretty(&serde_json::json!({
-            "fact_id": params.fact_id,
-            "neighbors": neighbors,
-        }))
-        .context(SerializationSnafu)
-        .map_err(rmcp::ErrorData::from)?;
+        let json = serde_json::to_string_pretty(&response)
+            .context(SerializationSnafu)
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![
             rmcp::model::ContentBlock::text(json),
@@ -2262,6 +2430,7 @@ mod tests {
             scope: None,
             min_visibility: None,
             max_sensitivity: None,
+            stakes: None,
         };
         let result = server.nous_search(Parameters(params)).await.unwrap();
         let text = result
@@ -2317,6 +2486,7 @@ mod tests {
             scope: None,
             min_visibility: None,
             max_sensitivity: None,
+            stakes: None,
         };
         let result = server.nous_search(Parameters(params)).await.unwrap();
         let text = result
@@ -2345,6 +2515,7 @@ mod tests {
             scope: None,
             min_visibility: None,
             max_sensitivity: None,
+            stakes: None,
         };
         let result = server.nous_search(Parameters(params)).await;
         assert!(
@@ -2368,6 +2539,7 @@ mod tests {
                     scope: None,
                     min_visibility: None,
                     max_sensitivity: None,
+                    stakes: None,
                 }))
                 .await,
             "invalid project_id filter: project ID must be 64 hex characters",
@@ -2380,6 +2552,7 @@ mod tests {
                     scope: None,
                     min_visibility: None,
                     max_sensitivity: None,
+                    stakes: None,
                 }))
                 .await,
             "invalid project_id filter: project ID must be 64 hex characters",
@@ -2768,6 +2941,7 @@ mod tests {
             scope: None,
             min_visibility: None,
             max_sensitivity: None,
+            stakes: None,
         };
         let result = server.nous_neighbors(Parameters(params)).await;
         assert!(
@@ -3272,6 +3446,227 @@ mod tests {
         assert!(
             !fact.lifecycle.is_forgotten,
             "invalid forget reason must not mutate the fact"
+        );
+    }
+
+    // ── Read-time confidence floor (aletheia#7163) ──────────────────────────
+
+    /// A never-re-verified fact: `Inferred` tier at low confidence, so
+    /// [`mneme::recall_gate::derive_confidence`] places it at `Unknown` --
+    /// below `Operational`'s and `Consequential`'s floors, at or above
+    /// `Advisory`'s.
+    fn low_confidence_fact(id: &str, content: &str) -> Fact {
+        let mut fact = sample_fact(
+            id,
+            "alice",
+            content,
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        fact.provenance.confidence = 0.2;
+        fact.provenance.tier = EpistemicTier::Inferred;
+        fact
+    }
+
+    #[tokio::test]
+    async fn nous_search_serves_low_confidence_fact_at_default_advisory_stakes() {
+        let store = open_store();
+        store
+            .insert_fact(&low_confidence_fact(
+                "f-low-confidence-search",
+                "unverified note about the migration window",
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousSearchParams {
+            query: "migration window".to_owned(),
+            limit: Some(10),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            stakes: None, // WHY: omitted -- must default to advisory, refusing nothing.
+        };
+        let result = server.nous_search(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        assert!(
+            text.contains("migration window"),
+            "default (advisory) stakes must serve a low-confidence fact's content: {text}"
+        );
+        assert!(
+            text.contains("\"refused\": false"),
+            "served result must be marked unrefused: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn nous_search_refuses_low_confidence_fact_at_consequential_stakes_naming_remedy() {
+        let store = open_store();
+        store
+            .insert_fact(&low_confidence_fact(
+                "f-low-confidence-search-2",
+                "unverified note about the failover plan",
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousSearchParams {
+            query: "failover plan".to_owned(),
+            limit: Some(10),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            stakes: Some("consequential".to_owned()),
+        };
+        let result = server.nous_search(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        assert!(
+            !text.contains("failover plan"),
+            "consequential stakes must withhold a below-floor fact's content: {text}"
+        );
+        assert!(
+            text.contains("\"refused\": true"),
+            "below-floor result must be marked refused: {text}"
+        );
+        assert!(
+            text.contains("re-verify this fact"),
+            "refusal must name a remedy: {text}"
+        );
+        // WHY: `server.nous_search(..).await.unwrap()` above already proves this
+        // is a structured `CallToolResult::success`, not a failed tool call --
+        // a refusal is data, never an error.
+    }
+
+    #[tokio::test]
+    async fn nous_neighbors_refuses_traversal_from_low_confidence_seed_at_consequential_stakes() {
+        let store = open_store();
+        store
+            .insert_fact(&low_confidence_fact(
+                "f-low-confidence-seed",
+                "unverified seed fact",
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousNeighborsParams {
+            fact_id: "f-low-confidence-seed".to_owned(),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            stakes: Some("consequential".to_owned()),
+        };
+        let result = server.nous_neighbors(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        assert!(
+            text.contains("\"refused\": true"),
+            "below-floor seed must refuse traversal: {text}"
+        );
+        assert!(
+            text.contains("\"neighbors\": []"),
+            "a refused seed must not traverse to neighbors: {text}"
+        );
+        assert!(
+            text.contains("re-verify this fact"),
+            "refusal must name a remedy: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn nous_neighbors_traverses_low_confidence_seed_at_default_advisory_stakes() {
+        let store = open_store();
+        store
+            .insert_fact(&low_confidence_fact(
+                "f-low-confidence-seed-2",
+                "unverified seed fact",
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousNeighborsParams {
+            fact_id: "f-low-confidence-seed-2".to_owned(),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            stakes: None, // WHY: omitted -- must default to advisory, refusing nothing.
+        };
+        let result = server.nous_neighbors(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        assert!(
+            text.contains("\"refused\": false"),
+            "default (advisory) stakes must not refuse a low-confidence seed: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_tools_reject_invalid_stakes() {
+        let store = open_store();
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+
+        assert_invalid_input_contains(
+            server
+                .nous_search(Parameters(NousSearchParams {
+                    query: "dispatch".to_owned(),
+                    limit: Some(10),
+                    project_id: None,
+                    scope: None,
+                    min_visibility: None,
+                    max_sensitivity: None,
+                    stakes: Some("catastrophic".to_owned()),
+                }))
+                .await,
+            "invalid stakes",
+        );
+        assert_invalid_input_contains(
+            server
+                .nous_neighbors(Parameters(NousNeighborsParams {
+                    fact_id: "f-missing".to_owned(),
+                    project_id: None,
+                    scope: None,
+                    min_visibility: None,
+                    max_sensitivity: None,
+                    stakes: Some("catastrophic".to_owned()),
+                }))
+                .await,
+            "invalid stakes",
         );
     }
 }
