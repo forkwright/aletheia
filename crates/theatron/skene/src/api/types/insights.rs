@@ -127,3 +127,107 @@ pub struct CostMetricsResponse {
     #[serde(default)]
     pub data_unavailable: Vec<UnavailableMetric>,
 }
+
+/// A single point in a generic (non-token, non-cost) time series.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's TimeSeriesPoint; self-documenting by name"
+)]
+pub struct TimeSeriesPoint {
+    pub date: String,
+    pub value: f64,
+}
+
+/// Anomaly alert for a single per-agent metric.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's AnomalyAlert; self-documenting by name"
+)]
+pub struct AnomalyAlert {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub metric_name: String,
+    pub current_value: f64,
+    pub baseline_mean: f64,
+    pub deviation_pct: f64,
+    pub direction: String,
+}
+
+/// Per-agent performance metrics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's AgentPerformance; self-documenting by name"
+)]
+pub struct AgentPerformance {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub avg_tokens_per_response: f64,
+    pub tool_calls_per_session: f64,
+    pub tool_success_rate: f64,
+    pub distillation_frequency: f64,
+    pub avg_context_before_distill: f64,
+    pub messages_per_session: f64,
+    pub sessions_per_day: f64,
+    pub errors_per_session: f64,
+    #[serde(default)]
+    pub tokens_per_response_series: Vec<TimeSeriesPoint>,
+    #[serde(default)]
+    pub data_unavailable: Vec<UnavailableMetric>,
+}
+
+/// Response for `GET /api/v1/metrics/agents`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentPerformanceListResponse {
+    /// Per-agent performance data.
+    pub agents: Vec<AgentPerformance>,
+    /// Anomalies detected across all agents.
+    pub anomalies: Vec<AnomalyAlert>,
+}
+
+/// Quality metric time series bundle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's QualitySeries; self-documenting by name"
+)]
+pub struct QualitySeries {
+    pub avg_turn_length: Vec<TimeSeriesPoint>,
+    pub response_to_question_ratio: Vec<TimeSeriesPoint>,
+    pub tool_call_density: Vec<TimeSeriesPoint>,
+    pub thinking_time_ratio: Vec<TimeSeriesPoint>,
+}
+
+/// Response for `GET /api/v1/metrics/quality`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityMetricsResponse {
+    /// Time series quality indicators.
+    pub series: QualitySeries,
+    /// Metrics that are currently not measured by any backing data source.
+    #[serde(default)]
+    pub data_unavailable: Vec<UnavailableMetric>,
+}
+
+/// A single system journal event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's JournalEvent; self-documenting by name"
+)]
+pub struct JournalEvent {
+    pub timestamp: String,
+    pub event_type: String,
+    pub message: String,
+}
+
+/// Response for `GET /api/v1/journal`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JournalResponse {
+    /// Journal events matching the query.
+    pub events: Vec<JournalEvent>,
+    /// Metrics that are currently not measured by any backing data source.
+    #[serde(default)]
+    pub data_unavailable: Vec<UnavailableMetric>,
+}

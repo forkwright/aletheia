@@ -446,7 +446,14 @@ async fn probe(client: &reqwest::Client, candidate: &Candidate) -> Option<String
 ///
 /// Probes candidate URLs sequentially, returning the base URL (e.g.
 /// `http://localhost:18789`) of the first server that responds to a health
-/// check. Returns `None` if no server is found within [`TOTAL_TIMEOUT`].
+/// check. Returns `None` if no server is found within the internal total
+/// timeout.
+///
+/// WHY: `TOTAL_TIMEOUT` above was an intra-doc link from this public
+/// function to a private constant -- `rustdoc::private-intra-doc-links`
+/// under `-D warnings` has always rejected that (pre-existing, unrelated to
+/// #4565); de-linking to prose is the fix, not exposing the constant just
+/// to satisfy a link.
 ///
 /// The returned URL has no trailing slash and is suitable for passing directly
 /// to [`crate::api::ApiClient::new`].
