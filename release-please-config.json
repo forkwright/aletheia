@@ -33,6 +33,16 @@
                 },
                 {
                     "type": "toml",
+                    "path": "crates/theatron/proskenion/Cargo.toml",
+                    "jsonpath": "$.workspace.package.version"
+                },
+                {
+                    "type": "toml",
+                    "path": "crates/theatron/proskenion/Cargo.toml",
+                    "jsonpath": "$.package.version"
+                },
+                {
+                    "type": "toml",
                     "path": "crates/theatron/proskenion/Cargo.lock",
                     "jsonpath": "$.package[?(@.name.value == 'koina')].version"
                 },
@@ -40,6 +50,11 @@
                     "type": "toml",
                     "path": "crates/theatron/proskenion/Cargo.lock",
                     "jsonpath": "$.package[?(@.name.value == 'skene')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "crates/theatron/proskenion/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'proskenion')].version"
                 }
             ]
         }
