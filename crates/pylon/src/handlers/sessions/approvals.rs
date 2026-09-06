@@ -30,7 +30,7 @@ use crate::error::{
     ApiError, ApprovalGoneSnafu, ApprovalNotFoundSnafu, ErrorResponse, FieldError,
     ValidationFailedSnafu,
 };
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::handlers::sessions::find_session;
 use crate::state::SessionsState;
 
@@ -237,7 +237,7 @@ pub async fn list_session_pending(
     // state is session content, Agent-or-above, scoped to the caller's own
     // nous_id below -- matches the floor #7227 applied to this module's
     // other reads (list_sessions, get_session, history, replay).
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let session = find_session(&state, &session_id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
@@ -299,7 +299,7 @@ pub async fn list_nous_pending(
 ) -> Result<impl IntoResponse, ApiError> {
     // SECURITY(#7200, #7207): Readonly is dashboard-only; matches
     // `list_sessions`'s floor for the same unscoped-listing shape.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let nous_id = match (claims.nous_id.as_deref(), query.nous_id.as_deref()) {
         (Some(scoped), Some(requested)) if scoped != requested => {
             return Err(ApiError::forbidden("access denied for this agent"));

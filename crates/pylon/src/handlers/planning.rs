@@ -5,13 +5,18 @@
 //! the persisted planning workspace for the requested project.
 //!
 //! Access control: both routes require an unscoped `Role::Operator`+ token
-//! (`require_role`, the same floor `crates/pylon/src/handlers/config.rs` and
-//! `health.rs` use for full system state), because no project-scoped role
-//! exists in the RBAC model yet (see #7201's follow-up for that
-//! prerequisite). The per-workspace `planning_meta.json` visibility sidecar
-//! below is presentation metadata only -- it classifies a project as
-//! public/private/internal and redacts evidence/gap detail for the UI, but
-//! it is not itself a security boundary: the `Role::Operator` floor is.
+//! for a real Bearer token, the same floor `crates/pylon/src/handlers/config.rs`
+//! and `health.rs` use for full system state -- because no project-scoped
+//! role exists in the RBAC model yet (see #7201's follow-up for that
+//! prerequisite). `require_read_role` (rather than `require_role` directly)
+//! exempts the synthetic `auth_mode = "none"` identity from that floor
+//! (#7234): before #7201, these routes checked no role at all, so a
+//! `none_role` instance could always read them, and disabling auth entirely
+//! must not retroactively lock it out. The per-workspace `planning_meta.json`
+//! visibility sidecar below is presentation metadata only -- it classifies a
+//! project as public/private/internal and redacts evidence/gap detail for
+//! the UI, but it is not itself a security boundary: the `Role::Operator`
+//! floor is.
 
 use std::path::{Path as StdPath, PathBuf};
 
@@ -29,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NotFoundSnafu};
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_read_role};
 use crate::state::PlanningState;
 
 #[path = "planning_dto.rs"]
@@ -117,7 +122,7 @@ pub(crate) async fn get_verification(
     // SECURITY(#7201): no project-scoped role exists in the RBAC model yet,
     // so an unscoped Operator+ token is the floor -- see the module doc for
     // why the visibility sidecar below is presentation, not enforcement.
-    require_role(&claims, Role::Operator)?;
+    require_read_role(&claims, Role::Operator)?;
     load_project_verification(state.planning_root, project_id, None)
         .await
         .map(Json)
@@ -147,7 +152,7 @@ pub(crate) async fn refresh_verification(
     // SECURITY(#7201): no project-scoped role exists in the RBAC model yet,
     // so an unscoped Operator+ token is the floor -- see the module doc for
     // why the visibility sidecar below is presentation, not enforcement.
-    require_role(&claims, Role::Operator)?;
+    require_read_role(&claims, Role::Operator)?;
     let criteria = body.map(|Json(request)| request.criteria);
     load_project_verification(state.planning_root, project_id, criteria)
         .await

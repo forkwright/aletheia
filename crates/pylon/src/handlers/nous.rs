@@ -15,7 +15,7 @@ use symbolon::types::Role;
 use taxis::config::{AletheiaConfig, NousDefinition};
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::handlers::providers::resolve_model_route_readiness;
 use crate::state::NousState;
 
@@ -231,7 +231,7 @@ pub async fn list(
     // doc); agent list/status/tools reads are Agent-or-above. Per-agent
     // visibility (own nous scope, private-flag Operator gate) is enforced
     // separately via `nous_visible_to_claims`/`require_visible_nous`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let config = state.config.read().await;
     let visible: Vec<&NousConfig> = state
         .nous_manager
@@ -318,7 +318,7 @@ pub async fn get_status(
     // SECURITY(#7200): Readonly is dashboard-only; agent status reads are
     // Agent-or-above. Per-agent visibility is enforced below via
     // `require_visible_nous`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -412,7 +412,7 @@ pub async fn tools(
     // SECURITY(#7200): Readonly is dashboard-only; agent tool-list reads are
     // Agent-or-above. Per-agent visibility is enforced below via
     // `require_visible_nous`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let runtime = state
         .nous_manager
         .get_config(&id)

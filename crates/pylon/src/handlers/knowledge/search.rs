@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_read_role};
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
@@ -181,7 +181,7 @@ pub async fn search(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     if query.q.trim().is_empty() {
         return Err(BadRequestSnafu {
             message: "search query 'q' must not be empty",
@@ -248,7 +248,7 @@ pub async fn explain(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     if query.q.trim().is_empty() {
         return Err(BadRequestSnafu {
             message: "search query 'q' must not be empty",
@@ -342,7 +342,7 @@ pub async fn timeline(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let policy = super::KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
     query.nous_id = policy.single_target_nous_id().map(ToOwned::to_owned);
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
@@ -733,6 +733,7 @@ mod relevance_fetch_tests {
             sub: "alice".to_owned(),
             role: symbolon::types::Role::Operator,
             nous_id: None,
+            unauthenticated: false,
         };
         let policy = match super::super::KnowledgeReadPolicy::from_single_nous(&claims, None) {
             Ok(policy) => policy,

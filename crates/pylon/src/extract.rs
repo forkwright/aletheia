@@ -24,6 +24,24 @@ pub struct Claims {
     pub role: Role,
     /// Optional nous scope: when set, restricts access to a single agent.
     pub nous_id: Option<String>,
+    /// `true` only for the synthetic identity `auth_mode = "none"`
+    /// fabricates -- no Bearer token was presented or validated.
+    ///
+    /// WHY(#7234): `require_read_role` checks this to restore the exact
+    /// pre-#7227 behavior of the read floors that PR added (session,
+    /// knowledge, nous, planning content): before #7227, none of those
+    /// routes checked role at all, so a `none_role` instance -- which
+    /// schema-defaults to the deliberately least-privileged `"readonly"`
+    /// (SECURITY #5169, #5342) -- could always read its own data. #7227's
+    /// floor is the first check in the codebase to gate routes that
+    /// previously had none, so disabling auth entirely must not
+    /// retroactively lock such an instance out of them. Routes gated
+    /// before that PR (credentials, config, metrics aggregates, knowledge
+    /// writes, workspace) are unaffected: they have always evaluated
+    /// `none_role`'s real value, matching every other authenticated route,
+    /// and `require_role` (not `require_read_role`) still does that for
+    /// them here.
+    pub unauthenticated: bool,
 }
 
 impl FromRequestParts<Arc<AppState>> for Claims {
@@ -52,6 +70,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
                 sub: "anonymous".to_owned(),
                 role,
                 nous_id: None,
+                unauthenticated: true,
             });
         }
 
@@ -91,6 +110,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             sub: claims.sub,
             role: claims.role,
             nous_id: claims.nous_id,
+            unauthenticated: false,
         })
     }
 }
@@ -114,6 +134,28 @@ pub(crate) fn require_role(claims: &Claims, minimum: Role) -> Result<(), ApiErro
         return Err(ApiError::forbidden("insufficient permissions"));
     }
     Ok(())
+}
+
+/// Reject the request if the caller's role is below `minimum` -- unless the
+/// caller is the synthetic `auth_mode = "none"` identity, which always
+/// passes regardless of its `none_role`.
+///
+/// WHY(#7234): use this instead of `require_role` only for a read floor that
+/// #7227 (or a PR built on it) newly added to a route that previously had no
+/// role check at all. A route that has required a role since before #7227
+/// (credentials, config, metrics aggregates, knowledge writes, workspace)
+/// must keep calling `require_role` directly -- for those, `none_role`'s
+/// real value has always been the answer, and bypassing it here would
+/// reintroduce the full-privilege-under-`auth.mode=none` exposure
+/// SECURITY #5169/#5342 deliberately closed by defaulting `none_role` to
+/// `"readonly"`. A real Bearer token (token/jwt mode) with an insufficient
+/// role is always rejected here exactly like `require_role`; only the
+/// no-token-presented identity is exempt.
+pub(crate) fn require_read_role(claims: &Claims, minimum: Role) -> Result<(), ApiError> {
+    if claims.unauthenticated {
+        return Ok(());
+    }
+    require_role(claims, minimum)
 }
 
 /// Reject the request if the caller has a scoped `nous_id` that does not match `target_nous_id`.

@@ -1234,3 +1234,64 @@ async fn session_read_routes_admit_agent_role_scoped_to_own_nous() {
         assert_eq!(resp.status(), StatusCode::OK, "{path}");
     }
 }
+
+/// Regression test (#7234): the exact path the full-stack smoke test
+/// (`crates/aletheia/tests/integration_server.rs`) runs against a real
+/// `auth.mode = "none"` server -- an unauthenticated `GET
+/// /api/v1/sessions`, no Bearer token at all -- must return 200 regardless
+/// of `none_role`'s configured value. `none_role` schema-defaults to the
+/// least-privileged `"readonly"` (SECURITY #5169, #5342); before #7227
+/// this route checked no role at all, so a production instance already
+/// running `auth.mode = "none"` (there is one) must not be locked out of
+/// its own sessions by a read floor added after the fact.
+/// `require_read_role` (`crates/pylon/src/extract.rs`) is what exempts
+/// this synthetic identity; this test pins the resolved role to
+/// `"readonly"` specifically so the assertion cannot pass merely because
+/// the test harness's usual none-mode role happens to already clear the
+/// floor.
+#[tokio::test]
+async fn list_sessions_under_auth_none_ignores_none_role_floor() {
+    let (mut state, _dir) = test_state_with_auth_mode("none").await;
+    match Arc::get_mut(&mut state) {
+        Some(inner) => "readonly".clone_into(&mut inner.none_role),
+        None => panic!("expected sole ownership of a freshly constructed AppState"),
+    }
+    let router = build_router(state, &test_security_config());
+
+    let resp = router
+        .oneshot(
+            axum::http::Request::get("/api/v1/sessions")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Regression test (#7234): the protection #7200 actually added must
+/// survive the `auth.mode = "none"` exemption above -- a real, validated
+/// Bearer token (not the synthetic none-mode identity) presenting a role
+/// below what the route requires is still rejected. Scoped to its own
+/// nous, not just unscoped, so this cannot pass by accident of scope
+/// rather than role.
+#[tokio::test]
+async fn session_read_routes_reject_scoped_token_without_read_role() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    for path in session_read_routes(id) {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(
+                &path,
+                symbolon::types::Role::Readonly,
+                "syn",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+    }
+}

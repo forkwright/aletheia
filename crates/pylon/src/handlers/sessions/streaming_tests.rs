@@ -18,6 +18,7 @@ pub(super) fn claims(role: Role, nous_id: Option<&str>) -> Claims {
         sub: "alice".to_owned(),
         role,
         nous_id: nous_id.map(str::to_owned),
+        unauthenticated: false,
     }
 }
 
