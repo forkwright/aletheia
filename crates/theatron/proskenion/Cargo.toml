@@ -4,7 +4,13 @@
 [workspace]
 
 [workspace.package]
-version = "0.13.1"
+# WHY: proskenion consumes skene and koina by `path` across the workspace
+# boundary (see [dependencies] below), so it is same-tree by construction and
+# cannot ship on an independent version/cadence. This literal cannot use
+# `version.workspace = true` across the standalone-workspace boundary, so it
+# must be kept equal to the root Cargo.toml [workspace.package].version by
+# hand; scripts/check-proskenion-pins.py enforces the equality.
+version = "0.45.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 rust-version = "1.94"
@@ -46,8 +52,10 @@ version = "1.6.2"
 name = "proskenion"
 # WHY: explicit values instead of workspace inheritance because this crate
 # is excluded from the root workspace; dedicated desktop CI compiles and lints
-# it through this standalone manifest.
-version = "0.13.1"
+# it through this standalone manifest. `version` must equal the root
+# Cargo.toml [workspace.package].version (see [workspace.package] above);
+# scripts/check-proskenion-pins.py enforces the equality.
+version = "0.45.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 rust-version = "1.94"

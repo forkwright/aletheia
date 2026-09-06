@@ -94,6 +94,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 """,
         encoding="utf-8",
     )
+    (root / "crates" / "theatron" / "proskenion" / "Cargo.toml").write_text(
+        """\
+[workspace]
+
+[workspace.package]
+version = "1.2.3"
+edition = "2024"
+
+[package]
+name = "proskenion"
+version = "1.2.3"
+edition = "2024"
+""",
+        encoding="utf-8",
+    )
     (root / "crates" / "theatron" / "proskenion" / "Cargo.lock").write_text(
         """\
 version = 4
@@ -104,7 +119,7 @@ version = "1.2.3"
 
 [[package]]
 name = "proskenion"
-version = "0.13.1"
+version = "1.2.3"
 
 [[package]]
 name = "skene"
@@ -133,6 +148,16 @@ version = "1.2.3"
                             },
                             {
                                 "type": "toml",
+                                "path": "crates/theatron/proskenion/Cargo.toml",
+                                "jsonpath": "$.workspace.package.version",
+                            },
+                            {
+                                "type": "toml",
+                                "path": "crates/theatron/proskenion/Cargo.toml",
+                                "jsonpath": "$.package.version",
+                            },
+                            {
+                                "type": "toml",
                                 "path": "crates/theatron/proskenion/Cargo.lock",
                                 "jsonpath": "$.package[?(@.name.value == 'koina')].version",
                             },
@@ -140,6 +165,11 @@ version = "1.2.3"
                                 "type": "toml",
                                 "path": "crates/theatron/proskenion/Cargo.lock",
                                 "jsonpath": "$.package[?(@.name.value == 'skene')].version",
+                            },
+                            {
+                                "type": "toml",
+                                "path": "crates/theatron/proskenion/Cargo.lock",
+                                "jsonpath": "$.package[?(@.name.value == 'proskenion')].version",
                             },
                         ]
                     }
@@ -172,6 +202,15 @@ exec python3 "${REPO_ROOT}/scripts/check-release-versioning.py" bump "$@"
 def root_version(root: Path) -> str:
     data = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
     return data["workspace"]["package"]["version"]
+
+
+def proskenion_cargo_versions(root: Path) -> tuple[str, str]:
+    data = tomllib.loads(
+        (root / "crates" / "theatron" / "proskenion" / "Cargo.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    return data["workspace"]["package"]["version"], data["package"]["version"]
 
 
 def manifest_version(root: Path) -> str:
@@ -347,8 +386,22 @@ def test_bump_updates_all_version_owners(root: Path) -> None:
         "bump should update proskenion's two workspace-version path packages",
     )
     expect(
-        proskenion_lock["proskenion"] == "0.13.1",
-        "bump should preserve proskenion's independent version",
+        proskenion_lock["proskenion"] == "2.0.0",
+        "bump should update proskenion's own lock entry to match the root "
+        "version, since proskenion cannot ship on an independent cadence "
+        "(it consumes koina/skene by path) and --locked requires the lock "
+        "entry to track [package].version",
+    )
+    proskenion_workspace_version, proskenion_package_version = (
+        proskenion_cargo_versions(root)
+    )
+    expect(
+        proskenion_workspace_version == "2.0.0",
+        "bump should update proskenion's [workspace.package].version",
+    )
+    expect(
+        proskenion_package_version == "2.0.0",
+        "bump should update proskenion's [package].version",
     )
     member = tomllib.loads(
         (root / "crates" / "lib" / "Cargo.toml").read_text(encoding="utf-8")

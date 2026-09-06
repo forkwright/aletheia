@@ -24,12 +24,26 @@ ROOT_CARGO_JSONPATH = "$.workspace.package.version"
 ROOT_LOCK_PATH = "Cargo.lock"
 ROOT_LOCK_JSONPATH = "$.package[?(!@.source)].version"
 CHANGELOG_PATH = "CHANGELOG.md"
+PROSKENION_CARGO_PATH = "crates/theatron/proskenion/Cargo.toml"
+# WHY: proskenion's [package].version is a plain top-level literal (it cannot
+# use `version.workspace = true` for [package] without also restructuring the
+# manifest away from its current explicit-values style; see the WHY comment
+# on that field), so it needs its own jsonpath distinct from
+# ROOT_CARGO_JSONPATH, which proskenion's [workspace.package].version reuses
+# verbatim (same shape, different file).
+PROSKENION_PACKAGE_JSONPATH = "$.package.version"
 PROSKENION_LOCK_PATH = "crates/theatron/proskenion/Cargo.lock"
-PROSKENION_LOCK_PACKAGES = ("koina", "skene")
+# WHY "proskenion" is in this tuple too, not just its two path-deps: proskenion
+# is its own standalone Cargo workspace, so `cargo ... --locked` (desktop.yml)
+# requires this lockfile's own "proskenion" package entry to match
+# [package].version in the same breath every release bumps it -- see
+# check_proskenion_cargo_version below.
+PROSKENION_LOCK_PACKAGES = ("koina", "skene", "proskenion")
 RELEASE_VERSION_PATHS = (
     ".release-please-manifest.json",
     ROOT_LOCK_PATH,
     ROOT_CARGO_PATH,
+    PROSKENION_CARGO_PATH,
     PROSKENION_LOCK_PATH,
 )
 RELEASE_TRANSITION_PATHS = tuple(
@@ -236,6 +250,8 @@ def check_release_please_config(repo_root: Path) -> list[str]:
 
     required_updates = (
         (ROOT_CARGO_PATH, ROOT_CARGO_JSONPATH),
+        (PROSKENION_CARGO_PATH, ROOT_CARGO_JSONPATH),
+        (PROSKENION_CARGO_PATH, PROSKENION_PACKAGE_JSONPATH),
         (ROOT_LOCK_PATH, ROOT_LOCK_JSONPATH),
         *(
             (
@@ -341,6 +357,46 @@ def check_release_lock_versions(repo_root: Path, expected_version: str) -> list[
     return errors
 
 
+def check_proskenion_cargo_version(repo_root: Path, expected_version: str) -> list[str]:
+    """Check proskenion's own two hand-maintained Cargo.toml version literals.
+
+    WHY hand-maintained, not `version.workspace = true`: proskenion is a
+    standalone workspace excluded from the root [workspace] (GTK3/webkit2gtk
+    system-package requirement; see Cargo.toml [workspace].exclude), so it
+    cannot inherit [workspace.package].version across that boundary. Both its
+    own [workspace.package].version and [package].version must track the
+    root version by hand -- scripts/check-proskenion-pins.py enforces the
+    same equality as a second, independent, faster-running gate.
+    """
+    path = repo_root / PROSKENION_CARGO_PATH
+    try:
+        cargo = load_toml(path)
+    except OSError as exc:
+        return [f"{PROSKENION_CARGO_PATH}: failed to read: {exc}"]
+    except tomllib.TOMLDecodeError as exc:
+        return [f"{PROSKENION_CARGO_PATH}: invalid TOML: {exc}"]
+
+    errors: list[str] = []
+    workspace_package_version = cargo.get("workspace", {}).get("package", {}).get(
+        "version"
+    )
+    if workspace_package_version != expected_version:
+        errors.append(
+            f"{PROSKENION_CARGO_PATH}: [workspace.package].version "
+            f"{workspace_package_version!r} does not match root workspace "
+            f"version {expected_version!r}"
+        )
+
+    package_version = cargo.get("package", {}).get("version")
+    if package_version != expected_version:
+        errors.append(
+            f"{PROSKENION_CARGO_PATH}: [package].version {package_version!r} "
+            f"does not match root workspace version {expected_version!r}"
+        )
+
+    return errors
+
+
 def validate_static_release_metadata(
     repo_root: Path, require_manifest_alignment: bool
 ) -> CheckReport:
@@ -351,6 +407,7 @@ def validate_static_release_metadata(
     errors.extend(check_release_please_config(repo_root))
     if version is not None:
         errors.extend(check_release_lock_versions(repo_root, version))
+        errors.extend(check_proskenion_cargo_version(repo_root, version))
     if require_manifest_alignment and version is not None:
         errors.extend(check_release_please_manifest(repo_root, version))
 
@@ -362,6 +419,7 @@ def copy_release_metadata(src_root: Path, dst_root: Path) -> list[str]:
     for relative in (
         ROOT_CARGO_PATH,
         ROOT_LOCK_PATH,
+        PROSKENION_CARGO_PATH,
         PROSKENION_LOCK_PATH,
         "release-please-config.json",
         ".release-please-manifest.json",
@@ -580,20 +638,29 @@ def check_release_comparison(
     return errors
 
 
-def replace_workspace_version_line(cargo_path: Path, version: str) -> None:
+def replace_toml_section_version_line(
+    cargo_path: Path, section: str, jsonpath: str, version: str
+) -> None:
+    """Replace the `version = "..."` line inside `[section]` in place.
+
+    WHY a durable line-replace instead of a TOML round-trip write: rewriting
+    the whole document through `tomllib`'s loader (or any dict-based TOML
+    writer) would lose comments and formatting throughout the file -- this
+    edits exactly the one line the section's version lives on.
+    """
     try:
         lines = cargo_path.read_text(encoding="utf-8").splitlines(keepends=True)
     except OSError as exc:
         raise ReleaseVersioningError(f"{cargo_path}: failed to read: {exc}") from exc
 
-    inside_workspace_package = False
+    inside_section = False
     for index, line in enumerate(lines):
-        section = SECTION_RE.match(line)
-        if section:
-            inside_workspace_package = section.group(1).strip() == "workspace.package"
+        section_match = SECTION_RE.match(line)
+        if section_match:
+            inside_section = section_match.group(1).strip() == section
             continue
 
-        if not inside_workspace_package:
+        if not inside_section:
             continue
 
         version_line = VERSION_LINE_RE.match(line)
@@ -610,8 +677,18 @@ def replace_workspace_version_line(cargo_path: Path, version: str) -> None:
                 ) from exc
             return
 
-    raise ReleaseVersioningError(
-        f"{cargo_path}: could not find {ROOT_CARGO_JSONPATH} to update"
+    raise ReleaseVersioningError(f"{cargo_path}: could not find {jsonpath} to update")
+
+
+def replace_workspace_version_line(cargo_path: Path, version: str) -> None:
+    replace_toml_section_version_line(
+        cargo_path, "workspace.package", ROOT_CARGO_JSONPATH, version
+    )
+
+
+def replace_package_version_line(cargo_path: Path, version: str) -> None:
+    replace_toml_section_version_line(
+        cargo_path, "package", PROSKENION_PACKAGE_JSONPATH, version
     )
 
 
@@ -818,6 +895,8 @@ def bump_version(repo_root: Path, version: str) -> None:
     )
 
     replace_workspace_version_line(repo_root / ROOT_CARGO_PATH, version)
+    replace_workspace_version_line(repo_root / PROSKENION_CARGO_PATH, version)
+    replace_package_version_line(repo_root / PROSKENION_CARGO_PATH, version)
     update_release_please_manifest(repo_root, version)
     try:
         (repo_root / ROOT_LOCK_PATH).write_text(root_lock, encoding="utf-8")

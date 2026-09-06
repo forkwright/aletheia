@@ -87,7 +87,7 @@ The standard installer runs this check before building, and the release workflow
 
 1. **Root workspace compatibility.** GTK3 and webkit2gtk are installed only by the dedicated desktop CI job. Keeping `proskenion` outside the root workspace avoids forcing every workspace gate to install desktop system packages, while the desktop job still runs compile, clippy, and tests through the standalone manifest.
 2. **Dependency advisories.** GTK bindings pull in crates with known advisories that are acceptable for a desktop app but would block cargo-deny checks for the rest of the workspace.
-3. **Independent versioning.** The desktop crate tracks its own version instead of inheriting from `[workspace.package]`, since it ships on a separate release cadence.
+3. **Hand-maintained version literal.** `proskenion` is same-tree by construction (it consumes `skene` and `koina` by `path` across the workspace boundary), so it cannot ship independently of the root release. Its standalone `[workspace.package].version` and `[package].version` cannot use `version.workspace = true` across that boundary, so they are set as literals that must equal the root `[workspace.package].version`. `scripts/check-proskenion-pins.py` enforces the equality.
 
 ## Architecture
 

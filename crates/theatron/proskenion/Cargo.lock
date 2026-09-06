@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "proskenion"
-version = "0.13.1"
+version = "0.45.0"
 dependencies = [
  "bathron",
  "dioxus",

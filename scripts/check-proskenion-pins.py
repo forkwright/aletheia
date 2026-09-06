@@ -34,6 +34,43 @@ def workspace_version(manifest: Path) -> str | None:
     return data.get("workspace", {}).get("package", {}).get("version")
 
 
+def package_version(manifest: Path) -> str | None:
+    data = load_toml(manifest)
+    return data.get("package", {}).get("version")
+
+
+def version_errors(root_manifest: Path, proskenion_manifest: Path) -> list[str]:
+    """Check proskenion's own version literals equal the root workspace version.
+
+    WHY: proskenion consumes skene and koina by path across the workspace
+    boundary (crates/theatron/proskenion/Cargo.toml), so it is same-tree by
+    construction and cannot ship on an independent release cadence. Its
+    standalone [workspace.package]/[package] versions cannot use
+    `version.workspace = true` across that boundary, so they are hand-maintained
+    literals that must track the root version exactly.
+    """
+    root_version = workspace_version(root_manifest)
+    if root_version is None:
+        return ["root Cargo.toml: missing [workspace.package] version"]
+
+    errors: list[str] = []
+    proskenion_workspace_version = workspace_version(proskenion_manifest)
+    if proskenion_workspace_version != root_version:
+        errors.append(
+            f"proskenion [workspace.package].version is {proskenion_workspace_version!r}, "
+            f"root workspace is {root_version!r}"
+        )
+
+    proskenion_package_version = package_version(proskenion_manifest)
+    if proskenion_package_version != root_version:
+        errors.append(
+            f"proskenion [package].version is {proskenion_package_version!r}, "
+            f"root workspace is {root_version!r}"
+        )
+
+    return errors
+
+
 def locked_versions(lockfile: Path) -> dict[str, str]:
     data = load_toml(lockfile)
     return {
@@ -106,6 +143,7 @@ def main() -> int:
                 f"{dep_name}: root pin {root_norm!r} != proskenion pin {proskenion_norm!r}"
             )
 
+    errors.extend(version_errors(root_manifest, proskenion_manifest))
     errors.extend(lock_errors(repo_root, root_manifest))
 
     if errors:
@@ -114,8 +152,9 @@ def main() -> int:
             LOGGER.error("  - %s", error)
         LOGGER.error(
             "Update crates/theatron/proskenion/Cargo.toml to mirror the root "
-            "[workspace.dependencies] pins, and crates/theatron/proskenion/"
-            "Cargo.lock to record the root [workspace.package] version."
+            "[workspace.dependencies] pins and match the root [workspace.package] "
+            "version, and crates/theatron/proskenion/Cargo.lock to record the "
+            "root [workspace.package] version."
         )
         return 1
 
