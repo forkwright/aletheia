@@ -341,8 +341,23 @@ pub struct ToolContext {
     pub nous_id: NousId,
     /// Current session.
     pub session_id: SessionId,
-    /// Current turn number within the session.
-    pub turn_number: u64,
+    /// Canonical identity of the turn this tool call executes within
+    /// (#4853). Replaces a bare `turn_number: u64` -- the working-memory
+    /// checkpoint and approval/audit paths key off `turn_identity.turn_id`
+    /// and `turn_identity.turn_number` instead of a loose, disconnected
+    /// counter. Use [`Self::turn_number`] for the common case of just
+    /// needing the session-local ordinal.
+    pub turn_identity: koina::turn_identity::TurnEventIdentity,
+    /// Signer `ToolRegistry::execute_prepared` uses to attach a receipt to
+    /// every `ToolResult` it returns (#4835).
+    ///
+    /// WHY required, not `Option`: a caller cannot construct a `ToolContext`
+    /// -- and therefore cannot call `execute`/`execute_checked` -- without
+    /// supplying a signer. That turns "receipts are conventionally always
+    /// emitted" into a compile-time invariant instead of a runtime
+    /// convention, closing the gap where a future direct caller of the
+    /// registry could silently get a receipt-less result.
+    pub receipt_signer: crate::receipts::ReceiptSigner,
     /// Agent workspace root.
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.
@@ -368,6 +383,16 @@ pub struct EffectiveSurfaceBinding {
 }
 
 impl ToolContext {
+    /// Session-local turn ordinal (`TurnEventIdentity::turn_number`).
+    ///
+    /// Convenience accessor for the common case of needing just the
+    /// counter; reach for `turn_identity` directly when the canonical
+    /// `turn_id`, `request_id`, or `client_turn_id` is also needed (#4853).
+    #[must_use]
+    pub const fn turn_number(&self) -> u64 {
+        self.turn_identity.turn_number
+    }
+
     /// Return the current turn cancellation token, or a detached token outside turns.
     #[must_use]
     pub fn turn_cancel(&self) -> CancellationToken {
@@ -433,7 +458,7 @@ impl ToolContext {
         SurfaceBindingKey {
             nous_id: self.nous_id.as_ref().to_owned(),
             session_id: self.session_id.to_string(),
-            turn_number: self.turn_number,
+            turn_number: self.turn_number(),
         }
     }
 }

@@ -576,8 +576,16 @@ pub struct FinalizeToolAuditRecord<'a> {
     pub result: Option<&'a str>,
     /// Approval outcome applied before execution, when known.
     pub approval: Option<&'a str>,
-    /// HMAC receipt token emitted for this tool result, when present.
-    pub receipt: Option<&'a str>,
+    /// HMAC receipt token emitted for this tool result.
+    ///
+    /// WHY required, not `Option` (#4835): receipts are a mandatory runtime
+    /// invariant for every call that reaches `ToolRegistry::execute`, so
+    /// the durable write boundary cannot silently accept a call with none.
+    /// Empty string, not `None`, is the honest representation for a call
+    /// that never executed (denied by policy/hook/approval-gate before
+    /// dispatch) -- there is nothing for a signer to attest because the
+    /// registry was never reached.
+    pub receipt: &'a str,
 }
 
 /// Durable [`TurnRecord`] to write atomically with a finalized turn
@@ -2888,7 +2896,7 @@ impl SessionStore {
             outcome: spec.outcome.to_owned(),
             result: spec.result.map(str::to_owned),
             approval: spec.approval.map(str::to_owned),
-            receipt: spec.receipt.map(str::to_owned),
+            receipt: spec.receipt.to_owned(),
             created_at: now_iso(),
         };
         let key = pad_u64(id_counter);

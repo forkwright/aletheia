@@ -37,6 +37,9 @@ pub(super) struct StreamingTurnRequest {
     pub turn_id: Option<Ulid>,
     /// Canonical HTTP request ID from Pylon's gateway middleware (#4853).
     pub request_id: Option<String>,
+    /// Client-generated turn id from the request body's `client_turn_id`
+    /// (#4853). `None` when the client omitted it.
+    pub client_turn_id: Option<String>,
     pub content: String,
     pub stream_tx: mpsc::Sender<TurnStreamEvent>,
     /// Operator approval gate for reversibility-class tool calls (#3958).
@@ -209,6 +212,7 @@ impl NousActor {
             session_id,
             turn_id,
             request_id,
+            client_turn_id,
             content,
             stream_tx,
             approval_gate,
@@ -229,6 +233,7 @@ impl NousActor {
                 session_id.as_deref(),
                 turn_id,
                 request_id,
+                client_turn_id,
                 &content,
                 &stream_tx,
                 approval_gate,
@@ -273,6 +278,7 @@ impl NousActor {
                 session_id,
                 None,
                 None,
+                None,
                 content,
                 None,
                 None,
@@ -294,6 +300,7 @@ impl NousActor {
         session_id: Option<&str>,
         turn_id: Option<Ulid>,
         request_id: Option<String>,
+        client_turn_id: Option<String>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -306,6 +313,7 @@ impl NousActor {
                 session_id,
                 turn_id,
                 request_id,
+                client_turn_id,
                 content,
                 Some(stream_tx.clone()),
                 approval_gate,
@@ -342,6 +350,7 @@ impl NousActor {
         db_session_id: Option<&str>,
         turn_id: Option<Ulid>,
         request_id: Option<String>,
+        client_turn_id: Option<String>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -364,6 +373,9 @@ impl NousActor {
         // middleware, threaded through so the execute stage's prompt-audit
         // records key off the real gateway request.
         session.request_id = request_id;
+        // WHY(#4853): client-generated turn id from the request body, when
+        // supplied, threaded onto the canonical `TurnEventIdentity`.
+        session.client_turn_id = client_turn_id;
 
         // WHY: surprise is episodic — advance the running session prior with
         // this turn's content here, on the authoritative SessionState, so the
@@ -442,7 +454,22 @@ impl NousActor {
         let tool_ctx = ToolContext {
             nous_id,
             session_id,
-            turn_number: session.turn,
+            // WHY(#4853): the canonical identity, not a re-derived turn
+            // number -- mirrors the `event_identity` built in
+            // `execute::mod` from the same three `SessionState` fields.
+            turn_identity: koina::turn_identity::TurnEventIdentity {
+                turn_id: session.turn_id,
+                session_id: session.id.clone(),
+                request_id: session.request_id.clone(),
+                turn_number: session.turn,
+                client_turn_id: session.client_turn_id.clone(),
+            },
+            // WHY(#4835): the same per-session ephemeral signer nous's
+            // dispatch loop already uses for its own V2 receipts -- not a
+            // fresh one -- so a registry-attached receipt and a
+            // dispatch-attached receipt for the same session verify against
+            // the same key.
+            receipt_signer: session.receipt_signer.clone(),
             workspace: self.config.workspace.clone(),
             allowed_roots: self.config.allowed_roots.clone(),
             services: self.services.tool_services.clone(),

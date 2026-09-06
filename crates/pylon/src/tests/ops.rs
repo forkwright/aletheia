@@ -83,7 +83,7 @@ fn tool_history_audits() -> Vec<FinalizeToolAuditRecord<'static>> {
             outcome: "error",
             result: Some("Tool error: failed"),
             approval: Some("auto_approved"),
-            receipt: None,
+            receipt: "",
         },
         FinalizeToolAuditRecord {
             turn_seq: 11,
@@ -94,7 +94,7 @@ fn tool_history_audits() -> Vec<FinalizeToolAuditRecord<'static>> {
             outcome: "success",
             result: Some("ok"),
             approval: Some("approved"),
-            receipt: None,
+            receipt: "",
         },
         FinalizeToolAuditRecord {
             turn_seq: 11,
@@ -105,7 +105,7 @@ fn tool_history_audits() -> Vec<FinalizeToolAuditRecord<'static>> {
             outcome: "success",
             result: Some("ok\n\n[receipt:receipt-token]"),
             approval: Some("auto_approved"),
-            receipt: Some("receipt-token"),
+            receipt: "receipt-token",
         },
     ]
 }
@@ -148,7 +148,8 @@ async fn get_ops_tools_returns_registry_and_metrics() {
     let ctx = ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"),
         session_id: SessionId::new(),
-        turn_number: 0,
+        turn_identity: organon::testing::test_turn_identity(0),
+        receipt_signer: organon::testing::test_receipt_signer(),
         workspace: PathBuf::from("/tmp/aletheia-test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,

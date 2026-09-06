@@ -40,13 +40,28 @@ async fn injector_includes_key_info_and_history() {
     let hook = WorkingCheckpointInjector::new(Some(store.clone()));
 
     store
-        .write_checkpoint("ses-1", 1, "first checkpoint")
+        .write_checkpoint(
+            "ses-1",
+            koina::ulid::Ulid::from_u128(1),
+            1,
+            "first checkpoint",
+        )
         .expect("write first");
     store
-        .write_checkpoint("ses-1", 2, "second checkpoint")
+        .write_checkpoint(
+            "ses-1",
+            koina::ulid::Ulid::from_u128(2),
+            2,
+            "second checkpoint",
+        )
         .expect("write second");
     store
-        .write_checkpoint("ses-1", 3, "third checkpoint")
+        .write_checkpoint(
+            "ses-1",
+            koina::ulid::Ulid::from_u128(3),
+            3,
+            "third checkpoint",
+        )
         .expect("write third");
 
     let mut pipeline = PipelineContext {
@@ -118,7 +133,7 @@ async fn injector_truncates_oversized_content() {
 
     let long_content = "x".repeat(3000);
     store
-        .write_checkpoint("ses-1", 1, &long_content)
+        .write_checkpoint("ses-1", koina::ulid::Ulid::from_u128(1), 1, &long_content)
         .expect("write");
 
     let mut pipeline = PipelineContext {
@@ -150,7 +165,7 @@ async fn injector_skips_when_insufficient_budget() {
     let hook = WorkingCheckpointInjector::new(Some(store.clone()));
 
     store
-        .write_checkpoint("ses-1", 1, "checkpoint")
+        .write_checkpoint("ses-1", koina::ulid::Ulid::from_u128(1), 1, "checkpoint")
         .expect("write");
 
     let mut pipeline = PipelineContext {
@@ -211,7 +226,12 @@ async fn on_turn_complete_verifies_checkpoint() {
     let hook = WorkingCheckpointInjector::new(Some(store.clone()));
 
     store
-        .write_checkpoint("ses-1", 5, "turn-5-checkpoint")
+        .write_checkpoint(
+            "ses-1",
+            koina::ulid::Ulid::from_u128(5),
+            5,
+            "turn-5-checkpoint",
+        )
         .expect("write");
 
     let turn_result = test_turn_result();
@@ -238,7 +258,7 @@ async fn mod_n_boundary_triggers_identity_reinjection() {
     let hook = WorkingCheckpointInjector::new(Some(store.clone()));
 
     store
-        .write_checkpoint("ses-1", 1, "checkpoint")
+        .write_checkpoint("ses-1", koina::ulid::Ulid::from_u128(1), 1, "checkpoint")
         .expect("write");
 
     // Turn 9 completes with reinject_identity=true (because (9+1)%10==0).
@@ -287,7 +307,7 @@ async fn injector_truncates_multibyte_content_without_panic() {
     // 2-byte chars guarantee a byte-index cut at 2000 lands mid-character.
     let long_content = "é".repeat(2500);
     store
-        .write_checkpoint("ses-mb", 1, &long_content)
+        .write_checkpoint("ses-mb", koina::ulid::Ulid::from_u128(1), 1, &long_content)
         .expect("write");
 
     let mut pipeline = PipelineContext {

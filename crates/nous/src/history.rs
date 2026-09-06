@@ -219,7 +219,10 @@ fn apply_tool_audit(
         message.tool_is_error = Some(audit.is_error);
         message.tool_duration_ms = Some(audit.duration_ms);
         message.tool_approval.clone_from(&audit.approval);
-        message.tool_receipt.clone_from(&audit.receipt);
+        // WHY(#4835): ToolAuditRecord.receipt is required (empty for a call
+        // that never executed); reinjected history keeps the pre-existing
+        // Option semantics, so an empty durable value maps to `None` here.
+        message.tool_receipt = (!audit.receipt.is_empty()).then(|| audit.receipt.clone());
     }
 }
 

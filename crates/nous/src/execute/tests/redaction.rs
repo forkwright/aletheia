@@ -732,6 +732,8 @@ async fn saturated_live_stream_defaults_to_deny_without_pre_timeout_blocking() {
                 turn_id: Ulid::new(),
                 session_id: "test-session".to_owned(),
                 request_id: None,
+                turn_number: 0,
+                client_turn_id: None,
             },
             tool_id: "filler".to_owned(),
             decision: "filler".to_owned(),

@@ -220,7 +220,10 @@ fn build_tool_audit_records(
             outcome: tc.outcome_label(),
             result: tc.result.as_deref(),
             approval: tc.approval.as_deref(),
-            receipt: tc.receipt.as_deref(),
+            // WHY(#4835): the write boundary requires a receipt; a `None`
+            // here means the call never executed (denied before dispatch),
+            // and there is honestly nothing for a signer to have attested.
+            receipt: tc.receipt.as_deref().unwrap_or(""),
         })
         .collect()
 }
@@ -882,7 +885,7 @@ mod tests {
             .iter()
             .find(|record| record.tool_call_id == "tc-receipt")
             .expect("receipt call audit record");
-        assert_eq!(receipt.receipt.as_deref(), Some("receipt-token"));
+        assert_eq!(receipt.receipt, "receipt-token");
         assert_eq!(receipt.outcome, "success");
 
         // WHY this pair matters (#4558): a genuine policy denial IS a known

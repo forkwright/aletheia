@@ -110,7 +110,7 @@ impl ToolExecutor for EnableToolExecutor {
             tracing::info!(
                 target_tool = %tool_name,
                 session_id = %ctx.session_id,
-                turn_number = ctx.turn_number,
+                turn_number = ctx.turn_number(),
                 source = source_str,
                 sensitive,
                 "enable_tool: activated tool"
@@ -175,7 +175,7 @@ fn activate_from_surface(
     tracing::info!(
         target_tool = %tool_name,
         session_id = %ctx.session_id,
-        turn_number = ctx.turn_number,
+        turn_number = ctx.turn_number(),
         source = "effective_surface",
         "enable_tool: activated tool"
     );

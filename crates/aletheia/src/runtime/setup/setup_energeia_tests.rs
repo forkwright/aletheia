@@ -12,7 +12,14 @@ fn tool_context(root: &std::path::Path) -> organon::types::ToolContext {
     organon::types::ToolContext {
         nous_id: NousId::new("test").expect("valid nous id"),
         session_id: SessionId::new(),
-        turn_number: 0,
+        turn_identity: koina::turn_identity::TurnEventIdentity {
+            turn_id: koina::ulid::Ulid::new(),
+            session_id: "test".to_owned(),
+            request_id: None,
+            turn_number: 0,
+            client_turn_id: None,
+        },
+        receipt_signer: organon::receipts::ReceiptSigner::new_session(),
         workspace: root.to_path_buf(),
         allowed_roots: vec![root.to_path_buf()],
         services: None,

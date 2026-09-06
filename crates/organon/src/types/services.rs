@@ -546,12 +546,18 @@ pub struct SpawnResult {
 pub trait WorkingCheckpointStore: Send + Sync {
     /// Persist a checkpoint for the given session and turn.
     ///
+    /// WHY(#4853): keyed by the canonical `turn_id` (not just `turn_number`)
+    /// so the on-disk key matches `TurnEventIdentity` instead of a
+    /// disconnected re-derived ordinal; `turn_number` is still carried as a
+    /// display field on the persisted record.
+    ///
     /// # Errors
     ///
     /// Returns `StoreError` on persistence failure.
     fn write_checkpoint(
         &self,
         session_id: &str,
+        turn_id: koina::ulid::Ulid,
         turn_number: u64,
         content: &str,
     ) -> std::result::Result<(), crate::error::StoreError>;

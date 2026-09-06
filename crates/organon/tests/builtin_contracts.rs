@@ -33,7 +33,8 @@ fn validation_context() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"),
         session_id: SessionId::new(),
-        turn_number: 0,
+        turn_identity: organon::testing::test_turn_identity(0),
+        receipt_signer: organon::testing::test_receipt_signer(),
         workspace: PathBuf::from("/tmp"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,

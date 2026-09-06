@@ -330,7 +330,8 @@ async fn scan_requires_services() {
     let ctx = ToolContext {
         nous_id: NousId::new("test").expect("valid"),
         session_id: SessionId::new(),
-        turn_number: 0,
+        turn_identity: crate::testing::test_turn_identity(0),
+        receipt_signer: crate::testing::test_receipt_signer(),
         workspace: std::path::PathBuf::from("/tmp"),
         allowed_roots: vec![],
         services: None,
