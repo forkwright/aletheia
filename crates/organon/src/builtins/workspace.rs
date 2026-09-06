@@ -375,37 +375,52 @@ impl ToolExecutor for ReadExecutor {
             // validate-to-I/O race still exists for path-based OS APIs; Receipt
             // V2 attests the exact executor-bound input, not inode identity.
             let path = validate_prepared_path(path_str, ctx, &input.name)?;
-
             let max_read = ctx.tool_config.max_read_bytes;
-            match std::fs::metadata(&path) {
-                Ok(meta) if meta.len() > max_read => {
-                    return Ok(err_result(format!(
-                        "file too large: {} bytes (max {max_read} bytes)",
-                        meta.len(),
-                    )));
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(err_result(format!(
-                        "file not found: {}",
-                        sanitize_path_in_msg(&path)
-                    )));
-                }
-                Err(e) => {
-                    return Ok(err_result(format!("read failed: {e}")));
-                }
-                Ok(_) => {}
-            }
 
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(err_result(format!(
-                        "file not found: {}",
-                        sanitize_path_in_msg(&path)
-                    )));
-                }
-                Err(e) => {
-                    return Ok(err_result(format!("read failed: {e}")));
+            // SECURITY(#5230): matches ExecExecutor's spawn_blocking pattern
+            // above -- metadata() and read_to_string() are blocking syscalls
+            // whose cost scales with file size. Run inline in this async fn,
+            // a tens-of-MB file would tie up the Tokio worker thread for the
+            // length of the read, stalling every other task scheduled on it.
+            // spawn_blocking moves the wait onto the blocking thread pool.
+            let path_owned = path.clone();
+            let read_result =
+                tokio::task::spawn_blocking(move || -> std::result::Result<String, String> {
+                    match std::fs::metadata(&path_owned) {
+                        Ok(meta) if meta.len() > max_read => {
+                            return Err(format!(
+                                "file too large: {} bytes (max {max_read} bytes)",
+                                meta.len(),
+                            ));
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            return Err(format!(
+                                "file not found: {}",
+                                sanitize_path_in_msg(&path_owned)
+                            ));
+                        }
+                        Err(e) => {
+                            return Err(format!("read failed: {e}"));
+                        }
+                        Ok(_) => {}
+                    }
+
+                    match std::fs::read_to_string(&path_owned) {
+                        Ok(c) => Ok(c),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(format!(
+                            "file not found: {}",
+                            sanitize_path_in_msg(&path_owned)
+                        )),
+                        Err(e) => Err(format!("read failed: {e}")),
+                    }
+                })
+                .await;
+
+            let content = match read_result {
+                Ok(Ok(c)) => c,
+                Ok(Err(msg)) => return Ok(err_result(msg)),
+                Err(join_err) => {
+                    return Ok(err_result(format!("read task panicked: {join_err}")));
                 }
             };
 
@@ -464,36 +479,51 @@ impl ToolExecutor for WriteExecutor {
                 )));
             }
 
-            if let Some(parent) = path.parent()
-                && let Err(e) = std::fs::create_dir_all(parent)
-            {
-                return Ok(err_result(format!("failed to create directories: {e}")));
-            }
+            // SECURITY(#5230): matches ExecExecutor's spawn_blocking pattern
+            // above -- create_dir_all and the file write are blocking
+            // syscalls whose cost scales with content size. spawn_blocking
+            // moves them onto the blocking thread pool so a large write
+            // doesn't stall every other task scheduled on this worker.
+            let path_owned = path.clone();
+            let content_owned = content.to_owned();
+            let byte_len = content_owned.len();
+            let write_result = tokio::task::spawn_blocking(
+                move || -> std::result::Result<(), String> {
+                    if let Some(parent) = path_owned.parent()
+                        && let Err(e) = std::fs::create_dir_all(parent)
+                    {
+                        return Err(format!("failed to create directories: {e}"));
+                    }
 
-            let write_result = if append {
-                std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&path)
-                    .and_then(|mut f| {
-                        use std::io::Write;
-                        f.write_all(content.as_bytes())
-                    })
-            } else {
-                #[expect(
-                    clippy::disallowed_methods,
-                    reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
-                )]
-                std::fs::write(&path, content)
-            };
+                    let result = if append {
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&path_owned)
+                            .and_then(|mut f| {
+                                use std::io::Write;
+                                f.write_all(content_owned.as_bytes())
+                            })
+                    } else {
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+                        )]
+                        std::fs::write(&path_owned, content_owned)
+                    };
+
+                    result.map_err(|e| format!("write failed: {e}"))
+                },
+            )
+            .await;
 
             match write_result {
-                Ok(()) => Ok(ToolResult::text(format!(
-                    "wrote {} bytes to {}",
-                    content.len(),
+                Ok(Ok(())) => Ok(ToolResult::text(format!(
+                    "wrote {byte_len} bytes to {}",
                     sanitize_path_in_msg(&path)
                 ))),
-                Err(e) => Ok(err_result(format!("write failed: {e}"))),
+                Ok(Err(msg)) => Ok(err_result(msg)),
+                Err(join_err) => Ok(err_result(format!("write task panicked: {join_err}"))),
             }
         })
     }
@@ -523,48 +553,66 @@ impl ToolExecutor for EditExecutor {
                 )));
             }
 
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(err_result(format!(
-                        "file not found: {}",
-                        sanitize_path_in_msg(&path)
-                    )));
-                }
-                Err(e) => {
-                    return Ok(err_result(format!("read failed: {e}")));
-                }
-            };
+            // SECURITY(#5230): matches ExecExecutor's spawn_blocking pattern
+            // above -- reading and rewriting the file are blocking syscalls
+            // whose cost scales with file size. spawn_blocking moves them
+            // onto the blocking thread pool so a large edit doesn't stall
+            // every other task scheduled on this worker.
+            let path_owned = path.clone();
+            let old_text_owned = old_text.to_owned();
+            let new_text_owned = new_text.to_owned();
+            let edit_result = tokio::task::spawn_blocking(
+                move || -> std::result::Result<(usize, usize), String> {
+                    let content = match std::fs::read_to_string(&path_owned) {
+                        Ok(c) => c,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            return Err(format!(
+                                "file not found: {}",
+                                sanitize_path_in_msg(&path_owned)
+                            ));
+                        }
+                        Err(e) => {
+                            return Err(format!("read failed: {e}"));
+                        }
+                    };
 
-            let count = content.matches(old_text).count();
-            if count == 0 {
-                return Ok(err_result(format!(
-                    "old_text not found in {}",
+                    let count = content.matches(old_text_owned.as_str()).count();
+                    if count == 0 {
+                        return Err(format!(
+                            "old_text not found in {}",
+                            sanitize_path_in_msg(&path_owned)
+                        ));
+                    }
+                    if count > 1 {
+                        return Err(format!(
+                            "old_text found {count} times in {} \u{2014} must be unique",
+                            sanitize_path_in_msg(&path_owned)
+                        ));
+                    }
+
+                    let new_content =
+                        content.replacen(old_text_owned.as_str(), new_text_owned.as_str(), 1);
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+                    )]
+                    if let Err(e) = std::fs::write(&path_owned, &new_content) {
+                        return Err(format!("write failed: {e}"));
+                    }
+
+                    Ok((old_text_owned.len(), new_text_owned.len()))
+                },
+            )
+            .await;
+
+            match edit_result {
+                Ok(Ok((old_len, new_len))) => Ok(ToolResult::text(format!(
+                    "edited {}: replaced {old_len} chars with {new_len} chars",
                     sanitize_path_in_msg(&path)
-                )));
+                ))),
+                Ok(Err(msg)) => Ok(err_result(msg)),
+                Err(join_err) => Ok(err_result(format!("edit task panicked: {join_err}"))),
             }
-            if count > 1 {
-                return Ok(err_result(format!(
-                    "old_text found {count} times in {} \u{2014} must be unique",
-                    sanitize_path_in_msg(&path)
-                )));
-            }
-
-            let new_content = content.replacen(old_text, new_text, 1);
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
-            )]
-            if let Err(e) = std::fs::write(&path, &new_content) {
-                return Ok(err_result(format!("write failed: {e}")));
-            }
-
-            Ok(ToolResult::text(format!(
-                "edited {}: replaced {} chars with {} chars",
-                sanitize_path_in_msg(&path),
-                old_text.len(),
-                new_text.len()
-            )))
         })
     }
 }

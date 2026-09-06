@@ -35,6 +35,58 @@ async fn read_existing_file() {
     );
 }
 
+/// SECURITY(#5230) proof: a tens-of-MB read does not tie up the Tokio
+/// worker thread it runs on.
+///
+/// `#[tokio::test]` defaults to a single-worker (current-thread) runtime.
+/// A freshly `tokio::spawn`-ed task only gets its first poll once the
+/// currently running task actually yields (returns `Pending` at some real
+/// `.await` point) -- so the elapsed time before that first poll is a direct
+/// measurement of how long something else monopolized the sole worker
+/// thread. If `ReadExecutor` ran `metadata()`/`read_to_string()` inline
+/// instead of via `spawn_blocking`, its `.execute(..).await` would resolve
+/// on the very first poll with no internal suspension point, so the whole
+/// multi-read loop below would run as one uninterrupted synchronous stretch
+/// and the ticker task would sit unpolled for that entire duration. With
+/// `spawn_blocking`, each read's `.await` suspends immediately (the
+/// blocking-pool future isn't ready yet), letting the ticker run its single
+/// poll within microseconds of being spawned.
+#[tokio::test]
+async fn large_read_does_not_stall_concurrent_task() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let payload = vec![b'a'; 45 * 1024 * 1024]; // tens of MB, under the 50MB default cap
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(dir.path().join("big.txt"), &payload).expect("write fixture");
+    drop(payload);
+
+    let ctx = test_ctx(dir.path());
+
+    let started = tokio::time::Instant::now();
+    // This task does nothing but record how long it waited for its first
+    // (and only) poll -- the signal the rest of the test hinges on.
+    let ticker = tokio::spawn(async move { started.elapsed() });
+
+    for _ in 0..4 {
+        let input = tool_input("read", serde_json::json!({ "path": "big.txt" }));
+        let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
+        assert!(
+            !result.is_error,
+            "read of a valid large file should not error"
+        );
+    }
+
+    let first_poll_delay = ticker.await.expect("ticker task should not panic");
+    assert!(
+        first_poll_delay < Duration::from_millis(60),
+        "a freshly spawned task waited {first_poll_delay:?} for its first poll while \
+         tens-of-MB reads were in flight on the same worker -- ReadExecutor is \
+         blocking the Tokio worker thread instead of running on the blocking pool"
+    );
+}
+
 #[tokio::test]
 async fn read_with_max_lines() {
     let dir = tempfile::tempdir().expect("create temp dir");
