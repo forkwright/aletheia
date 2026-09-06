@@ -13,8 +13,9 @@ const PENDING_STYLE: &str = "\
     font-size: var(--text-base);\
 ";
 
-// WHY: CSS animation may not work in Blitz/Dioxus desktop webview;
-// the pulsing opacity is a signal-driven fallback defined in the component.
+// WHY: CSS animation may not work reliably in the wry/webkit2gtk desktop
+// webview; the pulsing opacity is a signal-driven fallback defined in the
+// component.
 const RUNNING_STYLE: &str = "\
     color: var(--accent); \
     font-size: var(--text-base);\
@@ -39,7 +40,8 @@ pub(crate) fn ToolStatusIcon(status: ToolStatus) -> Element {
         },
         ToolStatus::Running => {
             // WHY: signal-driven animation as fallback for CSS @keyframes
-            // limitations in Blitz. Toggles opacity on a 500ms interval.
+            // limitations in the webkit2gtk webview. Toggles opacity on a
+            // 500ms interval.
             let pulse = use_signal(|| true);
             let opacity = if *pulse.read() { "1.0" } else { "0.4" };
             let style = format!("{RUNNING_STYLE} opacity: {opacity};");
