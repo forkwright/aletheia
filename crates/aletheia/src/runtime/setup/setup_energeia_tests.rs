@@ -19,6 +19,7 @@ fn tool_context(root: &std::path::Path) -> organon::types::ToolContext {
             turn_number: 0,
             client_turn_id: None,
         },
+        receipt_signer: organon::receipts::ReceiptSigner::new_session(),
         workspace: root.to_path_buf(),
         allowed_roots: vec![root.to_path_buf()],
         services: None,

@@ -1008,6 +1008,14 @@ pub(super) fn simple_hash(value: &serde_json::Value) -> String {
 }
 
 /// Classify the interaction signals based on tool calls and content.
+///
+/// WHY(#4835): `used_server_web_search`/`used_server_code_execution` are a
+/// provider self-report (the provider's own claim, off its response), not an
+/// execution receipt -- provider-executed tools never reach organon's
+/// `ToolRegistry`, so no `ReceiptSigner` ever attests them. `InteractionSignal`
+/// is the distinctly-named, non-receipt record of that usage this turn
+/// produces; it must never be presented as or merged with a `ToolResult`
+/// receipt.
 pub(super) fn classify_signals(
     tool_calls: &[ToolCall],
     _content: &str,

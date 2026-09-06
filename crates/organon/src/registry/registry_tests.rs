@@ -377,6 +377,56 @@ async fn execute_dispatches_correctly() {
     assert_eq!(call_count, 1, "expected call_count to equal 1");
 }
 
+/// PROOF(#4835): a direct `ToolRegistry::execute()` call -- not routed
+/// through nous's dispatch loop at all -- still comes back with a non-empty
+/// receipt, because `execute_prepared` attaches one unconditionally using
+/// the signer every `ToolContext` is now required to carry. This is the
+/// acceptance criterion the issue names explicitly: a caller that reaches
+/// the registry directly can no longer get a receipt-less result.
+#[tokio::test]
+async fn execute_attaches_a_receipt_even_with_no_nous_dispatch_in_the_loop() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _calls) = mock_executor("hello");
+    reg.register(make_def("greet", ToolCategory::System), exec)
+        .expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("greet"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+    assert!(
+        !result.receipt.is_empty(),
+        "execute() must attach a receipt without any dispatch-layer help"
+    );
+}
+
+/// PROOF(#4835): `execute_checked` -- the role/policy-gated entry point --
+/// shares the same guarantee via its delegation to `execute`.
+#[tokio::test]
+async fn execute_checked_attaches_a_receipt() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _calls) = mock_executor("hello");
+    reg.register(make_def("greet", ToolCategory::System), exec)
+        .expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("greet"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let policy = ToolGroupPolicy::groups(vec![ToolGroupId::Read]);
+    let result = reg
+        .execute_checked(&input, &mock_ctx(), "reader", &policy)
+        .await
+        .expect("execute_checked");
+    assert!(
+        !result.receipt.is_empty(),
+        "execute_checked() must attach a receipt"
+    );
+}
+
 #[tokio::test]
 async fn execute_not_found() {
     let reg = ToolRegistry::new();

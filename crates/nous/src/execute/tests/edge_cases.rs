@@ -548,7 +548,7 @@ fn store_with_persisted_tool_history() -> mneme::store::SessionStore {
         outcome: "success",
         result: Some("file contents"),
         approval: Some("approved"),
-        receipt: Some("receipt-token"),
+        receipt: "receipt-token",
     }];
     store
         .finalize_turn(&FinalizeTurnRequest {

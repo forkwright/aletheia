@@ -348,6 +348,16 @@ pub struct ToolContext {
     /// counter. Use [`Self::turn_number`] for the common case of just
     /// needing the session-local ordinal.
     pub turn_identity: koina::turn_identity::TurnEventIdentity,
+    /// Signer `ToolRegistry::execute_prepared` uses to attach a receipt to
+    /// every `ToolResult` it returns (#4835).
+    ///
+    /// WHY required, not `Option`: a caller cannot construct a `ToolContext`
+    /// -- and therefore cannot call `execute`/`execute_checked` -- without
+    /// supplying a signer. That turns "receipts are conventionally always
+    /// emitted" into a compile-time invariant instead of a runtime
+    /// convention, closing the gap where a future direct caller of the
+    /// registry could silently get a receipt-less result.
+    pub receipt_signer: crate::receipts::ReceiptSigner,
     /// Agent workspace root.
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.

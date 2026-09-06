@@ -126,6 +126,10 @@ fn replay_usage_from_mneme(record: mneme::types::UsageRecord) -> ReplayUsageReco
 }
 
 fn replay_tool_audit_from_mneme(record: mneme::types::ToolAuditRecord) -> ReplayToolAuditRecord {
+    // WHY(#4835): ToolAuditRecord.receipt is required (empty for a call that
+    // never executed); this DTO keeps the pre-existing null-vs-present wire
+    // shape, so an empty durable value maps to `None` here.
+    let receipt = (!record.receipt.is_empty()).then_some(record.receipt);
     ReplayToolAuditRecord {
         id: record.id,
         nous_id: record.nous_id,
@@ -137,7 +141,7 @@ fn replay_tool_audit_from_mneme(record: mneme::types::ToolAuditRecord) -> Replay
         outcome: record.outcome,
         result: record.result,
         approval: record.approval,
-        receipt: record.receipt,
+        receipt,
         created_at: record.created_at,
     }
 }

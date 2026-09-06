@@ -531,6 +531,7 @@ mod tests {
             nous_id: NousId::new("test").expect("valid nous id"),
             session_id: SessionId::new(),
             turn_identity: crate::testing::test_turn_identity(0),
+            receipt_signer: crate::testing::test_receipt_signer(),
             workspace,
             allowed_roots,
             services: None,

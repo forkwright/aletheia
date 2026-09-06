@@ -247,6 +247,7 @@ mod tests {
         ToolContext {
             session_id,
             turn_identity: crate::testing::test_turn_identity(turn_number),
+            receipt_signer: crate::testing::test_receipt_signer(),
             ..crate::testing::make_test_context_with(ToolServices {
                 working_checkpoint_store: Some(working_checkpoint_store),
                 ..Default::default()

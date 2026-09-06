@@ -751,7 +751,7 @@ async fn replay_export_includes_tool_usage_turn_and_failure_fields() {
             outcome: "error",
             result: Some("permission denied"),
             approval: Some("approved"),
-            receipt: Some("receipt-replay"),
+            receipt: "receipt-replay",
         }];
         store
             .finalize_turn(&FinalizeTurnRequest {

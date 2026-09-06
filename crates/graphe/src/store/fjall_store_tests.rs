@@ -931,7 +931,7 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
         outcome: "success",
         result: Some("ok"),
         approval: Some("auto_approved"),
-        receipt: Some("receipt-delete"),
+        receipt: "receipt-delete",
     }];
     store
         .finalize_turn(&FinalizeTurnRequest {
@@ -1414,7 +1414,7 @@ fn finalize_turn_persists_structured_tool_audit_records() {
         outcome: "success",
         result: Some("file contents"),
         approval: Some("approved"),
-        receipt: Some("receipt-token"),
+        receipt: "receipt-token",
     }];
     let request = FinalizeTurnRequest {
         session_id,
@@ -1446,7 +1446,7 @@ fn finalize_turn_persists_structured_tool_audit_records() {
     assert_eq!(recent[0].outcome, "success");
     assert_eq!(recent[0].result.as_deref(), Some("file contents"));
     assert_eq!(recent[0].approval.as_deref(), Some("approved"));
-    assert_eq!(recent[0].receipt.as_deref(), Some("receipt-token"));
+    assert_eq!(recent[0].receipt, "receipt-token");
 
     let session_records = store
         .tool_audit_records_for_session(session_id)

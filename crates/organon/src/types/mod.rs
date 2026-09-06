@@ -1293,8 +1293,20 @@ pub struct ToolResult {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub diagnostics: Option<ToolDiagnostics>,
     /// HMAC-SHA256 receipt for hallucination-resistant attestation.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub receipt: Option<String>,
+    ///
+    /// WHY required, not `Option` (#4835): a tool constructs its own
+    /// `ToolResult` before any receipt exists, so the constructors below set
+    /// this to an empty placeholder -- `ToolRegistry::execute_prepared`
+    /// unconditionally overwrites it with a real signed value before any
+    /// caller of `execute`/`execute_checked`/`execute_prepared` ever
+    /// observes the result. Making the field required (rather than the
+    /// registry merely promising to fill in `Some`) turns "receipts are
+    /// conventionally always emitted" into "a `ToolResult` returned by the
+    /// registry cannot be missing one" -- the executor's own placeholder
+    /// value never escapes the registry boundary. `#[serde(default)]` keeps
+    /// sessions/records persisted before this change deserializable.
+    #[serde(default)]
+    pub receipt: String,
 }
 
 impl ToolResult {
@@ -1307,7 +1319,7 @@ impl ToolResult {
             is_error: false,
             outcome: ToolOutcome::Success,
             diagnostics: None,
-            receipt: None,
+            receipt: String::new(),
         }
     }
 
@@ -1321,7 +1333,7 @@ impl ToolResult {
             is_error: true,
             outcome: ToolOutcome::failure(reason),
             diagnostics: None,
-            receipt: None,
+            receipt: String::new(),
         }
     }
 
@@ -1334,7 +1346,7 @@ impl ToolResult {
             is_error: false,
             outcome: ToolOutcome::Success,
             diagnostics: None,
-            receipt: None,
+            receipt: String::new(),
         }
     }
 
@@ -1357,7 +1369,7 @@ impl ToolResult {
             is_error: false,
             outcome: ToolOutcome::partial(reasons),
             diagnostics: None,
-            receipt: None,
+            receipt: String::new(),
         }
     }
 
@@ -1390,7 +1402,7 @@ impl ToolResult {
     #[must_use]
     pub fn with_receipt(mut self, receipt: impl Into<String>) -> Self {
         // kanon:ignore RUST/pub-visibility
-        self.receipt = Some(receipt.into());
+        self.receipt = receipt.into();
         self
     }
 }

@@ -306,6 +306,14 @@ pub fn test_turn_identity(turn_number: u64) -> koina::turn_identity::TurnEventId
     }
 }
 
+/// Build a placeholder [`crate::receipts::ReceiptSigner`] for tests (#4835).
+/// `ToolContext::receipt_signer` is required, so every test constructor
+/// needs one; this is a fresh ephemeral per-call signer, not shared state.
+#[must_use]
+pub fn test_receipt_signer() -> crate::receipts::ReceiptSigner {
+    crate::receipts::ReceiptSigner::new_session()
+}
+
 /// Build a minimal [`ToolContext`] for use in tests.
 ///
 /// Uses synthetic identities (`alice`, a fresh `SessionId`) and a
@@ -320,6 +328,7 @@ pub fn make_test_context() -> ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         turn_identity: test_turn_identity(0),
+        receipt_signer: test_receipt_signer(),
         workspace: PathBuf::from("/tmp/aletheia-test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,
@@ -354,6 +363,7 @@ pub fn make_test_context_at(dir: &std::path::Path) -> ToolContext {
         nous_id: NousId::new("test-agent").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         turn_identity: test_turn_identity(0),
+        receipt_signer: test_receipt_signer(),
         workspace: dir.to_path_buf(),
         allowed_roots: vec![dir.to_path_buf()],
         services: None,
@@ -381,6 +391,7 @@ pub fn make_test_context_without_services() -> ToolContext {
         nous_id: NousId::new("test-agent").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         turn_identity: test_turn_identity(0),
+        receipt_signer: test_receipt_signer(),
         workspace: std::path::PathBuf::from("/tmp/test"),
         allowed_roots: vec![std::path::PathBuf::from("/tmp")],
         services: None,

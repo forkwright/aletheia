@@ -464,6 +464,12 @@ impl NousActor {
                 turn_number: session.turn,
                 client_turn_id: session.client_turn_id.clone(),
             },
+            // WHY(#4835): the same per-session ephemeral signer nous's
+            // dispatch loop already uses for its own V2 receipts -- not a
+            // fresh one -- so a registry-attached receipt and a
+            // dispatch-attached receipt for the same session verify against
+            // the same key.
+            receipt_signer: session.receipt_signer.clone(),
             workspace: self.config.workspace.clone(),
             allowed_roots: self.config.allowed_roots.clone(),
             services: self.services.tool_services.clone(),

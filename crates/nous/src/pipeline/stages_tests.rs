@@ -724,6 +724,7 @@ fn execute_stage_tool_ctx() -> ToolContext {
             turn_number: 0,
             client_turn_id: None,
         },
+        receipt_signer: organon::receipts::ReceiptSigner::new_session(),
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,

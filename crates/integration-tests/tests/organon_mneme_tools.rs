@@ -69,6 +69,7 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
             turn_number: 0,
             client_turn_id: None,
         },
+        receipt_signer: organon::receipts::ReceiptSigner::new_session(),
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {
@@ -631,6 +632,7 @@ fn ctx_with_knowledge(svc: Arc<dyn KnowledgeSearchService>) -> ToolContext {
             turn_number: 0,
             client_turn_id: None,
         },
+        receipt_signer: organon::receipts::ReceiptSigner::new_session(),
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: Some(Arc::new(ToolServices {

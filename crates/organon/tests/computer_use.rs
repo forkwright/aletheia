@@ -23,6 +23,7 @@ fn test_ctx() -> ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
         turn_identity: organon::testing::test_turn_identity(0),
+        receipt_signer: organon::testing::test_receipt_signer(),
         workspace: PathBuf::from("/tmp/test"),
         allowed_roots: vec![PathBuf::from("/tmp")],
         services: None,

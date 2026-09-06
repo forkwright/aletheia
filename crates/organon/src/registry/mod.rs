@@ -468,7 +468,7 @@ impl ToolRegistry {
         // propagates correctly across `.await` points. `span.enter()` in async code
         // keeps the span entered on the current thread even when suspended, which
         // causes incorrect parent attribution for concurrent tasks (#3384).
-        let result = tool
+        let mut result = tool
             .executor
             .execute(input, ctx)
             .instrument(span.clone())
@@ -498,6 +498,35 @@ impl ToolRegistry {
             start.elapsed().as_secs_f64(),
             status,
         );
+
+        // WHY(#4835): every `ToolResult` this function returns leaves with a
+        // real signed receipt, not the empty placeholder the executor's own
+        // `ToolResult::text`/`::error`/`::blocks`/`::partial_success`
+        // constructors set. This is the one chokepoint both `execute` and
+        // `execute_prepared`'s direct callers (nous's dispatch loop
+        // included) share, so it is also the one place the invariant needs
+        // to be enforced rather than left to per-caller convention. The
+        // signature this attaches is deliberately the simpler V1 tuple
+        // (tool name, args, result text, timestamp) rather than the fuller
+        // V2 attestation: V2 also binds an approval decision and redaction
+        // policy, neither of which the registry has visibility into --
+        // those live in nous's dispatch loop, which already signs its own
+        // richer V2 receipt for the persisted audit trail after this
+        // returns. This receipt is the registry's own safety net against a
+        // caller that reaches `execute`/`execute_checked`/`execute_prepared`
+        // directly, bypassing nous's dispatch loop entirely.
+        if let Ok(ref mut tool_result) = result {
+            let args_json = serde_json::to_string(&input.arguments).unwrap_or_default();
+            let output_text = tool_result.content.text_summary();
+            let receipt = ctx.receipt_signer.sign(
+                input.name.as_str(),
+                &args_json,
+                &output_text,
+                jiff::Timestamp::now(),
+            );
+            tool_result.receipt = receipt;
+        }
+
         result
     }
 

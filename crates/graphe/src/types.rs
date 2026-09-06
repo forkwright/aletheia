@@ -363,8 +363,15 @@ pub struct ToolAuditRecord {
     pub result: Option<String>,
     /// Approval outcome applied before execution, when known.
     pub approval: Option<String>,
-    /// HMAC receipt token emitted for this tool result, when present.
-    pub receipt: Option<String>,
+    /// HMAC receipt token emitted for this tool result.
+    ///
+    /// WHY required, not `Option` (#4835): the write boundary
+    /// ([`FinalizeToolAuditRecord`](crate::store::fjall_store::FinalizeToolAuditRecord))
+    /// no longer accepts `None`. `#[serde(default)]` keeps rows persisted
+    /// before this change (genuinely missing the field) reading back as an
+    /// empty string rather than failing to deserialize.
+    #[serde(default)]
+    pub receipt: String,
     /// ISO 8601 timestamp when this audit row was written.
     pub created_at: String,
 }

@@ -704,6 +704,16 @@ async fn run_execute_loop(
     let mut final_content = String::new();
     let mut final_stop_reason = STOP_REASON_MAX_TOOL_ITERATIONS.to_owned();
     let mut client_disconnected = false;
+    // WHY(#4835): provider-side (server-executed) tool usage, self-reported
+    // by the provider's own response -- never conflate this with an
+    // execution receipt. Provider-executed tools never reach organon's
+    // ToolRegistry, so no ReceiptSigner ever attests them; there is no
+    // prepared input/output pair on our side for a signer to sign over.
+    // These booleans feed `classify_signals` below as an honestly-named
+    // provider self-report, distinct from `ToolResult.receipt` /
+    // `organon::receipts::ReceiptSigner`, and must stay that way -- signing
+    // over data we never saw would look like an attestation of what ran
+    // while only attesting the provider's own claim.
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();

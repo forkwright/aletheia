@@ -17,12 +17,17 @@ pub use ops_dto::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry, ToolH
 const RECENT_TOOL_HISTORY_LIMIT: usize = 100;
 
 fn history_entry(record: mneme::types::ToolAuditRecord) -> ToolHistoryEntry {
-    let receipt_state = if record.receipt.is_some() {
-        "present"
-    } else {
+    // WHY(#4835): `ToolAuditRecord.receipt` is required (empty string for a
+    // call that never executed -- denied before dispatch, nothing for a
+    // signer to attest); this API DTO keeps the pre-existing null-vs-present
+    // wire shape for clients, so an empty durable value maps to `None` here.
+    let receipt_state = if record.receipt.is_empty() {
         "absent"
+    } else {
+        "present"
     }
     .to_owned();
+    let receipt = (!record.receipt.is_empty()).then_some(record.receipt);
 
     ToolHistoryEntry {
         id: record.id,
@@ -37,7 +42,7 @@ fn history_entry(record: mneme::types::ToolAuditRecord) -> ToolHistoryEntry {
         result: record.result,
         approval: record.approval,
         receipt_state,
-        receipt: record.receipt,
+        receipt,
         created_at: record.created_at,
     }
 }
