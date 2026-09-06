@@ -1,4 +1,4 @@
-# kanon:ignore NAMING/no-owner-prefix -- WHY: crate/binary name is the existing MCP package surface; renaming is a cross-repo migration outside this security fix.
+# kanon:ignore NAMING/no-owner-prefix -- WHY: crate/binary name is the existing MCP package surface; tracked in aletheia#5584, removed when the GNOMON naming review assigns this binary's name (candidates on kanon#540).
 [package]
 name = "aletheia-memory-mcp"
 version.workspace = true
