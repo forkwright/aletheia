@@ -1834,11 +1834,28 @@ impl SessionStore {
                 index_keys.push(k.to_vec());
             }
 
+            // WHY(#7219): a session's `idx:nous:{nous_id}:upd:{ts}:{id}` entry
+            // is meant to be a 1:1 pointer, but a stale entry left behind by an
+            // older write path (or manual store surgery) can leave two index
+            // keys — different embedded timestamps — resolving to the same
+            // session id. Trusting the index unconditionally then resolved
+            // that id twice, producing a duplicate row that also inflated the
+            // `total` reported to callers and desynced cursor pagination at
+            // the duplicate's boundary. Dedup by session id here, in the
+            // query itself, rather than post-filtering the handler's output:
+            // iterating most-recent-key-first means the first occurrence of
+            // an id is always the one whose embedded timestamp matches the
+            // live record, so a stale duplicate is dropped in favor of it.
+            let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
             for raw_key in index_keys.into_iter().rev() {
                 let key = String::from_utf8_lossy(&raw_key).into_owned();
-                if let Some(session_id) = key.rsplit(':').next()
-                    && let Some(session) = self.read_session_by_raw_id(session_id)?
-                {
+                let Some(session_id) = key.rsplit(':').next() else {
+                    continue;
+                };
+                if !seen_ids.insert(session_id.to_owned()) {
+                    continue;
+                }
+                if let Some(session) = self.read_session_by_raw_id(session_id)? {
                     sessions.push(session);
                 }
             }

@@ -559,6 +559,61 @@ fn list_sessions_no_duplicates_after_distillation() {
     assert_eq!(listed[0].id, "ses-1");
 }
 
+/// Regression for #7219: `GET /api/v1/sessions?nous_id=X&limit=N` returned a
+/// duplicate row in place of a distinct session and inflated `total`, because
+/// a stale `idx:nous:{nous_id}:upd:{ts}:{id}` entry left behind by an older
+/// write path (or manual store surgery) resolved the same session id twice.
+/// Fixed at the query layer: `list_sessions` now dedups by session id instead
+/// of trusting the index unconditionally.
+#[test]
+fn list_sessions_dedupes_stale_nous_index_entry() {
+    let store = test_store();
+    let n_plus_one = 11;
+    for i in 0..n_plus_one {
+        store
+            .create_session(
+                &format!("ses-{i}"),
+                "alice",
+                &format!("key-{i}"),
+                None,
+                None,
+            )
+            .expect("create");
+    }
+
+    let target = store
+        .find_session_by_id("ses-5")
+        .expect("query")
+        .expect("session exists");
+
+    // WHY: fabricate a second, stale index entry for the same session id with
+    // an older embedded timestamp — the exact shape a since-fixed write path
+    // (or a future regression) can leave behind alongside the current,
+    // correct entry.
+    let stale_key = super::SessionStore::session_nous_index_key(
+        "alice",
+        "2020-01-01T00:00:00.000Z",
+        &target.id,
+    );
+    write_raw(&store, "sessions", &stale_key, b"");
+
+    let listed = store.list_sessions(Some("alice")).expect("list");
+    assert_eq!(
+        listed.len(),
+        n_plus_one,
+        "a stale duplicate index entry must not inflate the list beyond the \
+         distinct session count"
+    );
+    let mut ids: Vec<&str> = listed.iter().map(|s| s.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(
+        ids.len(),
+        n_plus_one,
+        "every session id returned by list_sessions must be distinct"
+    );
+}
+
 #[test]
 fn count_sessions_since_uses_index_not_full_scan() {
     let store = test_store();

@@ -471,6 +471,77 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     );
 }
 
+/// Regression for #7219: paging through `nous_id`-filtered sessions with
+/// `limit` + `after` must visit every session exactly once and report a
+/// `total` consistent with the distinct ids actually returned. A duplicate
+/// row at a page boundary previously both repeated an id and desynced the
+/// cursor, silently dropping whichever session would have been last.
+#[tokio::test]
+async fn list_sessions_paginates_n_plus_one_without_duplicates() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let n_plus_one = 11_u32;
+    for i in 0..n_plus_one {
+        let req = authed_request(
+            "POST",
+            "/api/v1/sessions",
+            Some(serde_json::json!({
+                "nous_id": "syn",
+                "session_key": format!("page-test-{i}")
+            })),
+        );
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut after: Option<String> = None;
+    let mut pages = 0;
+    loop {
+        pages += 1;
+        assert!(
+            pages <= n_plus_one + 1,
+            "pagination must terminate within a bounded number of pages"
+        );
+
+        let uri = match &after {
+            Some(cursor) => format!("/api/v1/sessions?nous_id=syn&limit=5&after={cursor}"),
+            None => "/api/v1/sessions?nous_id=syn&limit=5".to_owned(),
+        };
+        let resp = router.clone().oneshot(authed_get(&uri)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+
+        assert_eq!(
+            body["total"].as_u64(),
+            Some(u64::from(n_plus_one)),
+            "total must equal the distinct session count on every page"
+        );
+
+        let items = body["items"].as_array().unwrap();
+        for item in items {
+            let id = item["id"].as_str().unwrap().to_owned();
+            assert!(
+                seen_ids.insert(id.clone()),
+                "session id {id} was returned on more than one page"
+            );
+        }
+
+        if body["has_more"].as_bool().unwrap_or(false) {
+            after = Some(body["next_cursor"].as_str().unwrap().to_owned());
+        } else {
+            break;
+        }
+    }
+
+    assert_eq!(
+        seen_ids.len(),
+        usize::try_from(n_plus_one).expect("n_plus_one fits in usize"),
+        "every one of the N+1 sessions must be visited exactly once across all pages"
+    );
+}
+
 #[tokio::test]
 async fn archive_via_post_returns_204() {
     let (router, _dir) = app().await;
