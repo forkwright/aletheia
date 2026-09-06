@@ -225,6 +225,7 @@ mod front_door_enabled_tests {
             deployment_target: target,
             models: vec!["qwen3.8-27b".to_owned()],
             admission: None,
+            budgets: None,
         }
     }
 
