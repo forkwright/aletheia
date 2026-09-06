@@ -987,6 +987,36 @@ impl Default for ToolCapabilityMetadata {
     }
 }
 
+impl ToolCapabilityMetadata {
+    /// Merge `owner`/`stability`/`rollback` into `schema` as a sibling
+    /// `x-capability` key, alongside the schema's own top-level fields
+    /// (`type`, `properties`, `required`).
+    ///
+    /// SECURITY(#6808): `redaction` is deliberately excluded -- which
+    /// arguments a tool redacts on trace surfaces is not information a
+    /// schema handed to an agent, auditor, or external caller needs, and
+    /// naming redacted fields there would narrow exactly what redaction
+    /// exists to protect.
+    ///
+    /// `schema` is returned unchanged (no `x-capability` attached) if it is
+    /// not a JSON object -- `to_json_schema()` always produces one, so this
+    /// only guards a caller passing something else.
+    #[must_use]
+    pub fn attach_x_capability(&self, mut schema: serde_json::Value) -> serde_json::Value {
+        if let Some(obj) = schema.as_object_mut() {
+            obj.insert(
+                "x-capability".to_owned(),
+                serde_json::json!({
+                    "owner": self.owner,
+                    "stability": self.stability,
+                    "rollback": self.rollback,
+                }),
+            );
+        }
+        schema
+    }
+}
+
 /// Semantic tool category: classifies tool purpose.
 ///
 /// This is a semantic classification, not a loading strategy.

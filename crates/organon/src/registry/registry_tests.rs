@@ -4,7 +4,8 @@ use super::*;
 use crate::surface::ENABLE_TOOL;
 use crate::types::{
     ApprovalRequirement, InputSchema, PropertyDef, PropertyType, RedactionPolicy, Reversibility,
-    ToolCallCapability, ToolCallCapabilityRule, ToolCapabilityMetadata,
+    RollbackSupport, ToolCallCapability, ToolCallCapabilityRule, ToolCapabilityMetadata,
+    ToolStability,
 };
 
 /// Mock executor that captures calls for verification.
@@ -240,6 +241,72 @@ fn capability_declaration_rejects_empty_and_duplicate_field_policies() {
             ToolCapabilityMetadata::default()
         );
     }
+}
+
+// SECURITY(#7004) proof: `finalize_tool_schema` attaches x-capability
+// (owner/stability/rollback) beside a tool's own schema fields, and
+// excludes redaction per #6808.
+#[test]
+fn finalize_tool_schema_attaches_x_capability_and_excludes_redaction() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("ok");
+    let name = ToolName::from_static("read");
+    reg.register(make_def("read", ToolCategory::Workspace), exec)
+        .expect("register");
+    reg.declare_capability(
+        name.clone(),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::workspace".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Supported,
+            redaction: RedactionPolicy::default(),
+        },
+    )
+    .expect("declare capability");
+
+    reg.set_tool_schema_snapshot(Some(Arc::new(std::sync::RwLock::new(
+        std::collections::HashMap::new(),
+    ))));
+    reg.finalize_tool_schema().expect("finalize");
+
+    let snapshot = reg
+        .tool_schema_snapshot
+        .as_ref()
+        .expect("snapshot installed above");
+    let guard = snapshot.read().expect("read snapshot");
+    let schema_json = guard.get("read").expect("read tool's schema present");
+    let schema: serde_json::Value =
+        serde_json::from_str(schema_json).expect("finalized schema is valid JSON");
+
+    // x-capability sits beside input_schema's own top-level fields, not
+    // wrapped or nested under them.
+    assert!(
+        schema.get("type").is_some() && schema.get("properties").is_some(),
+        "x-capability must not replace the schema's own fields: {schema}"
+    );
+    let capability = schema
+        .get("x-capability")
+        .expect("x-capability must be attached");
+    assert_eq!(
+        capability.get("owner").and_then(serde_json::Value::as_str),
+        Some("organon::builtins::workspace")
+    );
+    assert_eq!(
+        capability
+            .get("stability")
+            .and_then(serde_json::Value::as_str),
+        Some("stable")
+    );
+    assert_eq!(
+        capability
+            .get("rollback")
+            .and_then(serde_json::Value::as_str),
+        Some("supported")
+    );
+    assert!(
+        capability.get("redaction").is_none(),
+        "redaction must be excluded per #6808: {capability}"
+    );
 }
 
 #[test]

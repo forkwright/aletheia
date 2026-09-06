@@ -77,8 +77,26 @@ impl ToolExecutor for ToolSchemaExecutor {
                         unavailable_schema_response(tool_name_str, "name_collision"),
                     )),
                     SurfaceLookup::Callable(entry) if entry.kind == SurfaceEntryKind::Registry => {
-                        match entry.input_schema.as_ref() {
-                            Some(schema) => Ok(ToolResult::text(pretty_or_compact(schema))),
+                        // SECURITY(#7004): prefer the finalized,
+                        // capability-annotated schema string (`self.schemas`,
+                        // built by `ToolRegistry::register_with_pairs`/
+                        // `finalize_tool_schema`) so this path returns the
+                        // same `x-capability` (owner/stability/rollback;
+                        // redaction excluded per #6808) the non-surface
+                        // fallback below serves. Falls back to the surface's
+                        // own unannotated schema -- rather than reporting the
+                        // tool unavailable -- if it is missing from the
+                        // snapshot, e.g. it failed to serialize during
+                        // finalize.
+                        let annotated = self
+                            .schemas
+                            .read()
+                            .ok()
+                            .and_then(|schemas| schemas.get(tool_name_str).cloned());
+                        match annotated
+                            .or_else(|| entry.input_schema.as_ref().map(pretty_or_compact))
+                        {
+                            Some(schema_json) => Ok(ToolResult::text(schema_json)),
                             None => Ok(ToolResult::text(unavailable_schema_response(
                                 tool_name_str,
                                 "schema_unavailable",
@@ -295,11 +313,16 @@ mod tests {
         .expect("register_domain_tools");
 
         // Phase 2: extract schema pairs while registry is immutably borrowed.
+        // Mirrors `builtins::register_all_with_sandbox`'s x-capability
+        // attachment (SECURITY #7004) so tests built on this registry see
+        // the same shape production registration produces.
         let pairs: Vec<(String, String)> = reg
             .definitions()
             .into_iter()
             .filter_map(|def| {
-                let schema = def.input_schema.to_json_schema();
+                let schema = reg
+                    .capability_metadata(&def.name)
+                    .attach_x_capability(def.input_schema.to_json_schema());
                 serde_json::to_string_pretty(&schema)
                     .ok()
                     .map(|json| (def.name.as_str().to_owned(), json))
@@ -398,6 +421,55 @@ mod tests {
             serde_json::from_str(&result.content.text_summary()).expect("valid JSON");
         assert_eq!(parsed.get("available"), Some(&serde_json::json!(false)));
         assert_eq!(parsed.get("reason"), Some(&serde_json::json!("allowlist")));
+    }
+
+    // SECURITY(#7004) proof: the effective-surface path (a bound surface
+    // present, tool Callable via the Registry) attaches the same
+    // x-capability the non-surface `self.schemas` fallback does.
+    #[tokio::test]
+    async fn tool_schema_effective_surface_path_attaches_x_capability() {
+        let reg = build_registry();
+        let ctx = mock_ctx();
+        let active = HashSet::new();
+        let policy = ToolGroupPolicy::AllowAll {
+            reason: "test".to_owned(),
+        };
+        // `read` is `auto_activate: true`, so it is Callable under AllowAll
+        // with no allowlist restriction and nothing in `active`.
+        let surface = Arc::new(reg.effective_surface(SurfaceInputs {
+            policy: &policy,
+            allowlist: None,
+            active: &active,
+            server_tools: &[],
+            server_tool_config: None,
+        }));
+        let _binding = ctx.bind_effective_surface(surface);
+
+        let input = ToolInput {
+            name: ToolName::from_static("tool_schema"),
+            tool_use_id: "toolu_xcap".to_owned(),
+            arguments: serde_json::json!({ "tool_name": "read" }),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(!result.is_error, "expected success for a callable tool");
+
+        let schema: serde_json::Value =
+            serde_json::from_str(&result.content.text_summary()).expect("valid JSON");
+        assert!(
+            schema.get("properties").is_some(),
+            "must still be the real schema, not a stub: {schema}"
+        );
+        let capability = schema
+            .get("x-capability")
+            .expect("x-capability must be attached via the effective-surface path too");
+        assert!(
+            capability.get("owner").and_then(|v| v.as_str()).is_some(),
+            "owner must be present: {capability}"
+        );
+        assert!(
+            capability.get("redaction").is_none(),
+            "redaction must be excluded per #6808: {capability}"
+        );
     }
 
     // ── eager-load regression guard ──────────────────────────────────────────
