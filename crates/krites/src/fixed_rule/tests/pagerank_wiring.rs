@@ -46,7 +46,7 @@ fn pagerank_live_path_reaches_the_sovereign_shell() {
             "PageRank ran to completion under an already-elapsed :timeout deadline: \
              the live shell is not polling the query poison, which means the \
              production call path no longer reaches the sovereign shell \
-             (fixed_rule/algos/pagerank_native.rs) — see #7042 and the #7002 \
+             (fixed_rule/algos/pagerank.rs) — see #7042 and the #7002 \
              finished-but-unwired class"
         ),
         Err(e) => {

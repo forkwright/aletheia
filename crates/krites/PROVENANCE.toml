@@ -754,7 +754,7 @@ consulted = []
 path = "fixed_rule/algos/mod.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/mod.rs"
-verbatim_pct = 66.7
+verbatim_pct = 68.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
@@ -762,7 +762,7 @@ method_evidence = "none"
 consulted = []
 
 [[file]]
-path = "fixed_rule/algos/pagerank_native.rs"
+path = "fixed_rule/algos/pagerank.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/pagerank.rs"
 verbatim_pct = 33.8

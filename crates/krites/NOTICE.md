@@ -80,8 +80,8 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fixed_rule/algos/kruskal.rs` | cf. `fixed_rule/algos/kruskal.rs` | 14.9% | sovereign | unknown |
 | `src/fixed_rule/algos/label_propagation.rs` | cf. `fixed_rule/algos/label_propagation.rs` | 13.6% | sovereign | unknown |
 | `src/fixed_rule/algos/louvain.rs` | `fixed_rule/algos/louvain.rs` | 29.2% | derived | — |
-| `src/fixed_rule/algos/mod.rs` | cf. `fixed_rule/algos/mod.rs` | 66.7% | sovereign | unknown |
-| `src/fixed_rule/algos/pagerank_native.rs` | cf. `fixed_rule/algos/pagerank.rs` | 33.8% | sovereign | unknown |
+| `src/fixed_rule/algos/mod.rs` | cf. `fixed_rule/algos/mod.rs` | 68.0% | sovereign | unknown |
+| `src/fixed_rule/algos/pagerank.rs` | cf. `fixed_rule/algos/pagerank.rs` | 33.8% | sovereign | unknown |
 | `src/fixed_rule/algos/prim.rs` | cf. `fixed_rule/algos/prim.rs` | 14.9% | sovereign | unknown |
 | `src/fixed_rule/algos/random_walk.rs` | cf. `fixed_rule/algos/random_walk.rs` | 19.6% | sovereign | unknown |
 | `src/fixed_rule/algos/shortest_path_bfs.rs` | cf. `fixed_rule/algos/shortest_path_bfs.rs` | 19.1% | sovereign | unknown |
