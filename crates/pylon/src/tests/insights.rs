@@ -116,6 +116,59 @@ async fn get_agent_perf_one_unknown_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
+/// Error path (#7200): `Role::Readonly` is dashboard-only and must not read
+/// per-agent performance metrics, scoped or not.
+#[tokio::test]
+async fn get_agent_perf_one_readonly_role_returns_403() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_as(
+            "/api/v1/metrics/agents/syn",
+            symbolon::types::Role::Readonly,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}
+
+/// Happy path (#7200): an `Agent`-role token scoped to its own nous may
+/// still read its own performance metrics -- the new role floor is
+/// additive, not a regression for the documented "own sessions" grant.
+#[tokio::test]
+async fn get_agent_perf_one_agent_role_scoped_to_self_returns_ok() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_scoped_as(
+            "/api/v1/metrics/agents/syn",
+            symbolon::types::Role::Agent,
+            "syn",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Error path (#7200): an `Agent`-role token scoped to a different nous must
+/// not read another agent's performance metrics.
+#[tokio::test]
+async fn get_agent_perf_one_agent_role_scoped_to_other_returns_403() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_scoped_as(
+            "/api/v1/metrics/agents/syn",
+            symbolon::types::Role::Agent,
+            "other-nous",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
 #[tokio::test]
 async fn get_quality_metrics_returns_ok() {
     let (app, _dir) = app().await;

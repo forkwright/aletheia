@@ -706,6 +706,72 @@ async fn insights_routes_admit_authenticated_bearer() {
     }
 }
 
+/// Regression test (#7201): `get_verification`/`refresh_verification`
+/// previously bound `_claims: Claims` and never inspected it -- any
+/// authenticated token, any role, read full evidence/gap detail for every
+/// project. No project-scoped role exists in the RBAC model yet (see the
+/// module doc on `crates/pylon/src/handlers/planning.rs`), so `Role::Operator`
+/// is the floor both routes now enforce.
+#[tokio::test]
+async fn planning_verification_routes_require_operator_role() {
+    let env = TestEnv::new().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for (method, path) in [
+        (Method::GET, project_verification_path("some-project")),
+        (
+            Method::POST,
+            project_verification_refresh_path("some-project"),
+        ),
+    ] {
+        for role in [Role::Readonly, Role::Agent] {
+            let token = issue_test_token_as(&env.state, role);
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method.clone())
+                        .uri(path.clone())
+                        .header("authorization", bearer(&token))
+                        .body(Body::empty())
+                        .expect("build request"),
+                )
+                .await
+                .expect("router response");
+
+            assert_eq!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "{method} {path} must reject {role:?}"
+            );
+        }
+
+        let operator_token = issue_test_token_as(&env.state, Role::Operator);
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method.clone())
+                    .uri(path.clone())
+                    .header("authorization", bearer(&operator_token))
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        // WHY: no project named "some-project" exists in this harness, so
+        // the happy path for an Operator token is 404 (past the role
+        // check), not 200. The assertion that matters here is that it is
+        // not the 403 a Readonly/Agent token gets above.
+        assert_ne!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{method} {path} must admit Operator past the role check"
+        );
+    }
+}
+
 fn knowledge_write_routes() -> [KnowledgeWriteRoute; 7] {
     [
         KnowledgeWriteRoute {

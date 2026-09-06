@@ -6,7 +6,7 @@ use koina::secret::SecretString;
 
 /// Role in the RBAC model.
 ///
-/// Ordered by privilege level: Readonly < Operator < Admin.
+/// Ordered by privilege level: Readonly < Agent < Operator < Admin.
 // kanon:ignore RUST/no-debug-derive-on-public-types — Role is a privilege-level enum with no secret data; Debug is required for tracing and log output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

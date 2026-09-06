@@ -325,6 +325,7 @@ fn require_known_model(registry: &ProviderRegistry, model: &str) -> Result<(), A
     responses(
         (status = 200, description = "Paginated session list"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -335,6 +336,11 @@ pub async fn list_sessions(
     Query(params): Query<ListSessionsParams>,
 ) -> Result<Json<ListSessionsResponse>, ApiError> {
     use crate::pagination::{DEFAULT_LIMIT, MAX_LIMIT, PaginatedResponse};
+
+    // SECURITY(#7200): Readonly is dashboard-only (symbolon::types::Role
+    // doc); session content is Agent-or-above, scoped to the caller's own
+    // nous_id below.
+    require_role(&claims, Role::Agent)?;
 
     // WHY: a token scoped to a single nous_id may only see its own agent's
     // sessions, regardless of the `nous_id` query parameter. Without this
@@ -421,6 +427,7 @@ pub async fn list_sessions(
     responses(
         (status = 200, description = "Session details", body = SessionResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found or deleted", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -431,6 +438,9 @@ pub async fn get_session(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; session content is
+    // Agent-or-above, scoped to the caller's own nous_id below.
+    require_role(&claims, Role::Agent)?;
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
     // WHY: archived sessions must not be visible via normal GET (#3196).
@@ -463,6 +473,7 @@ pub async fn get_session(
     responses(
         (status = 200, description = "Replay-faithful session export", body = SessionReplayResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -473,6 +484,10 @@ pub async fn replay(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<SessionReplayResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; the full replay export
+    // (messages, usage, tool audit) is Agent-or-above, scoped to the
+    // caller's own nous_id below.
+    require_role(&claims, Role::Agent)?;
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
@@ -759,6 +774,7 @@ pub async fn rename(
     responses(
         (status = 200, description = "Conversation history", body = HistoryResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -770,6 +786,9 @@ pub async fn history(
     Path(id): Path<String>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<HistoryResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; conversation history is
+    // Agent-or-above, scoped to the caller's own nous_id below.
+    require_role(&claims, Role::Agent)?;
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 

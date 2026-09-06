@@ -1156,3 +1156,77 @@ async fn list_sessions_implicitly_filters_to_scope_when_no_query() {
     assert_eq!(items[0]["id"], id);
     assert_eq!(items[0]["nous_id"], "syn");
 }
+
+// ── role floor enforcement on session reads (#7200) ────────────────────────
+
+/// Every session read route this crate serves, given a session id.
+///
+/// WHY(#7200): `Role::Readonly` is documented as dashboard-only
+/// (`symbolon::types::Role`); session content (list, detail, replay,
+/// history) is `Agent`-or-above, scoped to the caller's own `nous_id`. This
+/// table is the enforcement surface for that floor -- a future session
+/// read handler that forgets `require_role` will not appear here; see the
+/// PR description for the follow-up that walks the full `OpenAPI` document
+/// instead of this hand-maintained list.
+fn session_read_routes(id: &str) -> [String; 4] {
+    [
+        "/api/v1/sessions".to_owned(),
+        format!("/api/v1/sessions/{id}"),
+        format!("/api/v1/sessions/{id}/replay"),
+        format!("/api/v1/sessions/{id}/history"),
+    ]
+}
+
+/// Error path (#7200): a `Role::Readonly` token must be rejected by every
+/// session read route, unscoped or scoped to the session's own agent.
+#[tokio::test]
+async fn session_read_routes_reject_readonly_role() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    for path in session_read_routes(id) {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_as(&path, symbolon::types::Role::Readonly))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden", "{path}");
+
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(
+                &path,
+                symbolon::types::Role::Readonly,
+                "syn",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path} (scoped)");
+    }
+}
+
+/// Happy path (#7200): an `Agent`-role token scoped to its own nous keeps
+/// reading its own sessions -- the new role floor is additive, not a
+/// regression for the documented "access own sessions" grant.
+#[tokio::test]
+async fn session_read_routes_admit_agent_role_scoped_to_own_nous() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    for path in session_read_routes(id) {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(
+                &path,
+                symbolon::types::Role::Agent,
+                "syn",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+    }
+}

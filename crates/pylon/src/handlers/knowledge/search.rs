@@ -2,9 +2,10 @@
 
 use axum::Json;
 use axum::extract::{Query, State};
+use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::Claims;
+use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
@@ -161,6 +162,7 @@ async fn build_recall_engine(state: &KnowledgeState) -> mneme::recall::RecallEng
         (status = 200, description = "Search results ranked by relevance", body = SearchResponse),
         (status = 400, description = "Invalid query or limit", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
@@ -176,6 +178,10 @@ pub async fn search(
     claims: Claims,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_role(&claims, Role::Agent)?;
     if query.q.trim().is_empty() {
         return Err(BadRequestSnafu {
             message: "search query 'q' must not be empty",
@@ -223,6 +229,7 @@ pub async fn search(
         (status = 200, description = "Explainable recall scoring report", body = ExplainResponse),
         (status = 400, description = "Invalid query or limit", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
@@ -238,6 +245,10 @@ pub async fn explain(
     claims: Claims,
     Query(query): Query<ExplainQuery>,
 ) -> Result<Json<ExplainResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_role(&claims, Role::Agent)?;
     if query.q.trim().is_empty() {
         return Err(BadRequestSnafu {
             message: "search query 'q' must not be empty",
@@ -312,6 +323,7 @@ pub async fn explain(
     responses(
         (status = 200, description = "Fact activity timeline with total count"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
@@ -327,6 +339,10 @@ pub async fn timeline(
     claims: Claims,
     Query(mut query): Query<TimelineQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_role(&claims, Role::Agent)?;
     let policy = super::KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
     query.nous_id = policy.single_target_nous_id().map(ToOwned::to_owned);
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;

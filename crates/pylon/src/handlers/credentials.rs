@@ -4,22 +4,20 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Extension, Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use koina::http::BEARER_PREFIX;
 use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
-use symbolon::types::{
-    Action, Claims, ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus,
-};
+use symbolon::types::{ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus, Role};
 use tracing::instrument;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::credential_runtime::{
     CredentialMutationEffect, CredentialRuntimeError, CredentialRuntimeManager,
 };
-use crate::error::{ApiError, UnauthorizedReason};
+use crate::error::ApiError;
 use crate::event_bus::{DomainEvent, EventBus};
+use crate::extract::{Claims, require_role};
 use crate::middleware::RequestId;
 use crate::state::AppState;
 
@@ -208,12 +206,12 @@ pub struct RotateCredentialQuery {
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, headers))]
+#[instrument(skip(state, claims))]
 pub async fn list_credentials(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    claims: Claims,
 ) -> Result<Json<CredentialsListResponse>, ApiError> {
-    require_credential_operator(&state, &headers)?;
+    require_role(&claims, Role::Operator)?;
     let root = state.oikos.credentials();
     let credentials = state
         .auth_facade
@@ -242,14 +240,14 @@ pub async fn list_credentials(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, headers, request))]
+#[instrument(skip(state, claims, request))]
 pub async fn add_credential(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    claims: Claims,
     Extension(request_id): Extension<RequestId>,
     Json(request): Json<AddCredentialRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let claims = require_credential_operator(&state, &headers)?;
+    require_role(&claims, Role::Operator)?;
     let provider = request.provider.trim().to_owned();
     let request_id = request_id.to_string();
 
@@ -340,14 +338,14 @@ pub async fn add_credential(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, headers))]
+#[instrument(skip(state, claims))]
 pub async fn validate_credential(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    claims: Claims,
     Extension(request_id): Extension<RequestId>,
     Path(id): Path<String>,
 ) -> Result<Json<CredentialResponse>, ApiError> {
-    let claims = require_credential_operator(&state, &headers)?;
+    require_role(&claims, Role::Operator)?;
     let provider = provider_from_id(&id).unwrap_or(&id).to_owned();
     let credential_role = role_from_id(&id).map(str::to_owned);
     let request_id = request_id.to_string();
@@ -416,14 +414,14 @@ pub async fn validate_credential(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, headers))]
+#[instrument(skip(state, claims))]
 pub async fn rotate_credentials(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    claims: Claims,
     Extension(request_id): Extension<RequestId>,
     Query(query): Query<RotateCredentialQuery>,
 ) -> Result<Json<CredentialsListResponse>, ApiError> {
-    let claims = require_credential_operator(&state, &headers)?;
+    require_role(&claims, Role::Operator)?;
     let provider = query.provider.trim().to_owned();
     let request_id = request_id.to_string();
 
@@ -498,14 +496,14 @@ pub async fn rotate_credentials(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, headers))]
+#[instrument(skip(state, claims))]
 pub async fn remove_credential(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    claims: Claims,
     Extension(request_id): Extension<RequestId>,
     Path(id): Path<String>,
 ) -> Result<Json<CredentialRemoveResponse>, ApiError> {
-    let claims = require_credential_operator(&state, &headers)?;
+    require_role(&claims, Role::Operator)?;
     let credential_role = role_from_id(&id).map(str::to_owned);
     let request_id = request_id.to_string();
 
@@ -563,45 +561,6 @@ pub async fn remove_credential(
     Ok(Json(CredentialRemoveResponse {
         runtime_effect: effect,
     }))
-}
-
-/// Authenticate and authorize the caller for credential management, and
-/// return the decoded claims so callers can attribute audit events to an
-/// actor (#4878).
-fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<Claims, ApiError> {
-    let header = headers
-        .get("authorization")
-        .and_then(|value| value.to_str().ok())
-        .ok_or(ApiError::Unauthorized {
-            reason: UnauthorizedReason::MissingCredentials,
-            location: snafu::location!(),
-        })?;
-    let token = header
-        .strip_prefix(BEARER_PREFIX)
-        .ok_or(ApiError::Unauthorized {
-            reason: UnauthorizedReason::MalformedAuthorizationHeader,
-            location: snafu::location!(),
-        })?;
-    let claims = state.auth_facade.validate_token(token).map_err(|err| {
-        let reason = crate::extract::token_rejection_reason(&err);
-        tracing::info!(
-            reason = reason.as_str(),
-            error = %err,
-            "bearer token rejected"
-        );
-        ApiError::Unauthorized {
-            reason,
-            location: snafu::location!(),
-        }
-    })?;
-    state
-        .auth_facade
-        .authorize(&claims, &Action::ManageCredentials)
-        .map_err(|_err| ApiError::Forbidden {
-            message: "insufficient permissions".to_owned(),
-            location: snafu::location!(),
-        })?;
-    Ok(claims)
 }
 
 /// Domain event topic for credential add/rotate/remove (state-changing).

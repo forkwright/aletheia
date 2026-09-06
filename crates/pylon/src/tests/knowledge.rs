@@ -323,3 +323,45 @@ async fn memory_health_readonly_role_returns_403() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "forbidden");
 }
+
+/// Every knowledge domain read route this crate serves.
+///
+/// WHY(#7200): `Role::Readonly` is documented as dashboard-only
+/// (`symbolon::types::Role`); knowledge reads (facts, entities, search,
+/// timeline) are `Agent`-or-above. This table is the enforcement surface
+/// for that floor -- a future knowledge read handler that forgets
+/// `require_role` will not appear here and so will not be caught by this
+/// test; see the PR description for the follow-up that walks the full
+/// `OpenAPI` document instead of this hand-maintained list.
+fn knowledge_read_routes() -> [&'static str; 9] {
+    [
+        "/api/v1/knowledge/facts",
+        "/api/v1/knowledge/facts/some-fact-id",
+        "/api/v1/knowledge/entities",
+        "/api/v1/knowledge/entities/some-entity-id",
+        "/api/v1/knowledge/entities/some-entity-id/memories",
+        "/api/v1/knowledge/entities/some-entity-id/relationships",
+        "/api/v1/knowledge/search?q=test",
+        "/api/v1/knowledge/search/explain?q=test",
+        "/api/v1/knowledge/timeline",
+    ]
+}
+
+/// Error path (#7200): a `Role::Readonly` token must be rejected by every
+/// knowledge read route before it ever reaches `KnowledgeReadPolicy`.
+#[tokio::test]
+async fn knowledge_read_routes_reject_readonly_role() {
+    let (app, _dir) = app().await;
+
+    for path in knowledge_read_routes() {
+        let resp = app
+            .clone()
+            .oneshot(authed_get_as(path, symbolon::types::Role::Readonly))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden", "{path}");
+    }
+}
