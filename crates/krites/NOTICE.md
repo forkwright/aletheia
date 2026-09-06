@@ -8,7 +8,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
-- Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
+- Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4` (last upstream commit 2024-12-04; pin status: pin_is_upstream_head)
 - 212 files under `src/`: 141 derived, 71 sovereign, 0 dual
 - Mean verbatim match across the 141 derived files: 43.9% (unweighted average of the per-file `verbatim_pct` column below)
 - Of the 71 sovereign files, **57 carry `method = "unknown"`** (no record of how they were written) and 14 carry a resolved, evidence-backed method — see "Authorship method" below.

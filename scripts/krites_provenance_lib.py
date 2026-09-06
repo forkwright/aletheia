@@ -777,10 +777,17 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         "# NOTE: ([] when none; always [] off sovereign). from_spec requires every one of",
         "# NOTE: them to be a sovereign row; from_spec_derived_siblings requires at least one",
         "# NOTE: that is not; a path with no row here fails either way (CI: consulted_errors).",
+        "# NOTE: upstream_last_commit_date/upstream_status (#6799) record, next to the pin, when",
+        "# NOTE: upstream_ref's commit landed and whether it is still upstream's HEAD — so a",
+        "# NOTE: reviewer reads drift status here instead of re-deriving it by hand. Neither is",
+        "# NOTE: re-measured by CI; refresh both by hand (gh api repos/cozodb/cozo/commits/main)",
+        "# NOTE: whenever UPSTREAM_REF changes, same as UPSTREAM_REF itself.",
         "",
         "[meta]",
         f"upstream_repo = {_toml_str(meta['upstream_repo'])}",
         f"upstream_ref = {_toml_str(meta['upstream_ref'])}",
+        f"upstream_last_commit_date = {_toml_str(meta.get('upstream_last_commit_date', 'unknown'))}",
+        f"upstream_status = {_toml_str(meta.get('upstream_status', 'unknown'))}",
         "",
     ]
     for row in sorted(rows, key=lambda r: r["path"]):
@@ -843,7 +850,11 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
     resolved_sovereign = [r for r in sovereign if r.get("method", "none") not in ("none", "unknown")]
 
     lines.append("")
-    lines.append(f"- Upstream: <{meta['upstream_repo']}>, pinned at `{meta['upstream_ref']}`")
+    lines.append(
+        f"- Upstream: <{meta['upstream_repo']}>, pinned at `{meta['upstream_ref']}` "
+        f"(last upstream commit {meta.get('upstream_last_commit_date', 'unknown')}; "
+        f"pin status: {meta.get('upstream_status', 'unknown')})"
+    )
     lines.append(f"- {len(rows)} files under `src/`: {len(derived)} derived, {len(sovereign)} sovereign, {len(dual)} dual")
     lines.append(
         f"- Mean verbatim match across the {len(derived)} derived files: {mean_pct}% "

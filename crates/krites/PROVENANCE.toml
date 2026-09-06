@@ -30,10 +30,17 @@
 # NOTE: ([] when none; always [] off sovereign). from_spec requires every one of
 # NOTE: them to be a sovereign row; from_spec_derived_siblings requires at least one
 # NOTE: that is not; a path with no row here fails either way (CI: consulted_errors).
+# NOTE: upstream_last_commit_date/upstream_status (#6799) record, next to the pin, when
+# NOTE: upstream_ref's commit landed and whether it is still upstream's HEAD — so a
+# NOTE: reviewer reads drift status here instead of re-deriving it by hand. Neither is
+# NOTE: re-measured by CI; refresh both by hand (gh api repos/cozodb/cozo/commits/main)
+# NOTE: whenever UPSTREAM_REF changes, same as UPSTREAM_REF itself.
 
 [meta]
 upstream_repo = "https://github.com/cozodb/cozo"
 upstream_ref = "481af058abac9444ea8c9c52c78f096ed4b5bfc4"
+upstream_last_commit_date = "2024-12-04"
+upstream_status = "pin_is_upstream_head"
 
 [[file]]
 path = "async_surface.rs"
