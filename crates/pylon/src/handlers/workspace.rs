@@ -38,9 +38,14 @@ const WRITE_LIMIT_BYTES: usize = 10 * 1024 * 1024;
 /// execute scripts, URL schemes, `.desktop` launchers, and HTML. Restricting
 /// to known view-only formats prevents the endpoint from being used to trigger
 /// active/executable file types against the operator desktop.
+///
+/// WHY no `svg`: SVG is an XML document format that can embed `<script>`
+/// elements and event-handler attributes; the desktop handler for `.svg` is
+/// typically a browser, so opening one runs attacker-controlled script with
+/// the same active-content risk this allowlist exists to exclude (#5929).
 const SAFE_OPEN_EXTENSIONS: &[&str] = &[
     "md", "markdown", "mdx", "txt", "text", "rst", "org", "pdf", "png", "jpg", "jpeg", "gif",
-    "svg", "webp", "csv", "tsv", "json", "toml", "yaml", "yml",
+    "webp", "csv", "tsv", "json", "toml", "yaml", "yml",
 ];
 
 /// File extensions the workspace write endpoint is allowed to create or

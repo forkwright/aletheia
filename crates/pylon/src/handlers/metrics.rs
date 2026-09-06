@@ -59,7 +59,17 @@ pub async fn expose(
 ) -> axum::response::Response {
     use taxis::config::MetricsMode;
 
-    match state.metrics_mode {
+    // WHY(#5929): read the live, hot-reloadable policy from `state.config`
+    // rather than a startup-cached `AppState` field — `apply_reload` updates
+    // `state.config` on every hot config reload but never re-derived the old
+    // cached copy, so a scrape shortly after a reload would otherwise see a
+    // stale mode/detail setting.
+    let (metrics_mode, metrics_detailed) = {
+        let config = state.config.read().await;
+        (config.gateway.metrics.mode, config.gateway.metrics.detailed)
+    };
+
+    match metrics_mode {
         MetricsMode::Disabled => {
             return (
                 axum::http::StatusCode::NOT_FOUND,
@@ -119,7 +129,7 @@ pub async fn expose(
         unreachable!("encoding metrics into a String cannot fail");
     };
 
-    if !state.metrics_detailed {
+    if !metrics_detailed {
         buffer = redact_labels(&buffer);
     }
 
@@ -177,14 +187,16 @@ mod tests {
     use crate::state::MetricsState;
 
     fn test_metrics_state(mode: MetricsMode, detailed: bool) -> MetricsState {
+        let mut config = taxis::config::AletheiaConfig::default();
+        config.gateway.metrics.mode = mode;
+        config.gateway.metrics.detailed = detailed;
         MetricsState {
             session_store: Arc::new(tokio::sync::Mutex::new(
                 SessionStore::open_in_memory().unwrap(),
             )),
             start_time: Instant::now(),
             metrics_registry: MetricsRegistry::new(),
-            metrics_mode: mode,
-            metrics_detailed: detailed,
+            config: Arc::new(tokio::sync::RwLock::new(config)),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
         }
