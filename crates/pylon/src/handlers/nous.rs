@@ -219,10 +219,19 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
     responses(
         (status = 200, description = "List of nous agents", body = NousListResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
+pub async fn list(
+    State(state): State<NousState>,
+    claims: Claims,
+) -> Result<Json<NousListResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only (symbolon::types::Role
+    // doc); agent list/status/tools reads are Agent-or-above. Per-agent
+    // visibility (own nous scope, private-flag Operator gate) is enforced
+    // separately via `nous_visible_to_claims`/`require_visible_nous`.
+    require_role(&claims, Role::Agent)?;
     let config = state.config.read().await;
     let visible: Vec<&NousConfig> = state
         .nous_manager
@@ -255,7 +264,7 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
             restart_required: None,
         });
     }
-    Json(NousListResponse { nous })
+    Ok(Json(NousListResponse { nous }))
 }
 
 /// Timeout for a single actor's status query when building the agent list.
@@ -296,6 +305,7 @@ async fn live_status_label(manager: &nous::manager::NousManager, agent_id: &str)
     responses(
         (status = 200, description = "Nous status", body = NousStatus),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -305,6 +315,10 @@ pub async fn get_status(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; agent status reads are
+    // Agent-or-above. Per-agent visibility is enforced below via
+    // `require_visible_nous`.
+    require_role(&claims, Role::Agent)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -385,6 +399,7 @@ pub async fn get_status(
     responses(
         (status = 200, description = "Available tools", body = ToolsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -394,6 +409,10 @@ pub async fn tools(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; agent tool-list reads are
+    // Agent-or-above. Per-agent visibility is enforced below via
+    // `require_visible_nous`.
+    require_role(&claims, Role::Agent)?;
     let runtime = state
         .nous_manager
         .get_config(&id)

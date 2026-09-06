@@ -119,6 +119,7 @@ pub async fn get_agent_perf(
     responses(
         (status = 200, description = "Agent performance", body = AgentPerformance),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Agent not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -128,7 +129,10 @@ pub async fn get_agent_perf_one(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<AgentPerformance>, ApiError> {
-    // SECURITY(#4618): Scoped tokens may only view their own agent's metrics.
+    // SECURITY(#4618, #7200): Readonly is dashboard-only (symbolon::types::Role
+    // doc); per-agent metrics are Agent-or-above. Scoped tokens may only view
+    // their own agent's metrics; unscoped Operator+ may query any agent.
+    require_role(&claims, symbolon::types::Role::Agent)?;
     require_nous_access(&claims, &id)?;
     let config = state
         .nous_manager

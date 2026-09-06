@@ -267,8 +267,11 @@ schema, so it is gated the same way `/metrics` is (#5174).
 
 ## Sessions
 
-All session endpoints require a valid Bearer token (`Claims` extractor). State-changing
-endpoints also require CSRF header when CSRF is enabled.
+All session endpoints require a valid Bearer token (`Claims` extractor). Reads (list,
+detail, history, replay) additionally require `Role::Agent` or above -- `Role::Readonly`
+is dashboard-only and cannot read session content -- and are scoped to the caller's own
+`nous_id` when the token carries one. State-changing endpoints also require CSRF header
+when CSRF is enabled.
 
 ```
 POST /api/v1/sessions/{id}/messages  ─── Idempotency-Key header (optional, max 64 chars)
@@ -668,6 +671,13 @@ operator inspection and debugging.
 
 ## Nous (agents)
 
+List/status/tools reads require `Role::Agent` or above -- `Role::Readonly` is
+dashboard-only and cannot read agent info. Visibility is then narrowed per agent:
+a token scoped to a `nous_id` only sees that agent, and a private agent (per its
+config) additionally requires unscoped `Role::Operator`+. Mutations
+(enable/disable, tool toggle, recovery, creation) require `Role::Operator` and are
+scoped the same way.
+
 ### `GET /api/v1/nous`
 
 List all registered nous agents.
@@ -804,8 +814,11 @@ validates the result, writes to disk, and broadcasts via the config watch channe
 ## Knowledge
 
 Knowledge endpoints are feature-gated on the `knowledge` feature and require a valid Bearer
-token. Write operations (forget, restore, confidence update, import, ingest) require CSRF
-header when enabled.
+token. Reads (facts, entities, search, timeline) additionally require `Role::Agent` or
+above -- `Role::Readonly` is dashboard-only -- with per-fact/entity visibility then
+resolved by `KnowledgeReadPolicy` (own nous_id, or `Shared`/`Published` visibility, or
+unscoped `Role::Operator`+ for everything). Write operations (forget, restore, confidence
+update, import, ingest) require `Role::Operator` and CSRF header when enabled.
 
 ```
 GET  /api/v1/knowledge/facts
@@ -1065,7 +1078,9 @@ Full-text search over workspace files.
 
 ## System credentials
 
-Credential endpoints require Admin role and CSRF protection.
+Credential endpoints go through the standard `Claims` extractor (so `auth.mode = "none"`
+opens them like every other route) and require `Role::Operator` or above
+(`crate::extract::require_role`), plus CSRF protection.
 
 ### `GET /api/v1/system/credentials`
 
@@ -1111,7 +1126,10 @@ Validate a stored credential by making a lightweight probe to the target service
 
 ## Metrics
 
-Metrics endpoints expose aggregated behavioral and cost analytics. Require Operator role.
+Metrics endpoints expose aggregated behavioral and cost analytics. Aggregate endpoints
+(`/metrics/agents`, `/metrics/quality`, `/metrics/tokens`, `/metrics/costs`) require an
+unscoped `Role::Operator`+ token. `/metrics/agents/{id}` requires `Role::Agent` or above,
+admitting a token scoped to that same agent in addition to unscoped Operator+.
 
 ### `GET /api/v1/metrics/agents`
 
@@ -1208,6 +1226,12 @@ in the window).
 ---
 
 ## Planning
+
+Both routes require an unscoped `Role::Operator`+ token. No project-scoped role exists in
+the RBAC model yet, so this is a coarse floor rather than per-project access control; the
+per-workspace `planning_meta.json` visibility sidecar classifies a project as
+public/private/internal and redacts evidence/gap detail in the response, but it is
+presentation metadata, not the security boundary.
 
 ### `GET /api/v1/planning/projects/{project_id}/verification`
 

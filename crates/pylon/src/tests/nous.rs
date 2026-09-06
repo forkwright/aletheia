@@ -148,12 +148,15 @@ async fn list_nous_returns_agents() {
 }
 
 #[tokio::test]
-async fn list_nous_hides_private_agents_from_readonly_callers() {
+async fn list_nous_hides_private_agents_from_non_operator_callers() {
     let (state, _dir) = test_state_with_private_nous().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
 
+    // WHY(#7200): the request role must clear the `Role::Agent` read floor
+    // added below, or it never reaches the private-agent filter this test
+    // is exercising.
     let resp = router
-        .oneshot(authed_get_as("/api/v1/nous", Role::Readonly))
+        .oneshot(authed_get_as("/api/v1/nous", Role::Agent))
         .await
         .unwrap();
 
@@ -162,6 +165,57 @@ async fn list_nous_hides_private_agents_from_readonly_callers() {
     let agents = body["nous"].as_array().unwrap();
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
+}
+
+/// Every nous read route this crate serves, given an agent id.
+///
+/// WHY(#7200): `Role::Readonly` is documented as dashboard-only
+/// (`symbolon::types::Role`); nous list/status/tools reads are
+/// `Agent`-or-above -- per-agent visibility (own scope, private-flag
+/// Operator gate) is a separate, additional check enforced by
+/// `require_visible_nous`.
+fn nous_read_routes(id: &str) -> [String; 3] {
+    [
+        "/api/v1/nous".to_owned(),
+        format!("/api/v1/nous/{id}"),
+        format!("/api/v1/nous/{id}/tools"),
+    ]
+}
+
+/// Error path (#7200): a `Role::Readonly` token must be rejected by every
+/// nous read route, including a public agent it would otherwise be visible
+/// to under `require_visible_nous`.
+#[tokio::test]
+async fn nous_read_routes_reject_readonly_role() {
+    let (app, _dir) = app().await;
+
+    for path in nous_read_routes("syn") {
+        let resp = app
+            .clone()
+            .oneshot(authed_get_as(&path, Role::Readonly))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden", "{path}");
+    }
+}
+
+/// Happy path (#7200): an `Agent`-role token still reads a public agent's
+/// list/status/tools -- the new role floor is additive, not a regression
+/// for the documented "own tools" grant.
+#[tokio::test]
+async fn nous_read_routes_admit_agent_role() {
+    let (app, _dir) = app().await;
+
+    for path in nous_read_routes("syn") {
+        let resp = app
+            .clone()
+            .oneshot(authed_get_as(&path, Role::Agent))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+    }
 }
 
 #[tokio::test]

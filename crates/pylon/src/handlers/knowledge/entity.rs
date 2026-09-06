@@ -183,6 +183,7 @@ fn list_entity_pending_merge_links(
     responses(
         (status = 200, description = "Entity detail"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Entity not found", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
@@ -193,6 +194,10 @@ pub async fn get_entity(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<mneme::knowledge::Entity>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_role(&claims, Role::Agent)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
     let policy = super::KnowledgeReadPolicy::from_claims(&claims)?;
@@ -222,6 +227,7 @@ pub async fn get_entity(
     responses(
         (status = 200, description = "Entity memories", body = [EntityMemory]),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Entity not found", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
@@ -232,6 +238,10 @@ pub async fn entity_memories(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<Vec<EntityMemory>>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_role(&claims, Role::Agent)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
     let policy = super::KnowledgeReadPolicy::from_claims(&claims)?;

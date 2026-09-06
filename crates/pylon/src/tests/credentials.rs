@@ -24,8 +24,15 @@ async fn credentials_reject_non_operator() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
+/// Regression test (#7199): credential routes previously re-parsed the
+/// bearer header directly instead of going through the standard `Claims`
+/// extractor, so they never saw `auth_mode = "none"` and rejected every
+/// anonymous request with 401 even though the rest of the API opened up
+/// under that mode. They now use the same extractor as every other route,
+/// so an anonymous request under `auth_mode = "none"` is authorized as
+/// `none_role` ("admin" in this harness) exactly like the rest of the API.
 #[tokio::test]
-async fn credentials_ignore_auth_mode_none_anonymous_bypass() {
+async fn credentials_honor_auth_mode_none_like_every_other_route() {
     let (app, _dir) = app_with_auth_mode("none").await;
 
     let resp = app
@@ -37,7 +44,9 @@ async fn credentials_ignore_auth_mode_none_anonymous_bypass() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("anthropic:primary"));
 }
 
 #[tokio::test]
