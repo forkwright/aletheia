@@ -563,7 +563,7 @@ pub(crate) fn Ops() -> Element {
             // and non-2xx/unparseable responses are stored as reachability errors
             // so the UI distinguishes server reachability from backend health.
             let health_store_data =
-                match crate::api::health::fetch_health_response(health_res).await {
+                match skene::api::health::fetch_health_response(health_res).await {
                     Ok(data) => ServiceHealthStore::from_response(data),
                     Err(err) => ServiceHealthStore::unreachable(err.to_string()),
                 };

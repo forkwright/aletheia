@@ -24,6 +24,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
+# WHY(#4925): stream_message's cancellation support (the capability gap that
+# justified proskenion's parallel transport loop) needs CancellationToken.
+tokio-util = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 

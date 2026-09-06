@@ -27,6 +27,10 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 
 # Async runtime
 tokio = { workspace = true }
+# WHY(#4925): skene::api::streaming::stream_message now takes a
+# CancellationToken (koilon has no cancel UI yet, so this call site passes
+# one that is never triggered).
+tokio-util = { workspace = true }
 
 # HTTP + SSE
 reqwest = { workspace = true, features = ["stream", "cookies"] }

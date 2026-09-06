@@ -77,12 +77,18 @@ impl App {
             })
             .unwrap_or_else(|| "main".to_string());
 
+        // WHY: koilon has no in-flight-turn cancel UI yet, so this token is
+        // never triggered -- it exists only because stream_message's shared
+        // transport loop now requires one (#4925).
+        let client_turn_id = koina::ulid::Ulid::new().to_string();
         let rx = streaming::stream_message(
             self.client.streaming_client().clone(),
             &self.config.url,
             &agent_id,
             &session_key,
             text,
+            &client_turn_id,
+            tokio_util::sync::CancellationToken::new(),
         );
         self.connection.stream_rx = Some(rx);
         self.connection.state_epoch = self.connection.state_epoch.wrapping_add(1);
