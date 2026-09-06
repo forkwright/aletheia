@@ -89,10 +89,31 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         }
         .build()
     })?;
+    // WHY: `SecretString::serialize` always emits the `[REDACTED]` sentinel
+    // (`koina::secret::SecretString`) so a real secret can never leak into a
+    // log line or an API response body. Serializing `AletheiaConfig::default()`
+    // to build this tier runs every `SecretString` field through that same
+    // impl, so any field whose *compiled default* is a real, non-empty value
+    // — currently only `gateway.csrf.headerValue`
+    // (`koina::http::DEFAULT_CSRF_HEADER_VALUE`) — lands in the tree as the
+    // literal text "[REDACTED]" instead of its actual default. An instance
+    // that never overrides `gateway.csrf.headerValue` (the documented,
+    // encouraged posture: first-party clients already send the compiled
+    // default) then boots with that literal string as its expected CSRF
+    // header value, so no legitimate client request can ever match it and
+    // every mutating request is rejected `csrf_rejected`, silently, with no
+    // log signal (the CSRF middleware never fires a tracing event on reject).
+    // Restore known compiled secret defaults here, before Tier 2/3 are
+    // merged in, so an operator-supplied override still wins normally.
+    restore_secret_defaults(&mut root);
+
     // WHY a snapshot here rather than a second `to_value` call after the
     // merge: `root` above is the exact defaults tree the diff below needs to
     // compare against, and cloning it before it is mutated is cheaper than
     // re-deriving the same value from `AletheiaConfig::default()` again.
+    // Taken after `restore_secret_defaults` so this snapshot also carries
+    // the real compiled secret defaults rather than the redaction sentinel,
+    // in case a future caller compares values and not just key shape.
     let defaults_json = root.clone();
 
     // Tier 2: TOML file (if present), interpolated + decrypted, then deep-merged.
@@ -330,6 +351,35 @@ fn resolve_legacy_retention_alias(
     };
     maintenance_map.insert("retention".to_owned(), legacy_value);
     Ok(())
+}
+
+/// Known `SecretString` config fields whose *compiled default* is a real,
+/// meaningful value rather than an empty placeholder an operator is expected
+/// to fill in — see the `WHY` at the Tier-1 call site in [`load_config_with`].
+///
+/// Each entry is a `serde_json` pointer (`camelCase`, matching the config's
+/// `#[serde(rename_all = "camelCase")]`) paired with the real default it must
+/// carry into the merge tree instead of the `SecretString::serialize`
+/// redaction sentinel.
+const SECRET_DEFAULTS: &[(&str, &str)] = &[(
+    "/gateway/csrf/headerValue",
+    koina::http::DEFAULT_CSRF_HEADER_VALUE,
+)];
+
+/// Overwrite the [`SECRET_DEFAULTS`] leaves of a freshly-serialized
+/// `AletheiaConfig::default()` tree with their real compiled values.
+///
+/// `serde_json::to_value` on `AletheiaConfig::default()` runs every
+/// `SecretString` field through its redacting `Serialize` impl, so any field
+/// whose compiled default is non-empty needs its real value restored before
+/// Tier 2 (TOML) / Tier 3 (env) are merged on top -- an explicit override at
+/// either tier still replaces it normally, since this only touches Tier 1.
+fn restore_secret_defaults(root: &mut JsonValue) {
+    for (pointer, real_default) in SECRET_DEFAULTS {
+        if let Some(slot) = root.pointer_mut(pointer) {
+            *slot = JsonValue::String((*real_default).to_owned());
+        }
+    }
 }
 
 /// Deep-merge `src` into `dst`. Objects merge by key; everything else replaces.
@@ -756,6 +806,110 @@ mod tests {
             config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
             "unset model should use default"
         );
+    }
+
+    /// Regression test: an instance that never sets `gateway.csrf.headerValue`
+    /// (the documented, encouraged posture) must load the real compiled
+    /// default, not the `SecretString::serialize` redaction sentinel.
+    ///
+    /// WHY: Tier 1 builds its JSON tree via `serde_json::to_value` on
+    /// `AletheiaConfig::default()`. Every `SecretString` field's `Serialize`
+    /// impl always emits `"[REDACTED]"` (`koina::secret::SecretString`) to
+    /// keep secrets out of logs/API responses, so without
+    /// `restore_secret_defaults`, `headerValue`'s compiled default is
+    /// silently replaced by that literal string. First-party clients build
+    /// their CSRF header from `koina::http::DEFAULT_CSRF_HEADER_VALUE`, so a
+    /// server that booted with the redaction sentinel as its expected value
+    /// would reject every mutating request from a fully compliant client,
+    /// unconditionally, with no config error and no log signal (the CSRF
+    /// middleware does not log a rejection).
+    #[test]
+    fn load_with_no_csrf_override_keeps_real_default_header_value() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+
+        assert_eq!(
+            config.gateway.csrf.header_value.expose_secret(),
+            koina::http::DEFAULT_CSRF_HEADER_VALUE,
+            "an instance that never overrides gateway.csrf.headerValue must load \
+             the real compiled default, not the SecretString redaction sentinel"
+        );
+    }
+
+    /// An operator-supplied `gateway.csrf.headerValue` in the TOML file must
+    /// still override the compiled default -- `restore_secret_defaults` only
+    /// touches Tier 1, before the Tier 2 (TOML) merge runs.
+    #[test]
+    fn load_from_toml_file_still_overrides_csrf_header_value() {
+        let jail = EnvJail::new();
+        jail.create_file(
+            "config/aletheia.toml",
+            "[gateway.csrf]\nheaderValue = \"custom-operator-value\"\n",
+        );
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+
+        assert_eq!(
+            config.gateway.csrf.header_value.expose_secret(),
+            "custom-operator-value",
+            "an explicit TOML override must still win over the restored compiled default"
+        );
+    }
+
+    /// Generic, table-driven regression test: for *every* entry registered in
+    /// [`SECRET_DEFAULTS`] -- not just today's one CSRF field -- serializing
+    /// `AletheiaConfig::default()` must corrupt that leaf to the redaction
+    /// sentinel (pins the underlying `SecretString::serialize` behavior this
+    /// whole mechanism exists to work around), and `restore_secret_defaults`
+    /// must repair every single one back to its real registered value.
+    ///
+    /// WHY table-driven: the next engineer who adds a `SecretString` config
+    /// field with a real, non-empty compiled default (as opposed to the
+    /// empty-by-default `tools.*` bearer/header secrets, or the
+    /// `Option<SecretString> = None` JWT signing key -- both audited and
+    /// confirmed unaffected) only has to add one `(pointer, value)` row to
+    /// `SECRET_DEFAULTS`; this test then covers it automatically, with no
+    /// new test function required, so the fix cannot silently stop covering
+    /// a newly-added field.
+    #[test]
+    fn restore_secret_defaults_repairs_every_registered_entry() {
+        assert!(
+            !SECRET_DEFAULTS.is_empty(),
+            "SECRET_DEFAULTS must never be emptied out from under this test"
+        );
+
+        for (pointer, expected_default) in SECRET_DEFAULTS {
+            let mut root = serde_json::to_value(AletheiaConfig::default())
+                .unwrap_or_else(|e| panic!("serialize defaults: {e}"));
+
+            let corrupted = root
+                .pointer(pointer)
+                .unwrap_or_else(|| panic!("{pointer} must exist in the serialized default tree"));
+            assert_eq!(
+                // WHY the literal, not a shared constant: `koina::secret::REDACTED` is
+                // private to that module (deliberately -- it is not part of any public
+                // contract). Pinning the literal here means a change to the sentinel
+                // text breaks this test loudly instead of silently under-covering.
+                corrupted.as_str(),
+                Some("[REDACTED]"),
+                "{pointer} is registered in SECRET_DEFAULTS as needing restoration, but the \
+                 naive serialize no longer corrupts it -- SecretString::serialize's redaction \
+                 sentinel text may have changed; update this test alongside it"
+            );
+
+            restore_secret_defaults(&mut root);
+
+            let restored = root
+                .pointer(pointer)
+                .unwrap_or_else(|| panic!("{pointer} must still exist after restoration"));
+            assert_eq!(
+                restored.as_str(),
+                Some(*expected_default),
+                "{pointer} must be restored to its real compiled default after \
+                 restore_secret_defaults"
+            );
+        }
     }
 
     // WHY(#5385): `validate_contained_relative_paths`/`validate_relative_contained`
