@@ -84,6 +84,8 @@ pub struct ChannelBinding {
     pub source: Option<String>,
     pub nous_id: Option<String>,
     pub session_key: Option<String>,
+    pub receiving_account_id: Option<String>,
+    pub command_tier: Option<String>,
 }
 
 /// Schema for the `embedding` config section.

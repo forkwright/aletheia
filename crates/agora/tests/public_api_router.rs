@@ -18,7 +18,7 @@ use agora::semeion::{SignalProvider, SignalTarget, parse_target};
 use agora::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult, SendParams, SendResult,
 };
-use taxis::config::ChannelBinding;
+use taxis::config::{ChannelBinding, CommandTier};
 use tokio_util::sync::CancellationToken;
 
 // ── MessageRouter ──
@@ -29,6 +29,8 @@ fn make_binding(channel: &str, source: &str, nous_id: &str) -> ChannelBinding {
         source: source.to_owned(),
         nous_id: nous_id.to_owned(),
         session_key: "{source}".to_owned(),
+        receiving_account_id: None,
+        command_tier: CommandTier::default(),
     }
 }
 
@@ -42,6 +44,7 @@ fn make_dm_message(sender: &str) -> InboundMessage {
         text: "hello".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],
+        receiving_account_id: None,
         raw: None,
     }
 }
@@ -56,6 +59,7 @@ fn make_group_message(sender: &str, group_id: &str) -> InboundMessage {
         text: "group hello".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],
+        receiving_account_id: None,
         raw: None,
     }
 }
@@ -220,18 +224,21 @@ fn route_decision_equality() {
         nous_id: &binding.nous_id,
         session_key: "key1".to_owned(),
         matched_by: MatchReason::ChannelDefault,
+        command_tier: CommandTier::Public,
     };
 
     let decision2 = RouteDecision {
         nous_id: &binding.nous_id,
         session_key: "key1".to_owned(),
         matched_by: MatchReason::ChannelDefault,
+        command_tier: CommandTier::Public,
     };
 
     let decision3 = RouteDecision {
         nous_id: &binding.nous_id,
         session_key: "key2".to_owned(),
         matched_by: MatchReason::GlobalDefault,
+        command_tier: CommandTier::Public,
     };
 
     assert_eq!(decision1, decision2);

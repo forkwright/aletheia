@@ -585,6 +585,16 @@ source = "*"
 nous_id = "main"
 ```
 
+5. Allow inbound senders (#5193): with no `[messaging.inbound]` section, every
+   inbound sender is denied by default. `"*"` allows anyone who reaches this
+   number; narrow to specific senders for anything beyond a personal,
+   single-operator setup.
+
+```toml
+[messaging.inbound]
+allowlist = { signal = ["*"] }
+```
+
 ---
 
 ## Matrix

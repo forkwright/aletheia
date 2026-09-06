@@ -1607,7 +1607,10 @@ pub(super) fn start_inbound_dispatch(
         );
 
         let default_nous_id = resolve_default_nous_id(&config.agents.list);
-        let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
+        let router = Arc::new(
+            MessageRouter::new(config.bindings.clone(), default_nous_id)
+                .with_inbound_policy(config.messaging.inbound.clone()),
+        );
 
         Some(crate::dispatch::spawn_dispatcher(
             rx,

@@ -154,6 +154,27 @@ pub struct InboundMessage {
     pub timestamp: u64,
     /// Attachment file paths or identifiers.
     pub attachments: Vec<String>,
+    /// The channel account this message was RECEIVED on (the key an
+    /// operator gives that account under
+    /// `channels.signal.accounts`/`channels.matrix.accounts`), when the
+    /// provider is multi-account-aware. `None` for a single-account
+    /// provider or a provider that has not been wired to populate this
+    /// field yet.
+    ///
+    /// WHY carried here first (decision record, forkwright/aletheia#5193):
+    /// `ChannelBinding::receiving_account_id` and
+    /// `MessageRouter::expand_session_key`'s account fold both need a
+    /// receiving account to match/fold against; this field is the
+    /// prerequisite that makes either possible -- see
+    /// `router::expand_session_key`.
+    ///
+    /// WHY not `account_id` (same decision, residual risk): distinct from
+    /// `SendParams::account_id`, which already means "which account an
+    /// outbound send goes out FROM" -- this is the opposite direction
+    /// (which account a message was received ON), so it needs its own
+    /// name or the two senses conflate in logs and config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receiving_account_id: Option<String>,
     /// Raw channel-specific payload for extensions.
     ///
     /// Opt-in via `taxis::config::RawPayloadPolicy::capture` (default
@@ -181,6 +202,7 @@ impl std::fmt::Debug for InboundMessage {
             .field("text_len", &self.text.len())
             .field("timestamp", &self.timestamp)
             .field("attachment_count", &self.attachments.len())
+            .field("receiving_account_id", &self.receiving_account_id)
             .field(
                 "raw_bytes",
                 &self
@@ -375,6 +397,7 @@ mod tests {
             text: "hello world".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec!["photo.jpg".to_owned()],
+            receiving_account_id: None,
             raw: Some(serde_json::json!({"extra": "data"})),
         };
 
@@ -392,6 +415,22 @@ mod tests {
         assert_eq!(back.raw, msg.raw);
     }
 
+    // PROOF(#5193 prerequisite): receiving_account_id round-trips and is
+    // visible (not redacted) in Debug -- it is an operator-assigned label
+    // (a `channels.*.accounts` key), not PII like sender/sender_name.
+    #[test]
+    fn inbound_message_receiving_account_id_roundtrips_and_is_visible_in_debug() {
+        let mut msg = dedupe_fixture();
+        msg.receiving_account_id = Some("work".to_owned());
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: InboundMessage = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.receiving_account_id.as_deref(), Some("work"));
+
+        let debug = format!("{msg:?}");
+        assert!(debug.contains("work"), "{debug}");
+    }
+
     #[test]
     fn inbound_message_debug_redacts_identity_and_raw() {
         let msg = InboundMessage {
@@ -403,6 +442,7 @@ mod tests {
             text: "my ssn is 123-45-6789".to_owned(), // pii-allow: synthetic SSN fixture asserting redaction, not a real value
             timestamp: 1_709_312_345_678,
             attachments: vec!["photo.jpg".to_owned()],
+            receiving_account_id: None,
             raw: Some(serde_json::json!({"sourceNumber": "+15550100"})),
         };
 
@@ -426,6 +466,7 @@ mod tests {
             text: "hello".to_owned(),
             timestamp: 1,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         }
     }

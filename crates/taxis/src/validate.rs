@@ -936,6 +936,23 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
                 KNOWN_CHANNEL_TYPES.join(", ")
             ));
         }
+
+        // WHY(#5193 decision record): "fail closed for operator commands
+        // unless an exact source/group binding grants them" is a claim
+        // about EXACT bindings specifically. A wildcard/default source
+        // (`"*"`) granting `commandTier = "operator"` in config would
+        // never do what it appears to: `MessageRouter::match_route` never
+        // honors an operator grant on a wildcard match. Surfacing that at
+        // config-validation time (not just silently downgrading it at
+        // routing time) means a misconfiguration is reported to the
+        // operator instead of silently doing nothing.
+        if binding.get("source").and_then(Value::as_str) == Some("*")
+            && binding.get("commandTier").and_then(Value::as_str) == Some("operator")
+        {
+            errors.push(format!(
+                "bindings[{i}].commandTier 'operator' has no effect on a wildcard source ('*') binding -- only an exact source or group binding may grant the operator command tier"
+            ));
+        }
     }
 }
 

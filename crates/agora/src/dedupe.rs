@@ -80,6 +80,7 @@ mod tests {
             text: text.to_owned(),
             timestamp,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         }
     }

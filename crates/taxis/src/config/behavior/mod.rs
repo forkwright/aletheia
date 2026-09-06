@@ -21,7 +21,9 @@ pub use knowledge::{
     AdmissionPolicyKind, BookkeepingProviderKind, CompactionStrategyKind, ExtractionConfig,
     KnowledgeConfig,
 };
-pub use messaging::{MessagingConfig, OutboundMessagePolicy, RawPayloadPolicy};
+pub use messaging::{
+    InboundMessagePolicy, MessagingConfig, OutboundMessagePolicy, RawPayloadPolicy,
+};
 pub use nous::NousBehaviorConfig;
 pub use provider::{
     AnthropicConfig, DeploymentTarget, LOCAL_ADMISSION_MAX_RUNNING, LOCAL_ADMISSION_MAX_WAITING,

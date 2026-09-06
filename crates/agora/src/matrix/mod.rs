@@ -271,6 +271,7 @@ impl MatrixProvider {
                     self.halted_health_check_interval,
                     self.raw_payload.clone(),
                     cursor,
+                    account_id.clone(),
                 )
                 .instrument(span),
             );
@@ -444,6 +445,7 @@ async fn sync_loop(
     halted_health_check_interval: Duration,
     raw_payload: taxis::config::RawPayloadPolicy,
     cursor: Option<AccountCursor>,
+    account_id: String,
 ) {
     tracing::info!("Matrix sync started");
     if let Some(persisted) = cursor.as_ref().and_then(|c| c.persisted.clone()) {
@@ -461,7 +463,7 @@ async fn sync_loop(
                 tracing::info!("cancellation received, stopping Matrix sync");
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref(), &raw_payload, cursor.as_ref()) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &raw_payload, cursor.as_ref(), &account_id) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -529,6 +531,7 @@ async fn sync_once(
     own_user_id: Option<&str>,
     raw_payload: &taxis::config::RawPayloadPolicy,
     cursor: Option<&AccountCursor>,
+    account_id: &str,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -556,7 +559,8 @@ async fn sync_once(
 
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
-            if let Some(message) = extract_message(room_id, event, own_user_id, raw_payload)
+            if let Some(message) =
+                extract_message(room_id, event, own_user_id, raw_payload, account_id)
                 && tx.send(message).await.is_err()
             {
                 // WHY: the listener has shut down; returning an error lets
@@ -574,6 +578,7 @@ fn extract_message(
     event: &MatrixEvent,
     own_user_id: Option<&str>,
     raw_payload: &taxis::config::RawPayloadPolicy,
+    account_id: &str,
 ) -> Option<InboundMessage> {
     if event.event_type != "m.room.message" {
         return None;
@@ -637,6 +642,7 @@ fn extract_message(
             0
         }),
         attachments,
+        receiving_account_id: Some(account_id.to_owned()),
         raw: crate::types::capture_raw_payload(raw_payload, event),
     })
 }
@@ -856,6 +862,7 @@ mod tests {
             &event,
             Some("@bot:example.org"),
             &policy,
+            "test-account",
         )
         .expect("message");
         assert_eq!(msg.channel, "matrix");
@@ -868,6 +875,34 @@ mod tests {
             msg.raw, None,
             "raw payload capture is opt-in and off by default"
         );
+    }
+
+    // PROOF(#5193 prerequisite): the receiving account is carried onto
+    // InboundMessage, not dropped at extraction.
+    #[test]
+    fn extract_matrix_room_message_carries_receiving_account_id() {
+        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+            "type": "m.room.message",
+            "sender": "@alice:example.org",
+            "event_id": "$event",
+            "origin_server_ts": 100,
+            "content": {
+                "msgtype": "m.text",
+                "body": "hello"
+            }
+        }))
+        .expect("event");
+
+        let policy = taxis::config::RawPayloadPolicy::default();
+        let msg = extract_message(
+            "!room:example.org",
+            &event,
+            Some("@bot:example.org"),
+            &policy,
+            "work",
+        )
+        .expect("message");
+        assert_eq!(msg.receiving_account_id.as_deref(), Some("work"));
     }
 
     #[test]
@@ -893,6 +928,7 @@ mod tests {
             &event,
             Some("@bot:example.org"),
             &policy,
+            "test-account",
         )
         .expect("message");
         let raw = msg.raw.expect("raw captured when policy enables it");
@@ -918,7 +954,8 @@ mod tests {
                 "!room:example.org",
                 &event,
                 Some("@bot:example.org"),
-                &policy
+                &policy,
+                "test-account",
             )
             .is_none()
         );
@@ -947,7 +984,8 @@ mod tests {
                 "!room:example.org",
                 &event,
                 Some("@bot:example.org"),
-                &policy
+                &policy,
+                "test-account",
             )
             .is_none(),
             "m.notice must not produce an inbound message"
@@ -985,7 +1023,8 @@ mod tests {
                     "!room:example.org",
                     &event,
                     Some("@bot:example.org"),
-                    &policy
+                    &policy,
+                    "test-account",
                 )
                 .is_none(),
                 "{msgtype} must not produce an inbound message"
@@ -1014,7 +1053,8 @@ mod tests {
                 "!room:example.org",
                 &event,
                 Some("@bot:example.org"),
-                &policy
+                &policy,
+                "test-account",
             )
             .is_none(),
             "an event without a msgtype must not produce an inbound message"
@@ -1041,6 +1081,7 @@ mod tests {
             &event,
             Some("@bot:example.org"),
             &policy,
+            "test-account",
         )
         .expect("emote is user-authored text and must be accepted");
         assert_eq!(
@@ -1342,6 +1383,7 @@ mod tests {
                 Some(&own_user_id),
                 &raw_payload,
                 None,
+                "test-account",
             )
             .await
         });

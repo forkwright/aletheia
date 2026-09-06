@@ -91,6 +91,12 @@ workspace = "nous/main"
 # channel = "signal"
 # source = "*"
 # nousId = "main"
+#
+# Required alongside any binding (#5193): inbound senders are denied by
+# default. "*" here means "anyone who reaches this number/room" -- narrow
+# to specific senders for anything beyond a personal, single-operator setup.
+# [messaging.inbound]
+# allowlist = { signal = ["*"] }
 
 # --- Embedding (for recall/knowledge search) ---
 # [embedding]

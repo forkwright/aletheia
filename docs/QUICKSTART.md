@@ -339,6 +339,14 @@ http_port = 8080
 channel = "signal"
 source = "*"
 nous_id = "pronoea"
+
+[messaging.inbound]
+# Required (#5193): inbound senders are denied by default. Explicitly
+# allow senders on the "signal" channel -- "*" here means "anyone who
+# reaches this number", which is the quickstart's convenience trade-off;
+# tighten to specific phone numbers for anything beyond a personal, single-
+# operator setup.
+allowlist = { signal = ["*"] }
 ```
 
 4. Restart the server. Send a message to your Signal number.
