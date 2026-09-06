@@ -1753,9 +1753,16 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 serde_json::from_value::<Vec<organon::types::WorkingCheckpoint>>(ws.clone()).ok()
             }) {
                 for checkpoint in &checkpoints {
+                    // WHY(#4853): the exported `WorkingCheckpoint` never
+                    // carried a `turn_id` (only the display `turn_number`),
+                    // so there is no canonical identity to restore -- mint a
+                    // fresh one. The on-disk key is a store-internal
+                    // sort/uniqueness value, not user-visible data; the
+                    // imported `turn_number` is preserved on the record body.
                     checkpoint_store
                         .write_checkpoint(
                             &session_record.id,
+                            koina::ulid::Ulid::new(),
                             checkpoint.turn_number,
                             &checkpoint.content,
                         )
@@ -3210,7 +3217,12 @@ workspace = "nous/{agent_id}"
         )
         .unwrap();
         checkpoint_store
-            .write_checkpoint(&session.id, 1, "shipped #4588 wiring")
+            .write_checkpoint(
+                &session.id,
+                koina::ulid::Ulid::new(),
+                1,
+                "shipped #4588 wiring",
+            )
             .unwrap();
         drop(checkpoint_store);
 
@@ -4080,7 +4092,12 @@ workspace = "nous/{agent_id}"
         )
         .unwrap();
         source_checkpoint_store
-            .write_checkpoint(&active_session.id, 1, "ship #4163")
+            .write_checkpoint(
+                &active_session.id,
+                koina::ulid::Ulid::new(),
+                1,
+                "ship #4163",
+            )
             .unwrap();
         drop(source_checkpoint_store);
 

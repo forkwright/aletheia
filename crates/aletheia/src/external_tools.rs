@@ -1170,7 +1170,13 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         ToolContext {
             nous_id: koina::id::NousId::new("alice").expect("valid nous id"),
             session_id: koina::id::SessionId::new(),
-            turn_number: 0,
+            turn_identity: koina::turn_identity::TurnEventIdentity {
+                turn_id: koina::ulid::Ulid::new(),
+                session_id: "test".to_owned(),
+                request_id: None,
+                turn_number: 0,
+                client_turn_id: None,
+            },
             workspace: std::env::current_dir().expect("cwd"),
             allowed_roots: vec![std::env::current_dir().expect("cwd")],
             services: None,
@@ -1387,7 +1393,13 @@ done
         ToolContext {
             nous_id: koina::id::NousId::new("alice").expect("valid nous id"),
             session_id: koina::id::SessionId::new(),
-            turn_number: 0,
+            turn_identity: koina::turn_identity::TurnEventIdentity {
+                turn_id: koina::ulid::Ulid::new(),
+                session_id: "test".to_owned(),
+                request_id: None,
+                turn_number: 0,
+                client_turn_id: None,
+            },
             workspace: std::env::current_dir().expect("cwd"),
             allowed_roots: vec![std::env::current_dir().expect("cwd")],
             services: None,

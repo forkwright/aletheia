@@ -6,15 +6,27 @@
     reason = "test assertions on known-length collections"
 )]
 
+use koina::ulid::Ulid;
 use organon::types::WorkingCheckpointStore;
 
 use super::FjallWorkingCheckpointStore;
+
+/// Deterministic, strictly-increasing ULID for a given test iteration.
+///
+/// WHY: `Ulid::new()` mints from wall-clock milliseconds plus random tail
+/// bits, so two calls in the same millisecond (as in a tight test loop) are
+/// not guaranteed to sort in call order. `Ulid`'s encoding preserves numeric
+/// ordering of the raw value, so a small monotonic integer is sufficient and
+/// removes the flake.
+fn test_turn_id(i: u64) -> Ulid {
+    Ulid::from_u128(u128::from(i))
+}
 
 #[test]
 fn write_and_read_latest_roundtrip() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     store
-        .write_checkpoint("session-1", 1, "first checkpoint")
+        .write_checkpoint("session-1", test_turn_id(1), 1, "first checkpoint")
         .expect("write checkpoint");
 
     let latest = store
@@ -30,13 +42,13 @@ fn write_and_read_latest_roundtrip() {
 fn read_latest_returns_most_recent() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     store
-        .write_checkpoint("session-1", 1, "first")
+        .write_checkpoint("session-1", test_turn_id(1), 1, "first")
         .expect("write first");
     store
-        .write_checkpoint("session-1", 2, "second")
+        .write_checkpoint("session-1", test_turn_id(2), 2, "second")
         .expect("write second");
     store
-        .write_checkpoint("session-1", 3, "third")
+        .write_checkpoint("session-1", test_turn_id(3), 3, "third")
         .expect("write third");
 
     let latest = store
@@ -59,7 +71,7 @@ fn read_recent_returns_newest_first() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     for i in 1..=5 {
         store
-            .write_checkpoint("session-1", i, &format!("checkpoint-{i}"))
+            .write_checkpoint("session-1", test_turn_id(i), i, &format!("checkpoint-{i}"))
             .expect("write checkpoint");
     }
 
@@ -74,10 +86,10 @@ fn read_recent_returns_newest_first() {
 fn sessions_are_isolated() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     store
-        .write_checkpoint("session-a", 1, "a-content")
+        .write_checkpoint("session-a", test_turn_id(1), 1, "a-content")
         .expect("write a");
     store
-        .write_checkpoint("session-b", 1, "b-content")
+        .write_checkpoint("session-b", test_turn_id(1), 1, "b-content")
         .expect("write b");
 
     let a = store
@@ -110,7 +122,7 @@ fn read_recent_respects_limit() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     for i in 1..=10 {
         store
-            .write_checkpoint("session-1", i, &format!("checkpoint-{i}"))
+            .write_checkpoint("session-1", test_turn_id(i), i, &format!("checkpoint-{i}"))
             .expect("write checkpoint");
     }
 
@@ -127,10 +139,10 @@ fn read_recent_respects_limit() {
 fn overwrite_checkpoint_same_turn_updates_content() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     store
-        .write_checkpoint("session-1", 1, "original")
+        .write_checkpoint("session-1", test_turn_id(1), 1, "original")
         .expect("write original");
     store
-        .write_checkpoint("session-1", 1, "updated")
+        .write_checkpoint("session-1", test_turn_id(1), 1, "updated")
         .expect("write update");
 
     let latest = store
@@ -155,7 +167,7 @@ fn checkpoint_survives_store_reopen_at_same_path() {
     {
         let store = FjallWorkingCheckpointStore::open(dir.path()).expect("open store");
         store
-            .write_checkpoint("session-1", 1, "before restart")
+            .write_checkpoint("session-1", test_turn_id(1), 1, "before restart")
             .expect("write checkpoint");
     } // store dropped here — nothing kept alive across the "restart"
 
@@ -173,7 +185,7 @@ fn write_checkpoint_prunes_old_entries() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     for i in 1..=25 {
         store
-            .write_checkpoint("session-1", i, &format!("checkpoint-{i}"))
+            .write_checkpoint("session-1", test_turn_id(i), i, &format!("checkpoint-{i}"))
             .expect("write checkpoint");
     }
 
@@ -184,4 +196,119 @@ fn write_checkpoint_prunes_old_entries() {
         recent.len()
     );
     assert_eq!(recent.first().map(|r| r.turn_number), Some(25));
+}
+
+// ── Legacy key migration (#4853) ────────────────────────────────────────────
+
+/// Insert a checkpoint row directly under the pre-#4853 zero-padded-ordinal
+/// key, bypassing `write_checkpoint` (which only ever writes the current
+/// ULID-keyed shape). Simulates data written by the previous code version.
+fn seed_legacy_row(store: &FjallWorkingCheckpointStore, session_id: &str, turn_number: u64) {
+    let partition = store.partition().expect("partition");
+    let key = format!("nous:working_checkpoint:{session_id}:{turn_number:020}");
+    let record = super::WorkingCheckpointRecord {
+        session_id: session_id.to_owned(),
+        turn_number,
+        content: format!("legacy-{turn_number}"),
+        created_at: jiff::Timestamp::now().to_string(),
+    };
+    let value = serde_json::to_vec(&record).expect("serialize legacy record");
+    let mut tx = store.db.write_tx();
+    tx.insert(&partition, key.as_str(), value.as_slice());
+    tx.commit().expect("commit legacy row");
+}
+
+#[test]
+fn migration_removes_legacy_ordinal_keys() {
+    let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
+    seed_legacy_row(&store, "session-1", 3);
+
+    let legacy_prefix = super::FjallWorkingCheckpointStore::prefix_key("session-1");
+    let partition = store.partition().expect("partition");
+    let count_matching = |store: &FjallWorkingCheckpointStore| {
+        use fjall::Readable as _;
+        let snap = store.db.read_tx();
+        snap.prefix(&partition, legacy_prefix.as_bytes()).count()
+    };
+    assert_eq!(count_matching(&store), 1, "legacy row seeded");
+
+    store
+        .migrate_legacy_ordinal_keys()
+        .expect("migration succeeds");
+
+    assert_eq!(
+        count_matching(&store),
+        0,
+        "migration must remove the legacy-format row"
+    );
+}
+
+#[test]
+fn migration_is_idempotent_and_leaves_current_format_rows_untouched() {
+    let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
+    store
+        .write_checkpoint("session-1", test_turn_id(1), 1, "current-format")
+        .expect("write current-format checkpoint");
+    seed_legacy_row(&store, "session-1", 3);
+
+    store
+        .migrate_legacy_ordinal_keys()
+        .expect("first migration succeeds");
+    // Idempotent: running again on an already-migrated store is a no-op,
+    // not an error.
+    store
+        .migrate_legacy_ordinal_keys()
+        .expect("second migration succeeds");
+
+    let latest = store
+        .read_latest("session-1")
+        .expect("read latest")
+        .expect("current-format checkpoint survives migration");
+    assert_eq!(
+        latest.content, "current-format",
+        "migration must not remove ULID-keyed rows"
+    );
+}
+
+#[test]
+fn reopen_migrates_legacy_keys_written_by_a_previous_open() {
+    // WHY(#4853): the migration must run on `open`, not only when called
+    // directly, so a store carrying rows from before this code shipped
+    // self-heals on the next process start.
+    let dir = tempfile::tempdir().expect("tempdir");
+    {
+        let store = FjallWorkingCheckpointStore::open(dir.path()).expect("open store");
+        seed_legacy_row(&store, "session-1", 7);
+    }
+
+    let reopened = FjallWorkingCheckpointStore::open(dir.path()).expect("reopen store");
+    let prefix = super::FjallWorkingCheckpointStore::prefix_key("session-1");
+    let partition = reopened.partition().expect("partition");
+    let remaining = {
+        use fjall::Readable as _;
+        let snap = reopened.db.read_tx();
+        snap.prefix(&partition, prefix.as_bytes()).count()
+    };
+    assert_eq!(
+        remaining, 0,
+        "legacy row from a prior open must be migrated away on reopen"
+    );
+}
+
+#[test]
+fn legacy_key_detection_matches_only_the_old_shape() {
+    assert!(super::is_legacy_ordinal_key(
+        b"nous:working_checkpoint:s1:00000000000000000003"
+    ));
+    assert!(
+        !super::is_legacy_ordinal_key(b"nous:working_checkpoint:s1:00000000000000000AB3"),
+        "non-digit suffix bytes must not match"
+    );
+    assert!(
+        !super::is_legacy_ordinal_key(
+            format!("nous:working_checkpoint:s1:{}", test_turn_id(3)).as_bytes()
+        ),
+        "a real 26-char ULID suffix must not match"
+    );
+    assert!(!super::is_legacy_ordinal_key(b"no-colon-at-all"));
 }

@@ -62,8 +62,22 @@ fn record_serialization_roundtrip() {
     assert_eq!(decoded.system_prompt_bytes, 12);
 }
 
+// WHY(#4853): these three tests used to exercise `build_audit_record`, a
+// `#[cfg(test)]`-only helper that duplicated the recall-fact-filtering logic
+// of the real production path, `build_audit_record_for_request`, but derived
+// its tool surface/provider from a live `organon::types::ToolContext` +
+// `ToolRegistry` + `ProviderRegistry` -- machinery no production caller of
+// the helper ever exercised (`build_audit_record`'s only callers were these
+// tests). It also carried a stale `TODO(#4853): thread request_id from
+// pylon middleware` even though `SessionState::request_id` already existed
+// and the real production path already read it. The helper and its
+// `PromptAuditRecordInput` type are deleted, not threaded, per the ratified
+// decision on #4853; these tests are rewritten to call
+// `build_audit_record_for_request` directly so the recall-filtering
+// coverage lands on the function actually running in production instead of
+// on its retired stand-in.
 #[test]
-fn build_audit_record_includes_filtered_recall_facts() {
+fn build_audit_record_for_request_includes_filtered_recall_facts() {
     let config = crate::config::NousConfig::default();
     let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
     let ctx = crate::pipeline::PipelineContext {
@@ -83,32 +97,23 @@ fn build_audit_record_includes_filtered_recall_facts() {
         }),
         ..crate::pipeline::PipelineContext::default()
     };
-    let providers = hermeneus::provider::ProviderRegistry::new();
-    let tools = organon::registry::ToolRegistry::new();
-    let tool_ctx = organon::types::ToolContext {
-        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
+    let request = hermeneus::types::CompletionRequest::default();
 
-    let record = build_audit_record(PromptAuditRecordInput {
+    let record = build_audit_record_for_request(PromptAuditRequestRecordInput {
         ctx: &ctx,
         session: &session,
-        config: &config,
-        observed_model: &config.generation.model,
-        providers: &providers,
-        tools: &tools,
-        tool_ctx: &tool_ctx,
+        model: &config.generation.model,
+        request: &request,
+        provider: "anthropic",
+        deployment_target: "cloud",
+        surface_hash: "ts1:test",
         options: PromptAuditRecordOptions::default(),
+        chars_per_token: 4,
+        request_id: None,
     });
 
     assert_eq!(record.deployment_target, "cloud");
-    assert!(record.tool_surface_hash.starts_with("ts1:"));
+    assert_eq!(record.tool_surface_hash, "ts1:test");
     assert_eq!(record.fact_ids_included, vec!["fact-public"]);
     let filtered = record
         .fact_ids_filtered
@@ -119,7 +124,7 @@ fn build_audit_record_includes_filtered_recall_facts() {
 }
 
 #[test]
-fn build_audit_record_omits_filtered_recall_facts_when_disabled() {
+fn build_audit_record_for_request_omits_filtered_recall_facts_when_disabled() {
     let config = crate::config::NousConfig::default();
     let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
     let ctx = crate::pipeline::PipelineContext {
@@ -139,71 +144,25 @@ fn build_audit_record_omits_filtered_recall_facts_when_disabled() {
         }),
         ..crate::pipeline::PipelineContext::default()
     };
-    let providers = hermeneus::provider::ProviderRegistry::new();
-    let tools = organon::registry::ToolRegistry::new();
-    let tool_ctx = organon::types::ToolContext {
-        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
+    let request = hermeneus::types::CompletionRequest::default();
 
-    let record = build_audit_record(PromptAuditRecordInput {
+    let record = build_audit_record_for_request(PromptAuditRequestRecordInput {
         ctx: &ctx,
         session: &session,
-        config: &config,
-        observed_model: &config.generation.model,
-        providers: &providers,
-        tools: &tools,
-        tool_ctx: &tool_ctx,
+        model: &config.generation.model,
+        request: &request,
+        provider: "anthropic",
+        deployment_target: "cloud",
+        surface_hash: "ts1:test",
         options: PromptAuditRecordOptions {
             include_filtered_ids: false,
         },
+        chars_per_token: 4,
+        request_id: None,
     });
 
     assert_eq!(record.fact_ids_included, vec!["fact-public"]);
     assert!(record.fact_ids_filtered.is_empty());
-}
-
-#[test]
-fn build_audit_record_uses_observed_model_for_provider_attribution() {
-    let mut config = crate::config::NousConfig::default();
-    config.generation.model = "primary-model".to_owned();
-    let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
-    let ctx = crate::pipeline::PipelineContext::default();
-    let mut providers = hermeneus::provider::ProviderRegistry::new();
-    providers.register(Box::new(
-        hermeneus::test_utils::MockProvider::new("fallback answer").models(&["fallback-model"]),
-    ));
-    let tools = organon::registry::ToolRegistry::new();
-    let tool_ctx = organon::types::ToolContext {
-        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
-
-    let record = build_audit_record(PromptAuditRecordInput {
-        ctx: &ctx,
-        session: &session,
-        config: &config,
-        observed_model: "fallback-model",
-        providers: &providers,
-        tools: &tools,
-        tool_ctx: &tool_ctx,
-        options: PromptAuditRecordOptions::default(),
-    });
-
-    assert_eq!(record.model, "fallback-model");
-    assert_eq!(record.provider, "mock");
 }
 
 #[test]

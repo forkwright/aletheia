@@ -1569,6 +1569,11 @@ pub async fn stream_turn(
                 // so prompt-audit records key off the real gateway request
                 // instead of a locally-minted, disconnected ID.
                 Some(stream_request_id.clone()),
+                // WHY(#4853): thread the client-supplied turn id (when the
+                // request body carried one) onto the canonical
+                // TurnEventIdentity so replay/audit can recover which
+                // client-side action produced this turn.
+                client_turn_id.clone(),
                 nous::handle::DEFAULT_SEND_TIMEOUT,
                 turn_cancel_task.clone(),
             );

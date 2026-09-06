@@ -1,26 +1,16 @@
 //! Real-time streaming events for the turn pipeline.
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
-use koina::ulid::Ulid;
 
 /// Authoritative identity of the turn emitting a tool-lifecycle event (#5016).
 ///
-/// WHY: the approval event previously carried the session-local turn *number*
-/// in a field named `turn_id`, and the Pylon bridge silently substituted its
-/// own stream ULID — the same event had two different identities depending on
-/// where it was observed. Every tool-lifecycle event now carries the canonical
-/// turn ULID (`SessionState::turn_id`), the owning session id, and the gateway
-/// request id when the turn originated from an HTTP request (#4853).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TurnEventIdentity {
-    /// Canonical turn identifier (ULID), stable across actor restarts.
-    pub turn_id: Ulid,
-    /// Session that owns the turn.
-    // kanon:ignore RUST/primitive-for-domain-id WHY: stream events cross a process boundary into pylon DTOs; both sides carry the session id as a plain string
-    pub session_id: String,
-    /// Canonical HTTP request ID from the gateway, when one exists (#4853).
-    pub request_id: Option<String>,
-}
+/// WHY(#4853): promoted to `koina::turn_identity` and re-exported here under
+/// its original name so every existing `nous::stream::TurnEventIdentity`
+/// reference (pylon included) keeps compiling. The type now also carries
+/// `turn_number` and `client_turn_id` so it can be threaded into
+/// `organon::ToolContext` in place of a bare `turn_number: u64`; see
+/// `koina::turn_identity` for the full rationale and field docs.
+pub use koina::turn_identity::TurnEventIdentity;
 
 /// Policy-minimized tool input carried only to the currently connected
 /// approver.

@@ -95,7 +95,12 @@ async fn checkpoint_survives_across_turns_and_compaction() {
         // At turn 5 the agent writes a working checkpoint.
         if turn == 5 {
             store
-                .write_checkpoint(session_id, turn, "turn-5-key-info")
+                .write_checkpoint(
+                    session_id,
+                    koina::ulid::Ulid::from_u128(u128::from(turn)),
+                    turn,
+                    "turn-5-key-info",
+                )
                 .expect("write checkpoint at turn 5");
         }
 

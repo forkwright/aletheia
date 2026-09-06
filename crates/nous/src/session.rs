@@ -40,6 +40,11 @@ pub struct SessionState {
     /// turn originated from an HTTP request (#4853). `None` for turns with
     /// no originating HTTP request (internal/cross-nous/test turns).
     pub request_id: Option<String>,
+    /// Client-generated turn id from the originating request's
+    /// `client_turn_id`, when the client supplied one (#4853). Mirrors
+    /// `request_id`: set alongside it in `execute_streaming_turn_with_panic_boundary`,
+    /// `None` for turns with no client-supplied id.
+    pub client_turn_id: Option<String>,
     pub token_estimate: i64,
     pub cumulative_tokens: u64,
     // NOTE(#6527): the distillation count deliberately does not live here. The
@@ -99,6 +104,7 @@ impl SessionState {
             turn: 0,
             turn_id: Ulid::new(),
             request_id: None,
+            client_turn_id: None,
             token_estimate: 0,
             thinking_enabled: config.generation.thinking_enabled,
             thinking_budget: config.generation.thinking_budget,

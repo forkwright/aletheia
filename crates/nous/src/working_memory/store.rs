@@ -1,17 +1,30 @@
 //! Fjall-backed working checkpoint store.
 //!
 //! Partition: `working_checkpoints`
-//! Key pattern: `nous:working_checkpoint:{session_id}:{turn_n}`
+//! Key pattern: `nous:working_checkpoint:{session_id}:{turn_id}`, where
+//! `turn_id` is the canonical `TurnEventIdentity::turn_id` ULID (#4853).
 //! Value: JSON-encoded [`WorkingCheckpointRecord`]
 //!
 //! Per `feedback_fjall_iter_truncate_pitfall.md`: never collect
 //! `prefix(p).iter()` before truncating; use `.rev().take(N)`.
+//!
+//! WHY(#4853) ULID over ordinal: before this, the key suffix was
+//! `{turn_number:020}` (`turn_number` zero-padded to 20 ASCII digits) so
+//! lexicographic key order tracked numeric order. That was a second,
+//! disconnected turn representation instead of the canonical
+//! `TurnEventIdentity`. ULIDs are natively lexicographically sortable by
+//! creation time, so keying by `turn_id` gets the same correctly-ordered
+//! `prune_old`/`read_latest`/`read_recent` behavior from the identity that
+//! already exists, with no zero-padding hack. See
+//! [`FjallWorkingCheckpointStore::migrate_legacy_ordinal_keys`] for the
+//! one-time migration away from the old key shape.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use fjall::{KeyspaceCreateOptions, Readable, SingleWriterTxDatabase};
 use jiff::Timestamp;
+use koina::ulid::Ulid;
 
 use crate::error;
 
@@ -82,11 +95,22 @@ impl FjallWorkingCheckpointStore {
     }
 
     fn from_fjall_db(fdb: koina::fjall::FjallDb) -> Self {
-        Self {
+        let store = Self {
             db: Arc::new(fdb.db),
             write_lock: fdb.write_lock,
             _temp_dir: fdb._temp_dir,
+        };
+        // WHY(#4853): run once per open, before any caller can observe a
+        // mixed-format prefix scan. Cheap no-op when there are no legacy
+        // keys (every fresh/already-migrated store).
+        if let Err(e) = store.migrate_legacy_ordinal_keys() {
+            tracing::warn!(
+                error = %e,
+                "working checkpoint legacy-key migration failed; old and new \
+                 format keys may coexist until the next successful open"
+            );
         }
+        store
     }
 
     fn partition(&self) -> error::Result<fjall::SingleWriterTxKeyspace> {
@@ -100,14 +124,82 @@ impl FjallWorkingCheckpointStore {
             })
     }
 
-    fn checkpoint_key(session_id: &str, turn_number: u64) -> String {
-        // WHY: zero-pad turn number so lexicographic key order matches numeric
-        // order. Without padding, turn 10 sorts before turn 2.
-        format!("nous:working_checkpoint:{session_id}:{turn_number:020}")
+    fn checkpoint_key(session_id: &str, turn_id: Ulid) -> String {
+        format!("nous:working_checkpoint:{session_id}:{turn_id}")
     }
 
     fn prefix_key(session_id: &str) -> String {
         format!("nous:working_checkpoint:{session_id}:")
+    }
+
+    /// One-time migration off the pre-#4853 key shape.
+    ///
+    /// The legacy key suffix was `{turn_number:020}` -- exactly 20 ASCII
+    /// digits. The current suffix is a 26-character Crockford-base32 ULID
+    /// string. A legacy key and a ULID key do not interleave correctly
+    /// under one lexicographic prefix scan: ASCII digits (`0x30`-`0x39`)
+    /// sort before the uppercase letters a ULID can contain, so a mix of
+    /// the two shapes under one session prefix would make `prune_old`'s
+    /// "keep the newest N by key order" logic evict the wrong entries.
+    ///
+    /// Working checkpoints are regenerable agent-curated scratch state --
+    /// reinjected context, not an audit record (`CHECKPOINT_KEEP_N` already
+    /// prunes down to the last 20 per session) -- so rather than fabricate
+    /// a synthetic `turn_id` for old rows that never recorded one, the
+    /// migration drops the legacy-format rows outright. That is correct by
+    /// construction: after this runs, every key remaining under any session
+    /// prefix is ULID-shaped, so ordering is consistent again.
+    ///
+    /// Idempotent: matches only the exact legacy shape (20-byte, all-ASCII-
+    /// digit suffix), so a store with no legacy keys -- including a second
+    /// call on an already-migrated store -- finds nothing to remove.
+    fn migrate_legacy_ordinal_keys(&self) -> error::Result<()> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let partition = self.partition()?;
+
+        let scan_prefix = "nous:working_checkpoint:";
+        let legacy = {
+            let snap = self.db.read_tx();
+            let mut legacy = Vec::new();
+            for guard in snap.prefix(&partition, scan_prefix.as_bytes()) {
+                let (key, _) = guard.into_inner().map_err(|e| {
+                    error::WorkingCheckpointStoreSnafu {
+                        message: format!("working checkpoint migration scan failed: {e}"),
+                    }
+                    .build()
+                })?;
+                if is_legacy_ordinal_key(&key) {
+                    legacy.push(key);
+                }
+            }
+            legacy
+        };
+
+        if legacy.is_empty() {
+            return Ok(());
+        }
+
+        let removed = legacy.len();
+        let mut tx = self.db.write_tx();
+        for key in legacy {
+            tx.remove(&partition, &*key);
+        }
+        tx.commit().map_err(|e| {
+            error::WorkingCheckpointStoreSnafu {
+                message: format!("working checkpoint migration commit failed: {e}"),
+            }
+            .build()
+        })?;
+        tracing::info!(
+            removed,
+            "migrated working checkpoint store off legacy zero-padded-ordinal keys (#4853)"
+        );
+
+        Ok(())
     }
 
     /// Delete all but the `keep_n` most recent checkpoints for a session.
@@ -158,6 +250,7 @@ impl organon::types::WorkingCheckpointStore for FjallWorkingCheckpointStore {
     fn write_checkpoint(
         &self,
         session_id: &str,
+        turn_id: Ulid,
         turn_number: u64,
         content: &str,
     ) -> std::result::Result<(), organon::error::StoreError> {
@@ -186,7 +279,7 @@ impl organon::types::WorkingCheckpointStore for FjallWorkingCheckpointStore {
         let mut tx = self.db.write_tx();
         tx.insert(
             &partition,
-            Self::checkpoint_key(session_id, turn_number).as_str(),
+            Self::checkpoint_key(session_id, turn_id).as_str(),
             value.as_slice(),
         );
         tx.commit()
@@ -299,6 +392,21 @@ impl organon::types::WorkingCheckpointStore for FjallWorkingCheckpointStore {
         }
 
         Ok(results)
+    }
+}
+
+/// True when `key` ends in the pre-#4853 legacy suffix: a `:` followed by
+/// exactly 20 ASCII-digit bytes (the zero-padded `turn_number` ordinal).
+/// The current suffix is a 26-character Crockford-base32 ULID, so length
+/// alone already distinguishes the two shapes; the digit check is defense
+/// in depth against a future key format that happens to also be 20 bytes.
+fn is_legacy_ordinal_key(key: &[u8]) -> bool {
+    let Ok(s) = std::str::from_utf8(key) else {
+        return false;
+    };
+    match s.rsplit_once(':') {
+        Some((_, suffix)) => suffix.len() == 20 && suffix.bytes().all(|b| b.is_ascii_digit()),
+        None => false,
     }
 }
 

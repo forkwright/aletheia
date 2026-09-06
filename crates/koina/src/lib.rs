@@ -59,6 +59,11 @@ pub mod retry;
 pub mod secret;
 /// Trait abstractions for filesystem, clock, and environment operations.
 pub mod system;
+/// Canonical turn/request identity shared across the tool-execution boundary
+/// ([`turn_identity::TurnEventIdentity`]). Lives here (not in `nous`, where
+/// it originated) so `organon` can carry the same struct without depending
+/// on `nous`; `nous::stream` re-exports it under its original name (#4853).
+pub mod turn_identity;
 /// Internal ULID generation (Crockford base32, 48-bit timestamp + 80-bit random).
 pub mod ulid;
 /// Internal UUID v4 generation (dependency-free).

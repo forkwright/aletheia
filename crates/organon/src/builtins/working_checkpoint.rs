@@ -70,7 +70,12 @@ impl ToolExecutor for UpdateWorkingCheckpointExecutor {
             let _ = args.scope; // acknowledged; only Session is supported today
 
             let session_id = ctx.session_id.to_string();
-            match store.write_checkpoint(&session_id, ctx.turn_number, &args.content) {
+            match store.write_checkpoint(
+                &session_id,
+                ctx.turn_identity.turn_id,
+                ctx.turn_number(),
+                &args.content,
+            ) {
                 Ok(()) => Ok(ToolResult::text("working checkpoint updated")),
                 Err(e) => Ok(ToolResult::error(format!(
                     "failed to persist working checkpoint: {e}"
@@ -190,6 +195,7 @@ mod tests {
         fn write_checkpoint(
             &self,
             session_id: &str,
+            _turn_id: koina::ulid::Ulid,
             turn_number: u64,
             content: &str,
         ) -> std::result::Result<(), crate::error::StoreError> {
@@ -240,7 +246,7 @@ mod tests {
         let working_checkpoint_store: Arc<dyn WorkingCheckpointStore> = store;
         ToolContext {
             session_id,
-            turn_number,
+            turn_identity: crate::testing::test_turn_identity(turn_number),
             ..crate::testing::make_test_context_with(ToolServices {
                 working_checkpoint_store: Some(working_checkpoint_store),
                 ..Default::default()

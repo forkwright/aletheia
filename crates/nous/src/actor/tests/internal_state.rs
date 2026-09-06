@@ -575,6 +575,7 @@ async fn cancelled_turn_reverts_turn_counter() {
             None,
             None,
             None,
+            None,
             "hello",
             None,
             None,
@@ -623,6 +624,7 @@ async fn spawn_pipeline_task_threads_request_id_onto_session() {
             None,
             None,
             Some("req-canonical-123".to_owned()),
+            None,
             "hello",
             None,
             None,
@@ -640,6 +642,48 @@ async fn spawn_pipeline_task_threads_request_id_onto_session() {
         session.request_id.as_deref(),
         Some("req-canonical-123"),
         "request_id must be threaded onto SessionState"
+    );
+}
+
+#[tokio::test]
+async fn spawn_pipeline_task_threads_client_turn_id_onto_session() {
+    // WHY(#4853): mirrors `spawn_pipeline_task_threads_request_id_onto_session`
+    // for the client-supplied turn id: it must land on SessionState before
+    // the pipeline runs so TurnEventIdentity::client_turn_id is populated.
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    Arc::get_mut(&mut actor.services.providers)
+        .expect("exclusive Arc reference expected in test")
+        .register(Box::new(HangingProvider));
+
+    let session_key = "client-turn-id-test";
+    let turn_cancel = CancellationToken::new();
+    turn_cancel.cancel();
+
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        actor.spawn_pipeline_task(
+            session_key,
+            None,
+            None,
+            None,
+            Some("01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned()),
+            "hello",
+            None,
+            None,
+            tracing::Span::current(),
+            turn_cancel,
+        ),
+    )
+    .await;
+
+    let session = actor
+        .sessions
+        .get(session_key)
+        .expect("session should exist after spawn_pipeline_task");
+    assert_eq!(
+        session.client_turn_id.as_deref(),
+        Some("01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+        "client_turn_id must be threaded onto SessionState"
     );
 }
 #[test]

@@ -44,6 +44,10 @@ pub(crate) enum NousMessage {
         /// prompt-audit records key off the real gateway request rather than
         /// a locally-minted, disconnected ID.
         request_id: Option<String>,
+        /// Client-generated turn id from the request body's `client_turn_id`
+        /// (#4853), threaded onto `SessionState::client_turn_id` and from
+        /// there into `TurnEventIdentity`. `None` when the client omitted it.
+        client_turn_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Operator approval gate for reversibility-class tool calls (#3958, ADR-005).

@@ -1420,6 +1420,8 @@ pub(super) async fn dispatch_tools(
         turn_id: Ulid::new(),
         session_id: "test-session".to_owned(),
         request_id: None,
+        turn_number: 0,
+        client_turn_id: None,
     };
     // WHY resolve a throwaway signer on `None` (#4835): this test-only
     // adapter keeps its `Option` parameter so its ~20 existing call sites
