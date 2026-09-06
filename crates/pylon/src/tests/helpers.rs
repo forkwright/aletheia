@@ -332,6 +332,14 @@ bind = "localhost"
 
     let mut default_config = taxis::config::AletheiaConfig::default();
     default_config.gateway.sse_heartbeat_interval_secs = 1;
+    // WHY(#5929): keep this in lockstep with the `metrics_mode`/
+    // `metrics_detailed` fields set on `AppState` below — the `/metrics`
+    // handler and health checks now read the live value from `config`
+    // rather than those startup-cached `AppState` fields, so the two must
+    // agree or handler tests see the config default (`local_only`) instead
+    // of the mode this harness advertises.
+    default_config.gateway.metrics.mode = taxis::config::MetricsMode::Public;
+    default_config.gateway.metrics.detailed = true;
     let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
 
     // WHY: pylon's /metrics handler requires a registry; tests need pylon's

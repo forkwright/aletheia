@@ -217,6 +217,8 @@ async fn collect_detailed_health_checks(state: &HealthState) -> Vec<HealthCheck>
         prosoche,
         gateway_security_check,
         rate_limiting_check,
+        metrics_mode,
+        metrics_detailed,
     ) = {
         let config = state.config.read().await;
         (
@@ -229,6 +231,13 @@ async fn collect_detailed_health_checks(state: &HealthState) -> Vec<HealthCheck>
                 config.gateway.rate_limit.trust_proxy,
                 config.gateway.rate_limit.per_user.enabled,
             ),
+            // WHY(#5929): read the live, hot-reloadable value rather than
+            // `state.metrics_mode`/`state.metrics_detailed`, which are
+            // populated once at startup and never re-derived by
+            // `apply_reload` — reading them here would report a stale mode
+            // after a config reload.
+            config.gateway.metrics.mode,
+            config.gateway.metrics.detailed,
         )
     };
 
@@ -248,8 +257,8 @@ async fn collect_detailed_health_checks(state: &HealthState) -> Vec<HealthCheck>
     let embedding_check = check_embedding_provider(state);
     let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
     let metrics_exposure_check = metrics_exposure_check(
-        state.metrics_mode,
-        state.metrics_detailed,
+        metrics_mode,
+        metrics_detailed,
         &state.oikos.data().to_string_lossy(),
     );
 
@@ -1447,7 +1456,15 @@ struct FlatSubsystemChecks {
 /// backs both `/api/v1/system/health`'s flat array and this endpoint's
 /// richer per-subsystem records).
 async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemChecks {
-    let (clock_skew_leeway, expiry_warning_threshold, prosoche, gateway, rate_limit) = {
+    let (
+        clock_skew_leeway,
+        expiry_warning_threshold,
+        prosoche,
+        gateway,
+        rate_limit,
+        metrics_mode,
+        metrics_detailed,
+    ) = {
         let config = state.config.read().await;
         (
             config.api_limits.clock_skew_leeway_secs,
@@ -1459,6 +1476,10 @@ async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemCheck
                 config.gateway.rate_limit.trust_proxy,
                 config.gateway.rate_limit.per_user.enabled,
             ),
+            // WHY(#5929): live config, not the startup-only `state.metrics_mode`
+            // / `state.metrics_detailed` fields — see the sibling read above.
+            config.gateway.metrics.mode,
+            config.gateway.metrics.detailed,
         )
     };
 
@@ -1476,8 +1497,8 @@ async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemCheck
     let credential_runtime = check_credential_runtime(state).await;
     let embedding = check_embedding_provider(state);
     let metrics = metrics_exposure_check(
-        state.metrics_mode,
-        state.metrics_detailed,
+        metrics_mode,
+        metrics_detailed,
         &state.oikos.data().to_string_lossy(),
     );
 

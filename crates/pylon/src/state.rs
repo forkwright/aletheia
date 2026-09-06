@@ -214,7 +214,10 @@ pub struct HealthState {
     pub start_time: std::time::Instant,
     /// Instance directory layout for path reporting.
     pub oikos: Arc<Oikos>,
-    /// Runtime configuration for config readability checks.
+    /// Runtime configuration for config readability checks and for reading
+    /// the live `/metrics` exposition mode + detail policy on every health
+    /// check (#5929; the mode is not cached on `AppState` because
+    /// `apply_reload` never re-derives a cached copy after a hot reload).
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Active embedding provider (for degraded-mode reporting, #3380).
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
@@ -223,10 +226,6 @@ pub struct HealthState {
     pub disk_monitor: Option<DiskSpaceMonitor>,
     /// Runtime credential manager for health/capability output (#4872).
     pub credential_runtime: Arc<CredentialRuntimeManager>,
-    /// `/metrics` exposition mode for security posture reporting (#5322).
-    pub metrics_mode: taxis::config::MetricsMode,
-    /// Whether `/metrics` exposes detailed label values (#5322).
-    pub metrics_detailed: bool,
     /// In-process broadcast bus for domain events (#5313 subsystem status:
     /// subscriber count + journal depth).
     pub event_bus: Arc<EventBus>,
@@ -257,8 +256,6 @@ impl FromRef<Arc<AppState>> for HealthState {
             embedding_provider: state.embedding_provider.clone(),
             disk_monitor: state.disk_monitor.clone(),
             credential_runtime: Arc::clone(&state.credential_runtime),
-            metrics_mode: state.metrics_mode,
-            metrics_detailed: state.metrics_detailed,
             event_bus: Arc::clone(&state.event_bus),
             turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
             #[cfg(feature = "knowledge-store")]
@@ -277,10 +274,14 @@ pub struct MetricsState {
     pub start_time: std::time::Instant,
     /// Shared Prometheus metrics registry for encoding scrapes.
     pub metrics_registry: MetricsRegistry,
-    /// `/metrics` exposition mode (#5322).
-    pub metrics_mode: taxis::config::MetricsMode,
-    /// When `false`, redact sensitive labels from the scrape output (#5322).
-    pub metrics_detailed: bool,
+    /// Runtime configuration, read live for the exposition mode and detail
+    /// policy on every scrape (#5929).
+    ///
+    /// WHY not `AppState::metrics_mode`/`metrics_detailed`: those fields are
+    /// populated once at startup and never re-derived by `apply_reload`, so a
+    /// hot config reload of `gateway.metrics.{mode,detailed}` would otherwise
+    /// go unobserved until process restart.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Shared knowledge store, for the memory-health gauges (#4694).
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
@@ -292,8 +293,7 @@ impl FromRef<Arc<AppState>> for MetricsState {
             session_store: Arc::clone(&state.session_store),
             start_time: state.start_time,
             metrics_registry: state.metrics_registry.clone(),
-            metrics_mode: state.metrics_mode,
-            metrics_detailed: state.metrics_detailed,
+            config: Arc::clone(&state.config),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: state.knowledge_store.clone(),
         }

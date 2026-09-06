@@ -2,12 +2,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::ConnectInfo;
+use axum::extract::{ConnectInfo, FromRef};
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
 use super::helpers::*;
-use crate::state::AppState;
+use crate::server::apply_reload;
+use crate::state::{AppState, ConfigState};
 
 /// Build a router with the requested metrics exposition mode.
 async fn app_with_metrics_mode(
@@ -15,6 +16,15 @@ async fn app_with_metrics_mode(
     detailed: bool,
 ) -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
+    {
+        // WHY(#5929): the `expose` handler now reads the live config rather
+        // than the startup-cached `AppState::metrics_mode`/`metrics_detailed`
+        // fields, so both must agree for these tests to exercise the mode
+        // they name.
+        let mut config = state.config.write().await;
+        config.gateway.metrics.mode = mode;
+        config.gateway.metrics.detailed = detailed;
+    }
     let state = Arc::new(AppState {
         metrics_mode: mode,
         metrics_detailed: detailed,
@@ -158,5 +168,63 @@ async fn metrics_detailed_preserves_sensitive_labels() {
     assert!(
         body.contains(r#"path="/api/health""#),
         "detailed metrics did not preserve path label: {body}"
+    );
+}
+
+/// #5929: `/metrics` must reflect a hot config reload of
+/// `gateway.metrics.mode` without a process restart. Before the fix,
+/// `expose()` read a startup-cached `AppState::metrics_mode` that
+/// `apply_reload` never re-derived, so a reload from `local_only` to
+/// `disabled` had no observable effect until the process restarted.
+#[tokio::test]
+async fn metrics_reload_from_local_only_to_disabled_takes_effect_live() {
+    let (state, _dir) = test_state().await;
+    {
+        let mut config = state.config.write().await;
+        config.gateway.metrics.mode = taxis::config::MetricsMode::LocalOnly;
+    }
+    let state = Arc::new(AppState {
+        metrics_mode: taxis::config::MetricsMode::LocalOnly,
+        metrics_detailed: false,
+        ..(*state).clone()
+    });
+    // One router, built once, kept for both requests below — nothing about
+    // the app or its state is reconstructed between them. If the reload
+    // only took effect on a freshly built router, that would be a restart
+    // in disguise.
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    // Sanity: local_only initially serves loopback scrapes.
+    let mut loopback_req = Request::get("/metrics").body(Body::empty()).unwrap();
+    loopback_req
+        .extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
+    let resp = app.clone().oneshot(loopback_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Reload `gateway.metrics.mode` -> `disabled` through the same
+    // `apply_reload` path the real SIGHUP handler drives, against the exact
+    // `state` backing the already-built `app` above.
+    let old_config = state.config.read().await.clone();
+    let mut new_config = old_config.clone();
+    new_config.gateway.metrics.mode = taxis::config::MetricsMode::Disabled;
+    let diff = taxis::reload::diff_configs(&old_config, &new_config).unwrap();
+    assert!(
+        diff.cold_changes().is_empty(),
+        "gateway.metrics.mode must be hot-reloadable, not cold: {:?}",
+        diff.cold_changes()
+    );
+    let outcome = taxis::reload::ReloadOutcome { new_config, diff };
+    apply_reload(&ConfigState::from_ref(&state), outcome).await;
+
+    // Same `app`, no restart: the next scrape must see `disabled`.
+    let resp = app
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "reload to disabled must be visible on /metrics without restart"
     );
 }
