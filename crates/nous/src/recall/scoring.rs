@@ -194,6 +194,23 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
 }
 
 /// Format scored results as a markdown section.
+///
+/// Boundary: this is where [`ScoredResult`]'s ranked-candidate structure
+/// collapses into the flat text handed to the LLM as prompt context.
+/// `content` and `score` are always preserved. The six scalar factors used
+/// in ranking (vector similarity, decay, relevance, epistemic tier,
+/// relationship proximity, access frequency) are preserved only when
+/// `inject_metadata` is set, and even then only as bare floats — not the
+/// signals behind them (which relationship produced the proximity, which
+/// tier label the score maps to, how stale the decay curve says the fact
+/// is). `source_type`, `source_id`, `nous_id`, `sensitivity`, `visibility`,
+/// `scope`, `project_id`, and the graph-importance / surprise /
+/// evidence-coverage / convergence / serendipity factors are dropped
+/// unconditionally. This is intentional: the prompt is a context window,
+/// not a queryable handle back into the knowledge graph. A caller that
+/// needs the dropped structure (e.g. multi-hop reasoning over
+/// relationships) must read [`ScoredResult`] directly rather than trying
+/// to recover it from this text.
 #[must_use]
 pub(crate) fn format_section(results: &[&ScoredResult], inject_metadata: bool) -> String {
     use std::fmt::Write;

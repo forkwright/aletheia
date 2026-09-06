@@ -102,6 +102,19 @@ impl DistillTriggerConfig {
 }
 
 /// Check if a session needs distillation. Returns the trigger reason if so.
+///
+/// Boundary: this is where a session's full metrics state — message count,
+/// last-turn token usage, staleness since the last distillation, whether it
+/// has ever been distilled — collapses to `Option<String>`. Only the branch
+/// that fired is preserved, as a short human-readable reason; the other
+/// thresholds' distances (how close the session was to tripping them too)
+/// are not retained anywhere. Downstream, `maybe_distill` uses the returned
+/// reason only for a log line — it plays no role in the summary
+/// `apply_distillation` produces. This is intentional: the trigger decision
+/// is a boolean gate with an audit note, not an input to the distillation
+/// itself, which starts from the full conversation history independently of
+/// why it was invoked. A caller that needs to know *how close* a session was
+/// to a threshold it didn't cross must read `session.metrics` directly.
 #[must_use]
 pub fn should_trigger_distillation(
     session: &Session,

@@ -736,6 +736,20 @@ impl LlmProvider for RegistryLlmProvider {
 }
 
 /// Run extraction as a background task. Logs results, never panics.
+///
+/// Boundary: this is where a full conversational turn collapses to 0-N
+/// persisted facts. `user_content`, `assistant_content`, `tool_calls`, and
+/// `reasoning` all feed the extraction prompt, but only the LLM's structured
+/// output — entities, relationships, facts, each optionally dropped again by
+/// `persist_with_scope`'s own limits and conflict detection — survives past
+/// this call. The model's reasoning about *why* it extracted (or declined to
+/// extract) a given fact is never persisted; `refined.facts_filtered` and
+/// `result.skipped` carry only counts and short reasons, not the reasoning
+/// chain that produced them. This is intentional: the knowledge store holds
+/// claims, not transcripts. A caller that needs to audit *why* a specific
+/// fact was or was not extracted must capture it from the LLM call's own
+/// trace, not from this function's return value (there is none — see the
+/// "Logs results, never panics" line above).
 #[expect(
     clippy::too_many_arguments,
     reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store + cross_tx"
