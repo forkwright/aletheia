@@ -1063,7 +1063,14 @@ impl ToolRegistry {
             .definitions()
             .into_iter()
             .filter_map(|def| {
-                let schema = def.input_schema.to_json_schema();
+                // SECURITY(#7004): attach governance metadata (owner/
+                // stability/rollback; redaction excluded per #6808) beside
+                // the schema's own top-level fields, so a `tool_schema` call
+                // surfaces the same capability declaration `standards`/audit
+                // tooling sees via `capability_metadata`.
+                let schema = self
+                    .capability_metadata(&def.name)
+                    .attach_x_capability(def.input_schema.to_json_schema());
                 match serde_json::to_string_pretty(&schema) {
                     Ok(json) => Some((def.name.as_str().to_owned(), json)),
                     Err(e) => {

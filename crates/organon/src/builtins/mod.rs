@@ -193,7 +193,13 @@ fn register_all_with_sandbox_inner(
         .definitions()
         .into_iter()
         .filter_map(|def| {
-            let schema = def.input_schema.to_json_schema();
+            // SECURITY(#7004): mirrors `ToolRegistry::finalize_tool_schema`'s
+            // x-capability attachment so tool_schema's answer is the same
+            // whether a tool's schema came from this initial pass or was
+            // overwritten by a later finalize.
+            let schema = registry
+                .capability_metadata(&def.name)
+                .attach_x_capability(def.input_schema.to_json_schema());
             match serde_json::to_string_pretty(&schema) {
                 Ok(json) => Some((def.name.as_str().to_owned(), json)),
                 Err(e) => {

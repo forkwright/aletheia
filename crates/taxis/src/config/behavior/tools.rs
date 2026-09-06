@@ -17,6 +17,14 @@ pub(crate) const DEFAULT_MESSAGE_MAX_LEN: usize = 4_000;
 pub(crate) const DEFAULT_INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
 /// Default value used for `ToolLimitsConfig::inter_session_max_timeout_secs`.
 pub(crate) const DEFAULT_INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
+/// Default value used for `ToolLimitsConfig::http_timeout_secs`.
+pub(crate) const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 30;
+/// Default value used for `ToolLimitsConfig::http_max_response_bytes`.
+pub(crate) const DEFAULT_HTTP_MAX_RESPONSE_BYTES: usize = 1_000_000;
+/// Default value used for `ToolLimitsConfig::http_max_header_bytes`.
+pub(crate) const DEFAULT_HTTP_MAX_HEADER_BYTES: usize = 1_000_000;
+/// Default value used for `ToolLimitsConfig::http_max_redirects`.
+pub(crate) const DEFAULT_HTTP_MAX_REDIRECTS: usize = 5;
 
 /// Organon tool size, timeout, and length limits.
 ///
@@ -61,6 +69,19 @@ pub struct ToolLimitsConfig {
     /// Maximum PDF file size in bytes for the view-file tool. Default: 33554432 (32 MiB).
     /// Also present in `AgentBehaviorDefaults::tool_max_pdf_bytes`.
     pub max_pdf_bytes: u64,
+    /// Ceiling in seconds for `http_request`/`web_fetch` timeouts. A
+    /// caller-supplied `timeoutSecs` is clamped to this value; `web_fetch`
+    /// (which takes no caller override) uses it directly.
+    pub http_timeout_secs: u64,
+    /// Maximum bytes read from an `http_request`/`web_fetch` response body.
+    /// Enforced while streaming so an oversized or slow-drip response is cut
+    /// off instead of being fully buffered before the size check runs.
+    pub http_max_response_bytes: usize,
+    /// Maximum bytes budgeted for an `http_request`/`web_fetch` response's
+    /// headers.
+    pub http_max_header_bytes: usize,
+    /// Maximum redirect hops `http_request`/`web_fetch` will follow.
+    pub http_max_redirects: usize,
 }
 
 impl Default for ToolLimitsConfig {
@@ -80,6 +101,10 @@ impl Default for ToolLimitsConfig {
             datalog_default_timeout_secs: 5.0,
             max_image_bytes: 20_971_520,
             max_pdf_bytes: 33_554_432,
+            http_timeout_secs: DEFAULT_HTTP_TIMEOUT_SECS,
+            http_max_response_bytes: DEFAULT_HTTP_MAX_RESPONSE_BYTES,
+            http_max_header_bytes: DEFAULT_HTTP_MAX_HEADER_BYTES,
+            http_max_redirects: DEFAULT_HTTP_MAX_REDIRECTS,
         }
     }
 }
@@ -219,6 +244,12 @@ const _: () = assert!(
     DEFAULT_INTER_SESSION_MAX_TIMEOUT_SECS
         == organon::builtins::communication::INTER_SESSION_MAX_TIMEOUT_SECS
 );
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_HTTP_TIMEOUT_SECS == organon::builtins::http_client::DEFAULT_TIMEOUT_SECS);
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_HTTP_MAX_RESPONSE_BYTES == organon::builtins::http_client::MAX_RESPONSE_BYTES);
 
 // WHY this module is last: clippy::items_after_test_module forbids any item
 // (including the const _: () assertions above, which predate this module)
