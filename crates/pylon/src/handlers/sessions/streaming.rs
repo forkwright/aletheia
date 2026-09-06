@@ -18,6 +18,7 @@ use tracing::{Instrument, debug, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use hermeneus::provider::ProviderRoute;
+use nous::config::ModelRole;
 use nous::pipeline::TurnResult;
 use nous::stream::TurnStreamEvent;
 
@@ -691,7 +692,7 @@ pub async fn send_message(
         && state
             .provider_registry
             .resolve_provider(
-                &config.generation.model,
+                config.generation.resolve_model(ModelRole::Generation),
                 config
                     .generation
                     .provider
@@ -708,7 +709,8 @@ pub async fn send_message(
         return Err(InternalSnafu {
             message: format!(
                 "no provider for model {}{}",
-                config.generation.model, provider
+                config.generation.resolve_model(ModelRole::Generation),
+                provider
             ),
         }
         .build());
@@ -1189,7 +1191,7 @@ pub async fn stream_turn(
     let configured_model = state
         .nous_manager
         .get_config(&agent_id)
-        .map(|c| c.generation.model.clone());
+        .map(|c| c.generation.resolve_model(ModelRole::Generation).to_owned());
 
     let session_id =
         resolve_session(&state, &agent_id, &session_key, configured_model.as_deref()).await?;

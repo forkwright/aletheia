@@ -302,7 +302,7 @@ async fn full_compaction_uses_llm_summary() {
 async fn full_compaction_uses_distillation_model_when_set() {
     let mut config = NousConfig::default();
     config.generation.model = "turn-model".to_owned();
-    config.generation.distillation_model = Some("distill-model".to_owned());
+    config.generation.distillation_override = Some("distill-model".to_owned());
     config.generation.context_window = 100;
     let mut providers = ProviderRegistry::new();
     // WHY only "distill-model" is registered: if compaction fell back to

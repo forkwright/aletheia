@@ -770,7 +770,15 @@ The session history remains in the archive. Start a fresh session for new work.
 
 ### Configuration
 
-The distillation model defaults to the workspace-wide `koina::defaults::DEFAULT_MODEL` (currently `claude-sonnet-4-6`; the single source of truth, see #4235). There is no `distillation_model` config field under `[agents.defaults]` in the current typed config; per-agent model selection uses the `model.primary` / `model.fallbacks` fields documented in `docs/CONFIGURATION.md#agents`.
+Background distillation, knowledge extraction, and auto-dream consolidation each resolve their model through `nous::config::ModelRole` (`NousGenerationConfig::resolve_model`), not a workspace-wide compiled default:
+
+| Role | TOML override key | Falls back to |
+|------|-------------------|----------------|
+| Distillation (this section, plus in-turn full-compaction) | `distillation_model` | the agent's `model` |
+| Extraction | `extraction_model` | the agent's `model` |
+| Dream (auto-dream consolidation) | `distillation_model` (no dedicated key) | the agent's `model` |
+
+There is no `distillation_model` / `extraction_model` field under `[agents.defaults]` — these are per-agent `[[agents.list]]` generation settings (`NousGenerationConfig`, `crates/nous/src/config.rs`), not the `AgentBehaviorDefaults` documented under `docs/CONFIGURATION.md#agents`. When neither override is set, all three roles use the agent's own `model` (`model.primary` in the typed config, `docs/CONFIGURATION.md#agents`) — never a hardcoded cloud model — so a local-only agent's background work stays on the same local provider its turns use.
 
 ---
 

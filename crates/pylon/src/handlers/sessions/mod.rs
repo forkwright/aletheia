@@ -27,6 +27,7 @@ use tracing::{info, instrument};
 use hermeneus::error::UnsupportedModelSnafu;
 use hermeneus::provider::{ProviderRegistry, ProviderResolutionError, ProviderRoute};
 use mneme::types::SessionStatus;
+use nous::config::ModelRole;
 
 use symbolon::types::Role;
 
@@ -253,7 +254,10 @@ pub async fn create(
             require_known_model(&state.provider_registry, &requested)?;
             requested
         }
-        None => config.generation.model.clone(),
+        None => config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
     };
 
     let state_clone = state.clone();

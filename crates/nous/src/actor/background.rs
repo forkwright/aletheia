@@ -14,6 +14,8 @@ use mneme::store::SessionStore;
 use tokio::sync::Mutex;
 use tracing::{Instrument, debug, info, warn};
 
+use crate::config::ModelRole;
+
 use super::{MAX_SPAWNED_TASKS, NousActor};
 
 /// Drop guard that clears the distillation-in-progress flag on drop.
@@ -151,13 +153,15 @@ impl NousActor {
                 .project_id
                 .clone_from(&self.pipeline_config.project_id);
         }
-        // WHY(#3740/#4235): route background extraction through the nous's
-        // resolved generation config, exactly like `try_spawn_distillation`
-        // (`resolve_extraction_model`'s doc comment). Without this,
+        // WHY(#3740/#4235/#7195): route background extraction through the
+        // nous's resolved generation config via [`ModelRole::Extraction`],
+        // exactly like `try_spawn_distillation`. Without this,
         // `mneme::extract::ExtractionConfig::default()`'s compiled model
         // (episteme's extraction task-role default) always wins, regardless
         // of what the operator configured this nous to run on.
-        self.resolve_extraction_model()
+        self.config
+            .generation
+            .resolve_model(ModelRole::Extraction)
             .clone_into(&mut config.model);
         config.provider = match self.config.behavior.knowledge_extraction_provider {
             taxis::config::BookkeepingProviderKind::Llm => {
@@ -375,36 +379,6 @@ impl NousActor {
         }
     }
 
-    /// Resolve the model background distillation should run against.
-    ///
-    /// `generation.distillation_model` (#3740) wins when the operator set
-    /// it; otherwise this falls back to the nous's own primary turn model
-    /// (`generation.model`) — never to a compiled cloud default. #4235's
-    /// pin existed to stop distillation from silently downgrading to a
-    /// hardcoded model instead of the one the operator actually configured;
-    /// defaulting to the nous's own configured primary is the same
-    /// invariant applied consistently, not a reintroduction of the bug it
-    /// fixed.
-    fn resolve_distillation_model(&self) -> &str {
-        self.config
-            .generation
-            .distillation_model
-            .as_deref()
-            .unwrap_or(&self.config.generation.model)
-    }
-
-    /// Resolve the model background knowledge extraction should run
-    /// against. See [`Self::resolve_distillation_model`] — same override
-    /// (`generation.extraction_model`, #3740) and same primary-model
-    /// fallback, applied to the sibling "fast tier" background workload.
-    fn resolve_extraction_model(&self) -> &str {
-        self.config
-            .generation
-            .extraction_model
-            .as_deref()
-            .unwrap_or(&self.config.generation.model)
-    }
-
     /// Attempt to spawn a distillation task. Returns `true` if a task was spawned.
     async fn try_spawn_distillation(&mut self, session_key: &str) -> bool {
         let Some(ref store_arc) = self.stores.session_store else {
@@ -435,7 +409,11 @@ impl NousActor {
         }
 
         let config = crate::distillation::DistillTriggerConfig {
-            model: self.resolve_distillation_model().to_owned(),
+            model: self
+                .config
+                .generation
+                .resolve_model(ModelRole::Distillation)
+                .to_owned(),
             ..crate::distillation::DistillTriggerConfig::default()
         };
         if self
@@ -510,13 +488,35 @@ impl NousActor {
             return;
         };
 
-        let config = crate::distillation::DistillTriggerConfig::default();
+        // WHY(#7212): resolve through `ModelRole::Dream`, not
+        // `DistillTriggerConfig::default()`'s compiled model. Before this
+        // fix, dream always reached for `koina::defaults::DEFAULT_MODEL`
+        // regardless of what the nous was configured to run on, and on a
+        // local-only instance that provider is never registered, so
+        // `find_provider` always failed and dream never ran — silently,
+        // because the miss was never logged. `ModelRole::Dream` shares
+        // `Distillation`'s override and, like every other role, falls back
+        // to the nous's own primary model.
+        let config = crate::distillation::DistillTriggerConfig {
+            model: self
+                .config
+                .generation
+                .resolve_model(ModelRole::Dream)
+                .to_owned(),
+            ..crate::distillation::DistillTriggerConfig::default()
+        };
         if self
             .services
             .providers
             .find_provider(&config.model)
             .is_none()
         {
+            warn!(
+                nous_id = %self.id,
+                model = %config.model,
+                config_field = "generation.distillation_model (dream shares the distillation override; falls back to generation.model)",
+                "no provider for dream model"
+            );
             return;
         }
         let provider: Arc<dyn LlmProvider> = Arc::new(RegistryLlmProvider::new(
