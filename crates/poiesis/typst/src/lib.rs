@@ -372,4 +372,33 @@ The marker is #d.marker.
         assert!(pdf.len() > 500, "template PDF should be >500 bytes");
         assert!(pdf.len() < 5_000_000, "template PDF should be <5MB");
     }
+
+    #[test]
+    fn graph_audit_template_missing_summary_fails_compile() {
+        // WHY(#6612): "summary" is a documented-required field of the
+        // graph-audit schema. Omitting it must fail template compilation
+        // with a specific message, not silently render an incomplete
+        // document.
+        let data = serde_json::json!({
+            "facts": [
+                {
+                    "id": "aletheia.spawn.model",
+                    "scope": "crate",
+                    "claim": "Spawn model is configured via environment variable ALETHEIA_MODEL.",
+                    "evidence": ["crates/aletheia/src/spawn.rs"],
+                    "updated_at": "2026-04-21T14:30:00Z",
+                    "updated_by": "PR-3789"
+                }
+            ]
+        });
+        let err = render_template(templates::GRAPH_AUDIT, &data)
+            .expect_err("missing required \"summary\" field must fail compilation");
+        let PoiesisError::Compile { diagnostics } = err else {
+            panic!("expected Compile error for missing required field, got: {err:?}");
+        };
+        assert!(
+            diagnostics.contains("summary"),
+            "diagnostics must name the missing field: {diagnostics}"
+        );
+    }
 }
