@@ -274,11 +274,28 @@ impl OpenAiStreamAccumulator {
     }
 }
 
+/// Map OpenAI's `finish_reason` to our [`StopReason`].
+///
+/// WHY(wire-conformance #7152): this table drifted from the non-streaming
+/// sibling in `super::response::map_finish_reason` -- the single most common
+/// value, `"stop"` (ordinary successful completion), fell through the
+/// catch-all to [`StopReason::Unknown`] instead of [`StopReason::EndTurn`].
+/// No existing unit test asserted `stop_reason` for a `"stop"`-terminated
+/// stream (`accumulates_text_deltas` below feeds one but only checks
+/// content/events), and the live incumbent's SSE stream reliably reproduces
+/// it: `chat_completion_streaming_wire_conforms` (`tests/wire_conformance.rs`)
+/// against `qwen3.8-27b` on `127.0.0.1:8089` fails
+/// `assert!(matches!(stop_reason, EndTurn | MaxTokens))` whenever the model's
+/// reply finishes before `max_tokens` is exhausted (`finish_reason: "stop"`
+/// in the recorded chunk, confirmed 2026-09-06 by a manual
+/// `curl .../v1/chat/completions -d '{"stream":true,...}'`). Keep this arm
+/// identical to `response.rs`'s.
 fn map_finish_reason(reason: &str) -> StopReason {
     match reason {
         "length" => StopReason::MaxTokens,
         "tool_calls" | "function_call" => StopReason::ToolUse,
         "content_filter" => StopReason::ContentFiltered,
+        "stop" | "" => StopReason::EndTurn,
         // WHY: Collapsing unknown finish reasons into end_turn hides provider
         // drift and safety signals. Preserve them as Unknown.
         _ => StopReason::Unknown,
@@ -949,6 +966,11 @@ mod tests {
             r#"{"id":"x","choices":[{"index":0,"delta":{"content":"lo"}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
         ]);
+        // WHY(wire-conformance #7152): this test already fed a "stop"
+        // finish_reason but never asserted stop_reason -- the coverage gap
+        // that let `map_finish_reason` fall "stop" through to `Unknown`
+        // instead of `EndTurn` ship unnoticed. See that function's doc.
+        assert_eq!(resp.stop_reason, StopReason::EndTurn);
         match &resp.content[0] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "Hello"),
             _ => panic!("expected Text"),
@@ -963,6 +985,19 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "lo")),
         );
+    }
+
+    /// Dedicated regression test for the `"stop"` arm of `map_finish_reason`
+    /// (wire-conformance #7152) -- `"stop"` is OpenAI's (and llama.cpp's)
+    /// finish_reason for an ordinary successful completion, the single most
+    /// common value on the wire.
+    #[test]
+    fn stop_finish_reason_maps_to_end_turn() {
+        let (_, resp) = process_chunks(&[
+            r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"content":"OK"}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::EndTurn);
     }
 
     #[test]

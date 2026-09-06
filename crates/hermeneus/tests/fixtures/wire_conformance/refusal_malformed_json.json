@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-09-06T18:35:53Z",
+  "captured_from": "http://127.0.0.1:8089/v1/chat/completions",
+  "note": "Real incumbent refusal: malformed request JSON. llama.cpp reports this as HTTP 500 'server_error', not HTTP 400 -- a bare status-code check must not assume 4xx means client error on this server.",
+  "request_raw_body": "{\"model\":\"qwen3.8-27b\", \"messages\": [ bad json",
+  "response": {
+    "status": 500,
+    "body": {
+      "error": {
+        "code": 500,
+        "message": "[json.exception.parse_error.101] parse error at line 1, column 39: syntax error while parsing value - invalid literal; last read: '\"messages\": [ b'",
+        "type": "server_error"
+      }
+    }
+  }
+}
