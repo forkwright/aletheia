@@ -49,7 +49,6 @@ members = [
     "crates/poiesis/inspect",
     "crates/poiesis/ooxml-parse",
     "crates/gnosis",
-    "crates/aletheia-sessions-migrate",
 ]
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
 # desktop/webview) and carries desktop-only GTK advisory noise. Keep it outside

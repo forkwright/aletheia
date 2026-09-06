@@ -72,15 +72,6 @@ dev_depends_on = []
 test-core = "test tier fixtures"
 test-full = "full test tier fixtures"
 
-[crates.aletheia-sessions-migrate]
-path = "crates/aletheia-sessions-migrate"
-layer = "cli"
-purpose = "One-shot SQLite v32 → fjall sessions-store migrator for legacy aletheia 0.15.x instances"
-depends_on = ["eidos", "graphe", "koina"]
-used_by = []
-features = {}
-dev_depends_on = []
-
 [crates.dianoia]
 path = "crates/dianoia"
 layer = "runtime"
@@ -124,7 +115,7 @@ path = "crates/eidos"
 layer = "types"
 purpose = "Shared knowledge types for the Aletheia memory layer"
 depends_on = ["koina"]
-used_by = ["aletheia-sessions-migrate", "energeia", "episteme", "graphe", "integration-tests", "krites", "mneme", "organon", "pylon", "taxis"]
+used_by = ["energeia", "episteme", "graphe", "integration-tests", "krites", "mneme", "organon", "pylon", "taxis"]
 dev_depends_on = []
 
 [crates.eidos.features]
@@ -168,7 +159,7 @@ path = "crates/graphe"
 layer = "storage"
 purpose = "Session persistence layer for Aletheia"
 depends_on = ["eidos", "koina"]
-used_by = ["aletheia-sessions-migrate", "episteme", "mneme", "organon"]
+used_by = ["episteme", "mneme", "organon"]
 dev_depends_on = []
 
 [crates.graphe.features]
@@ -239,7 +230,7 @@ path = "crates/koina"
 layer = "types"
 purpose = "Core types, errors, and tracing for Aletheia"
 depends_on = []
-used_by = ["agora", "aletheia", "aletheia-memory-mcp", "aletheia-sessions-migrate", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "pylon", "skene", "symbolon", "taxis", "thesauros"]
+used_by = ["agora", "aletheia", "aletheia-memory-mcp", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "pylon", "skene", "symbolon", "taxis", "thesauros"]
 dev_depends_on = []
 
 [crates.koina.features]

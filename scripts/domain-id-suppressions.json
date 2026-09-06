@@ -3,7 +3,6 @@
   "files": {
     "crates/agora/src/command/mod.rs": 3,
     "crates/aletheia-memory-mcp/src/tools.rs": 5,
-    "crates/aletheia-sessions-migrate/src/source.rs": 1,
     "crates/aletheia/src/commands/session_export.rs": 1,
     "crates/aletheia/src/init/mod.rs": 1,
     "crates/aletheia/src/recall_sources/llm_context.rs": 1,

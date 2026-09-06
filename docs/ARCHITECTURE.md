@@ -16,7 +16,7 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 
 ## Current substrate shape
 
-The current runtime is a 48-crate workspace plus the excluded `proskenion`
+The current runtime is a 47-crate workspace plus the excluded `proskenion`
 desktop shell. The compact generated inventory lives in
 [`_llm/L1-workspace.md`](../_llm/L1-workspace.md); this document describes the
 human architecture and invariants.
@@ -144,13 +144,13 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-48 crates in the workspace, with `proskenion` excluded and built via its own
+47 crates in the workspace, with `proskenion` excluded and built via its own
 manifest. The table below calls out the primary architecture crates; the full
 generated inventory is `_llm/L1-workspace.md`.
 
 The count is `[workspace] members` in the root `Cargo.toml` -- the same list cargo
 resolves, and the canonical answer to "how many crates". Counting `Cargo.toml` files
-on disk returns 49 and is wrong, because `proskenion` has its own workspace.
+on disk returns 48 and is wrong, because `proskenion` has its own workspace.
 `scripts/check-doc-inventory.py` fails CI when a document disagrees with that list.
 
 ### Crates
@@ -239,11 +239,11 @@ on the same host (`embedded`) or an operator-trusted local endpoint
 | `integration-tests` | `crates/integration-tests` | Cross-crate integration test suite | dokimion, koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
 Additional workspace crates include `aletheia-classify`, `aletheia-lexica`,
-`aletheia-memory-mcp`, `aletheia-routing`, `aletheia-sessions-migrate`,
-`gnosis`, and the poiesis backend/helper crates (`poiesis-doc`,
-`poiesis-diff`, `poiesis-inspect`, `poiesis-intake`, `poiesis-scaffold`,
-`poiesis-text`, `poiesis-typst`). Keep the generated `_llm/L1-workspace.md`
-list in sync when workspace membership changes.
+`aletheia-memory-mcp`, `aletheia-routing`, `gnosis`, and the poiesis
+backend/helper crates (`poiesis-doc`, `poiesis-diff`, `poiesis-inspect`,
+`poiesis-intake`, `poiesis-scaffold`, `poiesis-text`, `poiesis-typst`). Keep
+the generated `_llm/L1-workspace.md` list in sync when workspace membership
+changes.
 
 ### Mneme facade
 
