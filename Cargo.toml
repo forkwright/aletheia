@@ -296,6 +296,13 @@ tag = "v0.4.0"
 # (without it, deny emits bug[unresolved-workspace-dependency] for every user).
 version = "0.4.0"
 
+[workspace.dependencies.heurema]
+git = "https://github.com/forkwright/heurema.git"
+tag = "v0.2.0"
+# WHY: version pin lets cargo-deny resolve the git workspace dep in the graph
+# (without it, deny emits bug[unresolved-workspace-dependency] for every user).
+version = "0.2.0"
+
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
