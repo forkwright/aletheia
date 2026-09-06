@@ -92,12 +92,14 @@ The standard installer runs this check before building, and the release workflow
 ## Architecture
 
 The desktop crate depends on `skene` for domain types and (as of #4565) event
-parsing — `api/sse.rs` re-exports `skene::api::sse::parse_sse_event` directly,
-and `api/streaming.rs`'s decode-failure/unknown-event handling matches
-skene's own `StreamEvent::DecodeError`/`UnknownEvent` classes, though its
-connect-and-poll loop stays local to carry `CancellationToken`-based
-cancellation that skene's own `stream_message` has no equivalent for. It
-connects to a running Aletheia server over HTTP, the same as the TUI.
+parsing — `api/sse.rs` re-exports `skene::api::sse::parse_sse_event` directly.
+As of #4925, per-turn streaming and health checks are owned by `skene`
+end-to-end too: `skene::api::streaming::stream_message` takes a
+`CancellationToken` directly (the one capability gap that used to justify a
+local connect-and-poll loop here), and `skene::api::health` is the sole
+health-parsing implementation. `proskenion` no longer carries local copies of
+either. It connects to a running Aletheia server over HTTP, the same as the
+TUI.
 
 `api/client.rs`'s own request-building is NOT yet routed through skene's
 `ApiClient` the way `koilon`'s is (`koilon::api` fully re-exports

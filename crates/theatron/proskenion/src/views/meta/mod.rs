@@ -681,7 +681,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     );
 
     let health: HealthApiResponse =
-        match crate::api::health::fetch_health_response(health_res).await {
+        match skene::api::health::fetch_health_response(health_res).await {
             Ok(data) => HealthApiResponse {
                 uptime_seconds: data.uptime_seconds,
             },

@@ -217,6 +217,27 @@ mod tests {
         assert!(matches!(err, HealthFetchError::Malformed(_)));
     }
 
+    // WHY(#4925): ported from proskenion's local health.rs, which this
+    // module replaces as the sole health-parsing implementation.
+    #[test]
+    fn malformed_200_body_is_distinct() {
+        let err = parse_health_body(StatusCode::OK, "not-json")
+            .expect_err("malformed 200 JSON must fail");
+        assert!(matches!(err, HealthFetchError::Malformed(_)));
+    }
+
+    // WHY(#4925): ported from proskenion's local health.rs, which this
+    // module replaces as the sole health-parsing implementation.
+    #[test]
+    fn non_503_error_status_returns_status_error() {
+        let err = parse_health_body(StatusCode::INTERNAL_SERVER_ERROR, "{}")
+            .expect_err("500 body must not be parsed as health");
+        assert!(matches!(
+            err,
+            HealthFetchError::Status(StatusCode::INTERNAL_SERVER_ERROR)
+        ));
+    }
+
     #[test]
     fn auth_status_is_identified_distinctly() {
         let err = parse_health_body(StatusCode::UNAUTHORIZED, "{}")

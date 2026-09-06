@@ -34,8 +34,9 @@ use snafu::{ResultExt, Snafu};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use skene::api::health::{HealthFetchError, parse_liveness_body};
+
 use crate::api::client::{AuthenticatedClientError, build_authenticated_client};
-use crate::api::health::{HealthFetchError, parse_liveness_body};
 use crate::state::connection::{
     ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL, backoff_duration,
 };
@@ -150,7 +151,7 @@ impl PylonClient {
     /// Check server reachability via `GET /api/health`.
     ///
     /// `/api/health` is unauthenticated liveness only — it reports `status`
-    /// and nothing else (see [`crate::api::health::parse_liveness_body`]).
+    /// and nothing else (see [`skene::api::health::parse_liveness_body`]).
     /// Any richer readiness signal (subsystem checks, version) comes from
     /// the separate `/api/v1/system/status` poll (#5315), not this probe.
     ///

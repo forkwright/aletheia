@@ -5181,6 +5181,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "tokio",
+ "tokio-util",
  "toml 1.1.0+spec-1.1.0",
  "tracing",
  "zeroize",

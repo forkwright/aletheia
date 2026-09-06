@@ -706,7 +706,7 @@ pub(crate) fn Chat() -> Element {
             // sidebar click cannot reroute this in-flight turn.
             let nous_id = active_nous_id.to_string();
 
-            let mut rx = crate::api::streaming::stream_turn(
+            let mut rx = skene::api::streaming::stream_message(
                 client,
                 &cfg.server_url,
                 &nous_id,

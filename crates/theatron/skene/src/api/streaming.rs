@@ -9,6 +9,7 @@
 use futures_util::StreamExt;
 use reqwest::{Client, StatusCode};
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use koina::http::CONTENT_TYPE_EVENT_STREAM;
@@ -56,12 +57,37 @@ async fn send_http_error(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent>
     }
 }
 
+/// Send the terminal abort event for a cancelled stream.
+async fn send_cancellation_abort(tx: &mpsc::Sender<StreamEvent>) {
+    if tx
+        .send(StreamEvent::TurnAbort {
+            reason: "cancelled by user".to_string(),
+        })
+        .await
+        .is_err()
+    {
+        tracing::debug!("stream receiver dropped before cancellation notice");
+    }
+}
+
 /// Streams a turn response from POST /api/v1/sessions/stream.
 /// Returns a channel that yields parsed `StreamEvent`s.
 ///
 /// `client` must be the streaming instance from `ApiClient::streaming_client()`: auth headers
 /// are already embedded. `Accept: text/event-stream` is set per-request to override
 /// the client-level `Accept: application/json` default.
+///
+/// `client_turn_id` is sent as-is: it is pylon's idempotency key for this
+/// turn (see `pylon::handlers::sessions::streaming`), so a caller that
+/// retries an in-place turn must pass the same id again rather than a fresh
+/// one to get idempotent replay instead of double processing.
+///
+/// # Cancellation
+///
+/// `cancel` is checked before connecting and before each event read. On
+/// cancellation the background task drops the SSE connection and emits a
+/// single [`StreamEvent::TurnAbort`] before closing the channel, mirroring
+/// how a `TurnComplete`/`TurnAbort` terminal event ends the stream normally.
 #[tracing::instrument(skip_all)]
 #[expect(
     clippy::needless_pass_by_value,
@@ -74,10 +100,12 @@ pub fn stream_message(
     nous_id: &str,
     session_key: &str,
     text: &str,
+    client_turn_id: &str,
+    cancel: CancellationToken,
 ) -> mpsc::Receiver<StreamEvent> {
     let (tx, rx) = mpsc::channel(256);
     let url = keryx::url::join_base_path(base_url, "/api/v1/sessions/stream");
-    let client_turn_id = koina::ulid::Ulid::new().to_string();
+    let client_turn_id = client_turn_id.to_string();
 
     let body = serde_json::json!({
         "message": text,
@@ -98,7 +126,15 @@ pub fn stream_message(
         client_turn_id = %client_turn_id
     );
     let task = async move {
-        let resp = match builder.send().await {
+        let resp = match tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                tracing::info!("stream cancelled before connect");
+                send_cancellation_abort(&tx).await;
+                return;
+            }
+            result = builder.send() => result,
+        } {
             Ok(resp) => resp,
             Err(e) => {
                 if tx
@@ -120,7 +156,15 @@ pub fn stream_message(
         let mut es = SseStream::new(resp.bytes_stream());
 
         loop {
-            let maybe_event = tokio::time::timeout(STREAM_READ_TIMEOUT, es.next()).await;
+            let maybe_event = tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    tracing::info!("stream cancelled by user");
+                    send_cancellation_abort(&tx).await;
+                    return;
+                }
+                event = tokio::time::timeout(STREAM_READ_TIMEOUT, es.next()) => event,
+            };
             let event = match maybe_event {
                 Ok(Some(Ok(event))) => event,
                 Ok(Some(Err(e))) => {
@@ -422,6 +466,7 @@ mod tests {
 
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::mpsc as std_mpsc;
     use std::time::Duration;
 
     use crate::api::client::build_streaming_client;
@@ -481,6 +526,72 @@ mod tests {
                 .expect("write HTTP error test response");
         });
         (format!("http://{addr}"), handle)
+    }
+
+    /// A test SSE server that sends response headers and then blocks until
+    /// released, so the client's cancellation path is what ends the request
+    /// rather than the server closing it first.
+    struct HangingSseServer {
+        base_url: String,
+        ready_rx: Option<std_mpsc::Receiver<()>>,
+        done_tx: std_mpsc::Sender<()>,
+        handle: std::thread::JoinHandle<()>,
+    }
+
+    impl HangingSseServer {
+        async fn wait_ready(&mut self) {
+            let ready_rx = self
+                .ready_rx
+                .take()
+                .expect("ready receiver should only be awaited once");
+            tokio::task::spawn_blocking(move || ready_rx.recv_timeout(Duration::from_secs(2)))
+                .await
+                .expect("ready wait task should finish")
+                .expect("SSE response headers should be sent");
+        }
+
+        fn finish(self) {
+            match self.done_tx.send(()) {
+                Ok(()) => {}
+                Err(_closed) => {}
+            }
+            self.handle
+                .join()
+                .expect("hanging SSE server thread should finish");
+        }
+    }
+
+    fn serve_hanging_sse_once() -> HangingSseServer {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let (ready_tx, ready_rx) = std_mpsc::channel();
+        let (done_tx, done_rx) = std_mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set request read timeout");
+            let mut buf = [0_u8; 2048];
+            let read = stream.read(&mut buf).expect("read stream request");
+            assert!(read > 0, "client should send an HTTP request");
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: keep-alive\r\n\r\n",
+                )
+                .expect("write SSE response headers");
+            stream.flush().expect("flush SSE response headers");
+            ready_tx.send(()).expect("signal SSE response ready");
+            // Any outcome (released, timed out, or the sender dropped) means
+            // the test is done with this connection.
+            let _ = done_rx.recv_timeout(Duration::from_secs(2));
+        });
+
+        HangingSseServer {
+            base_url: format!("http://{addr}"),
+            ready_rx: Some(ready_rx),
+            done_tx,
+            handle,
+        }
     }
 
     #[test]
@@ -587,7 +698,15 @@ mod tests {
         );
         let (base_url, server) = serve_sse_once(body);
         let client = build_streaming_client(None).expect("build streaming test client");
-        let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
+        let mut rx = stream_message(
+            client,
+            &base_url,
+            "syn",
+            "main",
+            "hello",
+            "turn-1",
+            CancellationToken::new(),
+        );
         let mut events = Vec::new();
 
         loop {
@@ -622,7 +741,15 @@ mod tests {
         let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
         let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
         let client = build_streaming_client(None).expect("build streaming test client");
-        let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
+        let mut rx = stream_message(
+            client,
+            &base_url,
+            "syn",
+            "main",
+            "hello",
+            "turn-2",
+            CancellationToken::new(),
+        );
 
         let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
@@ -769,5 +896,76 @@ mod tests {
         let envelope = envelope.expect("DecodeError envelope should be Some");
         assert_eq!(envelope.event_id.as_deref(), Some("evt-99"));
         assert!(matches!(envelope.payload, StreamEvent::DecodeError { .. }));
+    }
+
+    // ── cancellation (#4925) ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn stream_message_cancellation_before_connect_emits_abort() {
+        crate::install_test_crypto_provider();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        // WHY: an address nothing listens on -- if cancellation were not
+        // checked before `send()`, this would instead surface as a connect
+        // error rather than a clean abort.
+        let mut rx = stream_message(
+            client,
+            "http://127.0.0.1:1",
+            "syn",
+            "main",
+            "hello",
+            "turn-precancel",
+            cancel,
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("pre-cancelled stream should abort promptly")
+            .expect("pre-cancelled stream should deliver TurnAbort");
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_message_cancellation_mid_stream_emits_abort_and_closes() {
+        crate::install_test_crypto_provider();
+        let mut server = serve_hanging_sse_once();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let cancel = CancellationToken::new();
+        let mut rx = stream_message(
+            client,
+            &server.base_url,
+            "syn",
+            "main",
+            "hello",
+            "turn-cancel",
+            cancel.clone(),
+        );
+
+        server.wait_ready().await;
+        cancel.cancel();
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("cancellation should arrive promptly")
+            .expect("cancellation should be delivered as a stream event");
+
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+        server.finish();
     }
 }
