@@ -1268,6 +1268,25 @@ impl ToolOutcome {
 }
 
 /// What the tool executor returns.
+///
+/// Boundary: this is what a tool's live execution collapses to before it
+/// reaches the LLM and the persisted session. What survives: the tool's
+/// chosen `content`, the rich [`ToolOutcome`] classification (success,
+/// partial-success with a reason per degraded sub-operation, or failure with
+/// a reason), the backward-compatible binary `is_error` derived from it, an
+/// optional [`ToolDiagnostics`] (exit code, bounded stderr, sandbox
+/// violations, wall-clock duration) when the tool ran in a rich environment,
+/// and a mandatory HMAC receipt for hallucination-resistant attestation
+/// (#4835) — required rather than `Option`, so a tool's own empty
+/// placeholder is only ever visible before `ToolRegistry::execute_prepared`
+/// overwrites it with a real signed value; nothing past the registry
+/// boundary can observe a missing receipt. What does not survive: the
+/// process itself — full stdout/stderr beyond what `ToolDiagnostics`
+/// bounds, environment, working directory, signals, intermediate
+/// tool-internal state, and any filesystem or network side effect the tool
+/// did not choose to report back. A tool that needs more of its execution
+/// surfaced must put it in `content` or `diagnostics` explicitly; nothing
+/// outside those fields makes it across this boundary.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Result content: text or rich content blocks.

@@ -4,6 +4,20 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 /// SSE event emitted to the client during message streaming.
+///
+/// Boundary: the pipeline's continuous execution state — a streaming
+/// provider response arriving as incremental deltas, a tool call's live
+/// process, an in-flight session's accumulating usage — collapses to this
+/// fixed set of discrete, serialized events. Each variant preserves only
+/// the fields listed on it (e.g. `ToolResult` keeps `content`, `is_error`,
+/// and a stable `outcome` label, but not `ToolDiagnostics`' exit code,
+/// stderr, or sandbox violations; `MessageComplete` keeps `usage` totals,
+/// not the per-delta token trace that produced them). A client that
+/// reconnects mid-turn via `Last-Event-ID` recovers exactly the events
+/// retained in the in-memory turn buffer (see `ReplayGap` for what happens
+/// when that buffer has already dropped events) — never the provider's
+/// live internal state. This is intentional: SSE is a wire replay of
+/// discrete milestones, not a mirror of continuous pipeline state.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "type")]
 #[non_exhaustive]
