@@ -290,11 +290,17 @@ struct JournalEventEntry {
     message: String,
 }
 
-/// Wire envelope for `GET /api/v1/journal`
-/// (`pylon::types::insights::JournalResponse`).
+/// Local mirror of `skene::api::types::JournalResponse`.
 ///
-/// WARNING: no `rename_all` on the server DTO, so field names must stay
-/// verbatim-identical to pylon's Rust field names.
+/// WHY(#4565, ruling B / aletheia#7187): before this migration, this type had
+/// its own hand-rolled `Deserialize` impl that parsed pylon's raw JSON body
+/// directly -- rejecting a bare JSON sequence rather than silently accepting
+/// one as an empty envelope (`#4486`). That parsing boundary now lives in
+/// `skene::api::client::ApiClient::journal` / `skene::api::types::
+/// JournalResponse` instead (its `events` field has no `#[serde(default)]`,
+/// so the same bare-`[]` shape it used to special-case already fails to
+/// deserialize there); this struct is populated purely via the `From` impl
+/// below and never deserializes JSON on its own account.
 #[derive(Debug, Clone, Default)]
 struct JournalResponseEntry {
     events: Vec<JournalEventEntry>,
@@ -304,46 +310,137 @@ struct JournalResponseEntry {
     data_unavailable: Vec<UnavailableMetricEntry>,
 }
 
-// WARNING: a plain `#[derive(serde::Deserialize)]` on an all-`#[serde(default)]`
-// struct also accepts JSON *sequences* (serde's derived struct visitor reads a
-// seq positionally, and an empty seq satisfies every trailing defaulted
-// field) -- so a bare `[]` would silently parse as an empty envelope instead
-// of failing loudly if pylon's contract ever reverted to a bare array. Route
-// through `serde_json::Value` first and reject anything that is not a JSON
-// object.
-impl<'de> serde::Deserialize<'de> for JournalResponseEntry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        struct Envelope {
-            #[serde(default)]
-            events: Vec<JournalEventEntry>,
-            #[serde(default)]
-            data_unavailable: Vec<UnavailableMetricEntry>,
-        }
-
-        let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
-        if !value.is_object() {
-            return Err(serde::de::Error::custom(
-                "expected a JSON object envelope for the journal response, not a bare sequence",
-            ));
-        }
-        let envelope: Envelope = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-        Ok(Self {
-            events: envelope.events,
-            data_unavailable: envelope.data_unavailable,
-        })
-    }
-}
-
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct UnavailableMetricEntry {
     #[serde(default)]
     metric: String,
     #[serde(default)]
     reason: String,
+}
+
+// ── Conversions from skene's typed insights DTOs ──
+//
+// WHY(#4565, ruling B / aletheia#7187): agent performance, quality, and
+// journal now fetch through `skene::api::client::ApiClient` instead of a
+// hand-built `/api/v1/metrics/...` / `/api/v1/journal` literal on the raw
+// `authenticated_client()` used for the rest of this view's sources (see
+// `fetch_meta_data` below). These wire shapes mirror pylon's DTOs exactly on
+// both sides (skene's `skene::api::types::insights` and this module's
+// `*Entry`/`*ApiResponse` types), so the conversions are a plain field-by-
+// field remap -- kept local rather than switching every downstream
+// `assemble_meta_data` consumer onto skene's types directly.
+
+impl From<skene::api::types::TimeSeriesPoint> for TimeSeriesPointEntry {
+    fn from(point: skene::api::types::TimeSeriesPoint) -> Self {
+        Self {
+            date: point.date,
+            value: point.value,
+        }
+    }
+}
+
+impl From<skene::api::types::AnomalyAlert> for AnomalyEntry {
+    fn from(alert: skene::api::types::AnomalyAlert) -> Self {
+        Self {
+            agent_id: alert.agent_id,
+            agent_name: alert.agent_name,
+            metric_name: alert.metric_name,
+            current_value: alert.current_value,
+            baseline_mean: alert.baseline_mean,
+            deviation_pct: alert.deviation_pct,
+            direction: alert.direction,
+        }
+    }
+}
+
+impl From<skene::api::types::AgentPerformance> for AgentPerformanceEntry {
+    fn from(perf: skene::api::types::AgentPerformance) -> Self {
+        Self {
+            agent_id: perf.agent_id,
+            agent_name: perf.agent_name,
+            avg_tokens_per_response: perf.avg_tokens_per_response,
+            tool_calls_per_session: perf.tool_calls_per_session,
+            tool_success_rate: perf.tool_success_rate,
+            distillation_frequency: perf.distillation_frequency,
+            avg_context_before_distill: perf.avg_context_before_distill,
+            messages_per_session: perf.messages_per_session,
+            sessions_per_day: perf.sessions_per_day,
+            errors_per_session: perf.errors_per_session,
+            tokens_per_response_series: perf
+                .tokens_per_response_series
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::AgentPerformanceListResponse> for AgentPerformanceApiResponse {
+    fn from(resp: skene::api::types::AgentPerformanceListResponse) -> Self {
+        Self {
+            agents: resp.agents.into_iter().map(Into::into).collect(),
+            anomalies: resp.anomalies.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::QualitySeries> for QualitySeriesEntry {
+    fn from(series: skene::api::types::QualitySeries) -> Self {
+        Self {
+            avg_turn_length: series.avg_turn_length.into_iter().map(Into::into).collect(),
+            response_to_question_ratio: series
+                .response_to_question_ratio
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            tool_call_density: series
+                .tool_call_density
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            thinking_time_ratio: series
+                .thinking_time_ratio
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::QualityMetricsResponse> for QualityMetricsApiResponse {
+    fn from(resp: skene::api::types::QualityMetricsResponse) -> Self {
+        Self {
+            series: resp.series.into(),
+        }
+    }
+}
+
+impl From<skene::api::types::JournalEvent> for JournalEventEntry {
+    fn from(event: skene::api::types::JournalEvent) -> Self {
+        Self {
+            timestamp: event.timestamp,
+            event_type: event.event_type,
+            message: event.message,
+        }
+    }
+}
+
+impl From<skene::api::types::UnavailableMetric> for UnavailableMetricEntry {
+    fn from(metric: skene::api::types::UnavailableMetric) -> Self {
+        Self {
+            metric: metric.metric,
+            reason: metric.reason,
+        }
+    }
+}
+
+impl From<skene::api::types::JournalResponse> for JournalResponseEntry {
+    fn from(resp: skene::api::types::JournalResponse) -> Self {
+        Self {
+            events: resp.events.into_iter().map(Into::into).collect(),
+            data_unavailable: resp.data_unavailable.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
 /// Composite data fetched from multiple API endpoints.
@@ -632,6 +729,17 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         Ok(client) => client,
         Err(err) => return FetchState::Error(err.to_string()),
     };
+    // WHY(#4565, ruling B / aletheia#7187): agent performance, quality, and
+    // journal go through skene's typed `ApiClient` instead of three more
+    // hand-built `/api/v1/...` literals on the raw client above -- see
+    // `views/ops/credentials.rs` for the same migration on the credentials
+    // domain. The remaining sources here (health, tokens, costs, knowledge,
+    // sessions, agents) are unmigrated and stay on `client`.
+    let api_client =
+        match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+            Ok(client) => client,
+            Err(err) => return FetchState::Error(err.to_string()),
+        };
     let base = cfg.server_url.trim_end_matches('/');
 
     // WHY(#6732): `/api/health` is unauthenticated liveness only (`status`
@@ -647,9 +755,6 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let memory_health_url = format!("{base}/api/v1/knowledge/health");
     let sessions_url = format!("{base}/api/v1/sessions");
     let agents_url = format!("{base}/api/v1/nous");
-    let perf_url = format!("{base}/api/v1/metrics/agents");
-    let quality_url = format!("{base}/api/v1/metrics/quality");
-    let journal_url = format!("{base}/api/v1/journal");
 
     // WHY: Fetch all endpoints in parallel to minimize latency.
     let (
@@ -675,9 +780,9 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         client.get(&memory_health_url).send(),
         client.get(&sessions_url).send(),
         client.get(&agents_url).send(),
-        client.get(&perf_url).send(),
-        client.get(&quality_url).send(),
-        client.get(&journal_url).send(),
+        api_client.agent_performance(),
+        api_client.quality_metrics(),
+        api_client.journal(),
     );
 
     let health: HealthApiResponse =
@@ -751,20 +856,40 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let (server_memory_health, server_memory_health_available): (MemoryHealthApiResponse, bool) =
         fetch_source(memory_health_res, "memory health").await;
 
-    let (perf, perf_available): (AgentPerformanceApiResponse, bool) =
-        fetch_source(perf_res, "agent performance").await;
+    // WHY: `agent_performance`/`quality_metrics` return `Result<_, ApiError>`
+    // from skene, not an HTTP response to inspect -- `Ok` already means "2xx
+    // and parsed", the same "genuinely usable" condition `fetch_source`
+    // above computes by hand for the still-raw sources.
+    let (perf, perf_available): (AgentPerformanceApiResponse, bool) = match perf_res {
+        Ok(resp) => (resp.into(), true),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to load agent performance");
+            (AgentPerformanceApiResponse::default(), false)
+        }
+    };
 
-    let (quality, quality_available): (QualityMetricsApiResponse, bool) =
-        fetch_source(quality_res, "quality").await;
+    let (quality, quality_available): (QualityMetricsApiResponse, bool) = match quality_res {
+        Ok(resp) => (resp.into(), true),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to load quality metrics");
+            (QualityMetricsApiResponse::default(), false)
+        }
+    };
 
     // WHY(#4486): pylon's `/api/v1/journal` returns an envelope
     // (`{events, data_unavailable}`), not a bare array, and marks itself
     // unavailable in-band via `data_unavailable` rather than an HTTP error
-    // (no persistent event journal backs the route yet). Parsing straight
-    // into `Vec<JournalEventEntry>` would fail on every real response
-    // (map where a sequence is expected) and never surface that reason.
-    let (journal_response, journal_fetched): (JournalResponseEntry, bool) =
-        fetch_source(journal_res, "journal").await;
+    // (no persistent event journal backs the route yet). `skene::api::types::
+    // JournalResponse` already models that envelope, so no bare-array/wrapped
+    // fallback parsing is needed here the way the still-raw sources above
+    // need it.
+    let (journal_response, journal_fetched): (JournalResponseEntry, bool) = match journal_res {
+        Ok(resp) => (resp.into(), true),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to load journal");
+            (JournalResponseEntry::default(), false)
+        }
+    };
     let journal_available = journal_fetched && journal_response.data_unavailable.is_empty();
     // WHY: surface pylon's own reason instead of a generic message -- the
     // whole point of parsing the envelope (see #4486 above) was to know
@@ -951,26 +1076,23 @@ fn parse_agents_response(text: &str) -> Vec<AgentEntry> {
 mod tests {
     use super::*;
 
-    /// Mirrors `pylon::types::insights::JournalResponse`'s real wire shape:
-    /// an envelope, not a bare array. Before #4486's fix this crate parsed
-    /// the response straight into `Vec<JournalEventEntry>`, which fails on
-    /// every real `/api/v1/journal` response (a JSON object where a
-    /// sequence is expected) — so the journal was reported unavailable for
-    /// the wrong reason (a parse error) regardless of what pylon reported,
-    /// and real events would never have rendered once pylon starts sending
-    /// them.
+    /// `#4486`'s original regression: pylon's `/api/v1/journal` returns an
+    /// envelope (`{events, data_unavailable}`), not a bare array. The
+    /// conversion from skene's typed response must carry a populated
+    /// `data_unavailable` through unchanged (pylon has no persistent event
+    /// journal yet, so every real response currently carries one).
     #[test]
-    fn journal_envelope_with_data_unavailable_parses() {
-        let body = serde_json::json!({
-            "events": [],
-            "data_unavailable": [
-                {"metric": "journal", "reason": "no persistent event journal is available in pylon"}
-            ]
-        })
-        .to_string();
+    fn journal_response_conversion_preserves_data_unavailable() {
+        let resp = skene::api::types::JournalResponse {
+            events: Vec::new(),
+            data_unavailable: vec![skene::api::types::UnavailableMetric {
+                metric: "journal".to_string(),
+                reason: "no persistent event journal is available in pylon".to_string(),
+            }],
+        };
 
-        let parsed: JournalResponseEntry =
-            serde_json::from_str(&body).expect("pylon's real journal envelope must parse");
+        let parsed: JournalResponseEntry = resp.into();
+
         assert!(parsed.events.is_empty());
         assert_eq!(parsed.data_unavailable.len(), 1);
         assert_eq!(
@@ -979,33 +1101,38 @@ mod tests {
         );
     }
 
-    /// A genuinely populated journal must still parse and report available.
+    /// A genuinely populated journal converts with its events intact and an
+    /// empty `data_unavailable`.
     #[test]
-    fn journal_envelope_with_events_parses_and_is_available() {
-        let body = serde_json::json!({
-            "events": [
-                {"timestamp": "2026-01-01T00:00:00Z", "event_type": "config", "message": "reloaded"}
-            ],
-            "data_unavailable": []
-        })
-        .to_string();
+    fn journal_response_conversion_carries_events_when_available() {
+        let resp = skene::api::types::JournalResponse {
+            events: vec![skene::api::types::JournalEvent {
+                timestamp: "2026-01-01T00:00:00Z".to_string(),
+                event_type: "config".to_string(),
+                message: "reloaded".to_string(),
+            }],
+            data_unavailable: Vec::new(),
+        };
 
-        let parsed: JournalResponseEntry =
-            serde_json::from_str(&body).expect("a populated journal envelope must parse");
+        let parsed: JournalResponseEntry = resp.into();
+
         assert_eq!(parsed.events.len(), 1);
         assert!(parsed.data_unavailable.is_empty());
     }
 
-    /// The old bare-array shape must not silently pass -- if pylon's
-    /// contract ever reverts, this test should fail loudly rather than the
-    /// client quietly reporting empty-and-available.
+    /// The old bare-array shape must not silently pass. That parsing
+    /// boundary now lives in `skene::api::types::JournalResponse` rather
+    /// than in this crate (see the `JournalResponseEntry` doc comment
+    /// above) -- `events` has no `#[serde(default)]` there, so a bare `[]`
+    /// still fails to deserialize rather than the client quietly reporting
+    /// empty-and-available.
     #[test]
-    fn bare_array_body_does_not_satisfy_the_envelope_type() {
+    fn skene_journal_response_rejects_bare_array() {
         let body = serde_json::json!([]).to_string();
-        let result: Result<JournalResponseEntry, _> = serde_json::from_str(&body);
+        let result: Result<skene::api::types::JournalResponse, _> = serde_json::from_str(&body);
         assert!(
             result.is_err(),
-            "a bare array must not parse as the envelope type"
+            "a bare array must not parse as skene's journal response envelope"
         );
     }
 }
