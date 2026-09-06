@@ -428,6 +428,17 @@ jobs:
       - name: Check for unresolved conflict markers
         run: scripts/check-conflict-markers.py
 
+      # WHY(#4034): _llm/current_state.toml is the cold-start STATE doc
+      # _llm/README.md injects into every session; its [state].version field
+      # has no write path of its own and drifted from the real release
+      # version twice with nothing to catch it. Pure-python, no compile, so
+      # it runs here with the other coverage checks.
+      - name: Test check-current-state-version.py
+        run: scripts/test-check-current-state-version.py
+
+      - name: Check current_state.toml version matches the release manifest
+        run: scripts/check-current-state-version.py
+
       # WHY: cargo silently ignores a .rs file under a crate's src/ tree
       # that no `mod` declaration reaches -- it does not compile in, so a
       # file `git mv`'d without its `mod` line following it (or one that
