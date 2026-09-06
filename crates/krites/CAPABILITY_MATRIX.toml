@@ -1260,6 +1260,96 @@ overlaps_with = "api-db-open-fjall"
 gate = "Snapshot opens the copy with worker_threads_unchecked(0) (crates/episteme/src/knowledge_store/snapshot.rs) and never the live source; verified-restorable count comparison per partition."
 gate_test = "none"
 
+# #6865 (ratified ruling T3-10): seven upstream cozo-core modules -- 2,784 lines --
+# were dropped during the original vendoring and recorded nowhere. Each row below
+# is the disposition; the `upstream_files` list is what
+# `upstream-snapshot-completeness` (a [[capability_set]] near the end of this file)
+# mechanically re-derives against the live upstream-snapshot tree, in both
+# directions -- an eighth undocumented drop, or a row left behind after its file
+# gained a real krites counterpart, both fail the build. NOTICE.md's subtraction
+# section is rendered from these rows, not hand-typed.
+[[capability]]
+id = "upstream-drop-csv-reader"
+category = "upstream_drop"
+item = "CsvReader fixed rule -- import an external CSV file as a Datalog relation via `<~ CsvReader[...]`, including the `#[cfg(feature=\"requests\")]` remote-URL fetch variant"
+source = "cozo-core/src/fixed_rule/utilities/csv.rs (215 lines)"
+dest_wave = "not-restored"
+gate = "disposition = not_restored_no_consumer. No aletheia code calls or references a CSV-ingest fixed rule (grep -rn 'CsvReader' crates/krites/src/ is empty). Restoration trigger: a concrete request for Datalog-native external-file ingest that FTS/episteme's existing importers cannot already serve -- file that as its own krites issue citing the consumer; until one exists, restoring 215 lines nothing calls is scope with no payoff."
+gate_test = "none"
+disposition = "not_restored_no_consumer"
+upstream_files = ["fixed_rule/utilities/csv.rs"]
+
+[[capability]]
+id = "upstream-drop-json-reader"
+category = "upstream_drop"
+item = "JsonReader fixed rule -- same as CsvReader, for JSON-lines input, including the same remote-fetch capability"
+source = "cozo-core/src/fixed_rule/utilities/jlines.rs (186 lines)"
+dest_wave = "not-restored"
+gate = "disposition = not_restored_no_consumer. No aletheia code calls or references a JSON-lines-ingest fixed rule (grep -rn 'JsonReader' crates/krites/src/ is empty). Same restoration trigger as CsvReader: a named consumer wins its own issue; no consumer exists today."
+gate_test = "none"
+disposition = "not_restored_no_consumer"
+upstream_files = ["fixed_rule/utilities/jlines.rs"]
+
+[[capability]]
+id = "upstream-drop-cjk-tokenizer"
+category = "upstream_drop"
+item = "cangjie Chinese/CJK word-segmentation tokenizer for FTS -- character n-grams and whitespace splitting do not segment CJK text meaningfully, so this is not a substitutable capability"
+source = "cozo-core/src/fts/cangjie/{mod,options,stream,tokenizer}.rs (125 lines)"
+dest_wave = "not-restored"
+gate = "disposition = not_restored_no_consumer. No krites FTS analyzer registers a CJK tokenizer; the analyzer registry keeps the seam open (RETIREMENT-PLAN.md), so adding one is additive, not a rewire. Restoration trigger: a live FTS corpus containing CJK text whose search quality this project needs to serve -- until one exists, this is future capability, not a regression to fix."
+gate_test = "none"
+disposition = "not_restored_no_consumer"
+upstream_files = [
+  "fts/cangjie/mod.rs",
+  "fts/cangjie/options.rs",
+  "fts/cangjie/stream.rs",
+  "fts/cangjie/tokenizer.rs",
+]
+
+[[capability]]
+id = "upstream-drop-rocksdb-backend"
+category = "upstream_drop"
+item = "RocksDB storage backend (two binding generations: the newrocks driver and the earlier rocks driver)"
+source = "cozo-core/src/storage/newrocks.rs + storage/rocks.rs (1,087 lines)"
+dest_wave = "not-restored"
+gate = "disposition = deliberately_dropped. Cross-references the already-recorded scope decision at kanon projects/aletheia/phases/05g-krites-overhaul/PLAN.md, \"What we're NOT doing\": \"Supporting multiple storage backends (fjall is the only backend)\". krites/src/storage/ carries only mem.rs (test/dev) and fjall_backend.rs; no RocksDB binding was ported, by that decision, not by omission."
+gate_test = "none"
+disposition = "deliberately_dropped"
+upstream_files = ["storage/newrocks.rs", "storage/rocks.rs"]
+
+[[capability]]
+id = "upstream-drop-sled-backend"
+category = "upstream_drop"
+item = "sled (pure-Rust embedded LSM) storage backend"
+source = "cozo-core/src/storage/sled.rs (425 lines)"
+dest_wave = "not-restored"
+gate = "disposition = deliberately_dropped. Same fjall-only decision as upstream-drop-rocksdb-backend (kanon PLAN.md \"What we're NOT doing\"). cozodb/cozo#306 (open upstream) separately reports sled's del() as broken there too, which this drop is not exposed to."
+gate_test = "none"
+disposition = "deliberately_dropped"
+upstream_files = ["storage/sled.rs"]
+
+[[capability]]
+id = "upstream-drop-sqlite-backend"
+category = "upstream_drop"
+item = "SQLite storage backend"
+source = "cozo-core/src/storage/sqlite.rs (426 lines)"
+dest_wave = "not-restored"
+gate = "disposition = deliberately_dropped. Same fjall-only decision as upstream-drop-rocksdb-backend (kanon PLAN.md \"What we're NOT doing\")."
+gate_test = "none"
+disposition = "deliberately_dropped"
+upstream_files = ["storage/sqlite.rs"]
+
+[[capability]]
+id = "upstream-drop-tikv-backend"
+category = "upstream_drop"
+item = "TiKV storage backend -- the only horizontally-distributed, multi-node backend upstream had; krites (mem + fjall) is single-node-only"
+source = "cozo-core/src/storage/tikv.rs (320 lines)"
+dest_wave = "not-restored"
+gate = "disposition = deliberately_dropped. Same fjall-only decision as upstream-drop-rocksdb-backend (kanon PLAN.md \"What we're NOT doing\") -- recorded explicitly here because losing the one distributed backend is a capability *class*, not one fewer LSM option among equals, and deserves its own line rather than folding into the other three storage rows."
+gate_test = "none"
+disposition = "deliberately_dropped"
+upstream_files = ["storage/tikv.rs"]
+
 [[capability]]
 id = "api-db-attach-rule-store"
 category = "public_api"
@@ -2185,4 +2275,23 @@ members = [
   "OP_VALIDITY",
   "OP_VEC",
   "OP_WINDOWS",
+]
+
+[[capability_set]]
+id = "upstream-snapshot-completeness"
+source = "crates/krites/upstream-snapshot/cozo-core-src/** vs. PROVENANCE.toml's referenced upstream_path/replaced_upstream_path (#6865)"
+dest_wave = "not-restored"
+gate = "Exact set equality with the live no-krites-counterpart file set, both directions: a snapshot file with no counterpart and no member here is an undocumented (eighth) drop; a member here whose file has since gained a counterpart is a stale disposition row. The seven upstream_drop rows above must jointly claim exactly these files via their upstream_files lists."
+members = [
+  "fixed_rule/utilities/csv.rs",
+  "fixed_rule/utilities/jlines.rs",
+  "fts/cangjie/mod.rs",
+  "fts/cangjie/options.rs",
+  "fts/cangjie/stream.rs",
+  "fts/cangjie/tokenizer.rs",
+  "storage/newrocks.rs",
+  "storage/rocks.rs",
+  "storage/sled.rs",
+  "storage/sqlite.rs",
+  "storage/tikv.rs",
 ]

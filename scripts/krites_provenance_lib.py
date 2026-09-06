@@ -13,6 +13,7 @@ KRITES_DIR = REPO_ROOT / "crates" / "krites"
 KRITES_SRC = KRITES_DIR / "src"
 LEDGER_PATH = KRITES_DIR / "PROVENANCE.toml"
 NOTICE_PATH = KRITES_DIR / "NOTICE.md"
+MATRIX_PATH = KRITES_DIR / "CAPABILITY_MATRIX.toml"
 # WARNING(P6): layout is set by wave0/drift-metric's vendored snapshot, not
 # by this branch. Optional — check_verbatim_recompute skips (not fails) when
 # absent, so this file has no ordering dependency on that branch landing.
@@ -805,6 +806,65 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+_UPSTREAM_DROP_DISPOSITION_LABELS = {
+    "not_restored_no_consumer": "not restored, no consumer",
+    "deliberately_dropped": "deliberately dropped",
+}
+
+
+def load_upstream_drop_rows() -> list[dict]:
+    """#6865: the `upstream_drop` rows of CAPABILITY_MATRIX.toml — the
+    disposition ledger for upstream cozo-core files with zero krites
+    counterpart. Read directly at render time (never cached, never copied
+    into PROVENANCE.toml) so NOTICE.md's subtraction section can never drift
+    from what the matrix currently says without re-running this function.
+    Sorted by id for a stable, reviewable diff.
+    """
+    if not MATRIX_PATH.is_file():
+        return []
+    data = tomllib.loads(MATRIX_PATH.read_text())
+    rows = [r for r in data.get("capability", []) if r.get("category") == "upstream_drop"]
+    return sorted(rows, key=lambda r: r.get("id", ""))
+
+
+def _render_upstream_drop_section() -> list[str]:
+    """Render NOTICE.md's capability-subtraction section from
+    `load_upstream_drop_rows()` — generated, never hand-typed (#6865)."""
+    drop_rows = load_upstream_drop_rows()
+    lines: list[str] = ["## What was not restored"]
+    lines.append("")
+    if not drop_rows:
+        lines.append(
+            "No upstream file with zero krites counterpart is currently on record. This section "
+            "is rendered from `CAPABILITY_MATRIX.toml`'s `upstream_drop` rows — see "
+            "`scripts/check-krites-capability-matrix.py`'s `upstream-snapshot-completeness` "
+            "capability_set, which fails the build the moment one exists undocumented."
+        )
+        return lines
+    lines.append(
+        "Some upstream `cozo-core` files were vendored into "
+        "`crates/krites/upstream-snapshot/cozo-core-src/` but never ported into krites at all — "
+        "a capability subtraction, distinct from every `derived`/`sovereign` row above, which all "
+        "trace a file that DOES have a krites counterpart. This section is rendered from "
+        "[`CAPABILITY_MATRIX.toml`](CAPABILITY_MATRIX.toml)'s `upstream_drop` rows, never "
+        "hand-typed; `scripts/check-krites-capability-matrix.py`'s `upstream-snapshot-completeness` "
+        "`capability_set` re-derives the live no-counterpart file set on every run and fails the "
+        "build if a drop exists with no disposition row, or a disposition row's file has since "
+        "gained a counterpart (#6865)."
+    )
+    lines.append("")
+    lines.append("| Upstream file(s) | Disposition | Detail |")
+    lines.append("|---|---|---|")
+    for row in drop_rows:
+        files = row.get("upstream_files", [])
+        files_cell = "<br>".join(f"`{f}`" for f in files) or "—"
+        disposition = row.get("disposition", "undecided")
+        disposition_cell = _UPSTREAM_DROP_DISPOSITION_LABELS.get(disposition, disposition)
+        detail = row.get("gate", "")
+        lines.append(f"| {files_cell} | {disposition_cell} | {detail} |")
+    return lines
+
+
 def render_notice(meta: dict, rows: list[dict]) -> str:
     # NOTE: pure function of the ledger — no filesystem reads beyond `rows`
     # itself, so a formatting-only change to a derived file's blank-line count
@@ -894,6 +954,8 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "`sovereign` in the table above. They do not change the provenance of the derived files "
         "they extend."
     )
+    lines.append("")
+    lines.extend(_render_upstream_drop_section())
     lines.append("")
     lines.append("## Authorship method")
     lines.append("")

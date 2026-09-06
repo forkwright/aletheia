@@ -36,6 +36,24 @@ count floor, required fields, unique ids). Pass --plan-md <path> for an
 optional, non-gating local live-diff when both repos are checked out side
 by side (e.g. the kanon clone next to the aletheia clone).
 
+A seventh category, upstream_drop (#6865), dispositions every file under
+`crates/krites/upstream-snapshot/cozo-core-src/` with NO krites counterpart
+at all -- an upstream capability that was vendored into the pinned snapshot
+but never ported, unlike appendix_a's plan mirror this one IS checked
+against live repo state, in both directions, via the
+`upstream-snapshot-completeness` `[[capability_set]]`: its `members` list
+must exactly equal the live re-derivation (walk the snapshot tree, subtract
+every `upstream_path`/`replaced_upstream_path` PROVENANCE.toml claims a
+krites counterpart for). A file that gains a counterpart without its
+`upstream_drop` row being removed is DROPPED-from-the-set (stale ledger); a
+snapshot file with no counterpart and no disposition row is UNRECORDED (a
+silent eighth drop) -- both fail the build the same way
+`check_capability_sets` already fails the scalar-function/aggregation sets.
+Each upstream_drop row also carries `disposition` (`not_restored_no_consumer`
+or `deliberately_dropped`, never silently absent) and the exact
+`upstream_files` it accounts for, which NOTICE.md's subtraction section
+renders from rather than duplicating by hand.
+
 `[[capability_set]]` covers the populations too large for one row each --
 the ~139 scalar functions and the ~25 aggregations. Each set records its
 members as a sorted list and is re-derived from source on every run, with
@@ -101,6 +119,7 @@ from pathlib import Path, PurePosixPath
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import krites_capability_evidence as EVIDENCE
+import krites_provenance_lib as PROVENANCE_LIB
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KRITES_DIR = REPO_ROOT / "crates" / "krites"
@@ -1075,6 +1094,53 @@ def _match_arm_keys(file_path: Path, fn_name: str) -> dict[str, str]:
     return out
 
 
+def _referenced_upstream_paths() -> set[str]:
+    """Every `crates/krites/upstream-snapshot/cozo-core-src/`-relative path
+    PROVENANCE.toml claims a live krites counterpart for -- either directly
+    (`upstream_path`, a derived/dual row) or as a retained comparison target
+    for a sovereign rewrite (`replaced_upstream_path`). A path in neither set
+    has NO krites counterpart at all: it was vendored into the pinned
+    snapshot and never ported."""
+    if not PROVENANCE_LIB.LEDGER_PATH.is_file():
+        raise ValueError(f"{PROVENANCE_LIB.LEDGER_PATH} is absent -- cannot re-derive upstream drops")
+    _, rows = PROVENANCE_LIB.parse_ledger(PROVENANCE_LIB.LEDGER_PATH.read_text())
+    referenced: set[str] = set()
+    for row in rows:
+        if row["upstream_path"] != "none":
+            referenced.add(row["upstream_path"])
+        replaced = row.get("replaced_upstream_path", "none")
+        if replaced != "none":
+            referenced.add(replaced)
+    return referenced
+
+
+def extract_undocumented_upstream_drops() -> dict[str, str]:
+    """#6865: re-derive, live, every file under the pinned upstream snapshot
+    with zero krites counterpart -- the set every `upstream_drop` row's
+    `upstream_files` must union to exactly. Never cached and never read from
+    CAPABILITY_MATRIX.toml itself, so a restoration (a counterpart appears)
+    or a new silent drop (a snapshot file loses its only counterpart, or the
+    snapshot is regenerated with one more file nobody ported) both surface
+    on the very next run -- the same anti-backslide shape as PROVENANCE.toml's
+    own no-derived-growth check, applied to the files that never got a row
+    there at all.
+
+    Returns {snapshot-relative path: absolute path} -- a dict, like every
+    other CAPABILITY_SET_SOURCES derivation, so check_capability_sets' own
+    `derived[name]` UNRECORDED-message lookup works unchanged for this set
+    too; the value is where an unrecorded drop was actually found.
+    """
+    snapshot_dir = PROVENANCE_LIB.UPSTREAM_SNAPSHOT_DIR
+    if not snapshot_dir.is_dir():
+        raise ValueError(f"{snapshot_dir} is absent -- cannot re-derive upstream drops")
+    referenced = _referenced_upstream_paths()
+    return {
+        str(path.relative_to(snapshot_dir)): str(path)
+        for path in snapshot_dir.rglob("*")
+        if path.is_file() and str(path.relative_to(snapshot_dir)) not in referenced
+    }
+
+
 # WHY these four sets and not four hundred rows: `define_op!` alone declares 139
 # scalar functions. Hand-writing a row each would bury the matrix's readable
 # per-capability rows under a generated wall, and each row would carry the same
@@ -1099,6 +1165,11 @@ CAPABILITY_SET_SOURCES: dict[str, tuple[str, object]] = {
     "aggregation-dsl-names": (
         "crates/krites/src/data/aggr/mod.rs  `parse_aggr` match arms",
         lambda: _match_arm_keys(AGGR_DIR / "mod.rs", "parse_aggr"),
+    ),
+    "upstream-snapshot-completeness": (
+        "crates/krites/upstream-snapshot/cozo-core-src/** vs. PROVENANCE.toml's "
+        "referenced upstream_path/replaced_upstream_path (#6865)",
+        extract_undocumented_upstream_drops,
     ),
 }
 
@@ -1256,6 +1327,47 @@ def check_appendix_a(rows: list[dict]) -> list[str]:
     return errors
 
 
+UPSTREAM_DROP_DISPOSITIONS = frozenset({"not_restored_no_consumer", "deliberately_dropped"})
+
+
+def check_upstream_drop_rows(rows: list[dict]) -> list[str]:
+    """#6865: every `upstream_drop` row must declare an explicit disposition
+    (never silently absent -- 'undecided' is not a value this checker admits;
+    the ruling on #6865 was that every one of the seven known drops already
+    has a disposition, so there is nothing to leave undecided) and the exact
+    snapshot-relative files it accounts for. `check_capability_sets` (via the
+    `upstream-snapshot-completeness` capability_set) separately proves that
+    union is exactly the live no-counterpart set; this function only checks
+    each row's own shape and that no file is claimed by two rows at once.
+    """
+    errors: list[str] = []
+    cat_rows = [r for r in rows if r.get("category") == "upstream_drop"]
+    claimed: dict[str, str] = {}
+    for row in cat_rows:
+        row_id = row.get("id", "<no id>")
+        disposition = row.get("disposition")
+        if disposition not in UPSTREAM_DROP_DISPOSITIONS:
+            errors.append(
+                f"upstream_drop row '{row_id}' has disposition {disposition!r}, must be one "
+                f"of {sorted(UPSTREAM_DROP_DISPOSITIONS)}"
+            )
+        files = row.get("upstream_files")
+        if not isinstance(files, list) or not files or not all(isinstance(f, str) for f in files):
+            errors.append(
+                f"upstream_drop row '{row_id}' must carry a non-empty 'upstream_files' list "
+                "of crates/krites/upstream-snapshot/cozo-core-src/-relative paths"
+            )
+            continue
+        for f in files:
+            if f in claimed:
+                errors.append(
+                    f"upstream_drop rows '{claimed[f]}' and '{row_id}' both claim {f!r} -- "
+                    "each dropped upstream file belongs to exactly one disposition row"
+                )
+            claimed[f] = row_id
+    return errors
+
+
 def check_capability_sets(sets: list[dict]) -> list[str]:
     """Re-derive every `[[capability_set]]` from source and require exact equality.
 
@@ -1383,7 +1495,7 @@ def check_gate_tests(
 def check_all_rows_well_formed(rows: list[dict]) -> list[str]:
     errors: list[str] = []
     seen_ids: set[str] = set()
-    valid_categories = {*SOURCE_DERIVED_CATEGORIES, "appendix_a"}
+    valid_categories = {*SOURCE_DERIVED_CATEGORIES, "appendix_a", "upstream_drop"}
     for row in rows:
         row_id = row.get("id")
         if not row_id:
@@ -1957,6 +2069,7 @@ def main() -> int:
         "storage_method", extract_storage_methods(), rows, "storage/mod.rs"
     )
     errors += check_appendix_a(rows)
+    errors += check_upstream_drop_rows(rows)
     errors += check_capability_sets(sets)
     errors += check_call_sites_measured(rows)
     errors += check_file_line_refs(rows)
