@@ -209,6 +209,18 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
     }
 }
 
+/// Wire vocabulary pylon's session-scoped approval route expects
+/// (`crates/pylon/src/handlers/sessions/approvals.rs`): `"approved"` or
+/// `"denied"`.
+fn approval_decision_str(action: ToolApprovalAction) -> &'static str {
+    match action {
+        ToolApprovalAction::Deny => "denied",
+        ToolApprovalAction::Approve
+        | ToolApprovalAction::AlwaysAllow
+        | ToolApprovalAction::AutoApprove => "approved",
+    }
+}
+
 fn start_tool_approval_action(app: &mut App, action: ToolApprovalAction) {
     let Some(Overlay::ToolApproval(ref mut approval)) = app.layout.overlay else {
         return;
@@ -217,30 +229,42 @@ fn start_tool_approval_action(app: &mut App, action: ToolApprovalAction) {
         return;
     }
 
+    let session_id = approval.session_id.clone();
     let turn_id = approval.turn_id.clone();
     let tool_id = approval.tool_id.clone();
     let tool_name = approval.tool_name.clone();
     let action_id = tool_approval_action_id(action, &turn_id, &tool_id);
+
+    // WHY(#7202): the session-scoped route requires a session id -- if the
+    // overlay somehow opened with none (structurally shouldn't happen: see
+    // `ToolApprovalOverlay::session_id`), refuse rather than send a
+    // fabricated id pylon would reject anyway, and say so visibly instead
+    // of silently doing nothing.
+    let Some(session_id) = session_id else {
+        let message = "Cannot resolve approval: no active session".to_string();
+        approval.status = ControlMutationStatus::failed(action_id.clone(), message.clone());
+        app.viewport.error_toast = Some(ErrorToast::new(format!("[{action_id}] {message}")));
+        return;
+    };
     approval.status = ControlMutationStatus::pending(action_id.clone());
 
     let client = app.client.clone();
+    let decision = approval_decision_str(action);
     let span = tracing::info_span!(
         "tool_approval_action",
         %action_id,
         action = action.label(),
+        %session_id,
         %turn_id,
         %tool_id,
         %tool_name
     );
     app.background_tasks.spawn(
         async move {
-            let result = match action {
-                ToolApprovalAction::Deny => client.deny_tool(&turn_id, &tool_id).await,
-                ToolApprovalAction::Approve
-                | ToolApprovalAction::AlwaysAllow
-                | ToolApprovalAction::AutoApprove => client.approve_tool(&turn_id, &tool_id).await,
-            }
-            .map_err(|e| e.to_string());
+            let result = client
+                .resolve_session_approval(&session_id, &turn_id, &tool_id, decision)
+                .await
+                .map_err(|e| e.to_string());
 
             crate::msg::Msg::ToolApprovalCompleted {
                 action_id,
@@ -263,10 +287,21 @@ pub(crate) fn start_auto_tool_approval(
 ) {
     let action = ToolApprovalAction::AutoApprove;
     let action_id = tool_approval_action_id(action, &turn_id, &tool_id);
+
+    // WHY(#7202): auto-approval ("always allow") fires from the same
+    // focused-session context a manually opened overlay would have used --
+    // see `ToolApprovalOverlay::session_id`.
+    let Some(session_id) = app.dashboard.focused_session_id.clone() else {
+        app.viewport.error_toast = Some(ErrorToast::new(format!(
+            "[{action_id}] Cannot auto-approve: no active session"
+        )));
+        return;
+    };
     let client = app.client.clone();
     let span = tracing::info_span!(
         "auto_approve_tool",
         %action_id,
+        %session_id,
         %turn_id,
         %tool_id,
         %tool_name
@@ -274,7 +309,7 @@ pub(crate) fn start_auto_tool_approval(
     app.background_tasks.spawn(
         async move {
             let result = client
-                .approve_tool(&turn_id, &tool_id)
+                .resolve_session_approval(&session_id, &turn_id, &tool_id, "approved")
                 .await
                 .map_err(|e| e.to_string());
             crate::msg::Msg::ToolApprovalCompleted {
@@ -453,6 +488,7 @@ mod tests {
 
     fn tool_approval_overlay() -> Overlay {
         Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+            session_id: Some("s1".into()),
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "write_file".to_string(),
@@ -538,6 +574,59 @@ mod tests {
                 .as_ref()
                 .is_some_and(|toast| toast.message.contains("tool:deny:t1:tool1"))
         );
+    }
+
+    /// Regression for #7202: the overlay used to POST the legacy
+    /// `/api/v1/turns/{turn_id}/tools/{tool_id}/approve` route, which pylon
+    /// rejects for any scoped token. It must now hit the session-scoped,
+    /// ownership-verifying route with the overlay's captured session id.
+    #[tokio::test]
+    async fn approve_success_posts_the_session_scoped_route() {
+        let (url, _server) = routing_server(vec![(
+            "/api/v1/sessions/s1/approvals".into(),
+            r#"{"decision":"approved"}"#.into(),
+        )])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.layout.overlay = Some(tool_approval_overlay());
+
+        handle_overlay_select(&mut app).await;
+        drain_one_background(&mut app).await;
+
+        assert!(
+            app.layout.overlay.is_none(),
+            "a successful approval must close the overlay"
+        );
+    }
+
+    /// An overlay opened with no captured session id must refuse locally
+    /// rather than send a request pylon could only reject.
+    #[tokio::test]
+    async fn approve_without_session_id_refuses_without_calling_the_api() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        let Overlay::ToolApproval(mut approval) = tool_approval_overlay() else {
+            unreachable!("tool_approval_overlay always returns ToolApproval");
+        };
+        approval.session_id = None;
+        app.layout.overlay = Some(Overlay::ToolApproval(approval));
+
+        handle_overlay_select(&mut app).await;
+
+        assert_eq!(
+            app.background_tasks.len(),
+            0,
+            "no session id must mean no background API call is spawned"
+        );
+        let Some(Overlay::ToolApproval(approval)) = &app.layout.overlay else {
+            panic!("overlay must remain open with a failed status");
+        };
+        assert!(matches!(
+            &approval.status,
+            ControlMutationStatus::Failed { message, .. } if message.contains("no active session")
+        ));
     }
 
     #[tokio::test]

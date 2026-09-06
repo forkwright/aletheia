@@ -534,6 +534,17 @@ impl crate::app::App {
             };
         }
 
+        // WHY(#7197): search results (rendered in place of the fact table,
+        // `view::memory::render_search_results`) have no selection cursor of
+        // their own -- Esc must clear them back to the normal fact list
+        // instead of falling through to `Msg::MemoryClose`, which would pop
+        // the whole inspector. Placed after the FactDetail/EntityDetail
+        // checks above so drilling into a fact or entity and pressing Esc
+        // still pops back normally, even if stale search results linger.
+        if !self.layout.memory.search.search_results.is_empty() && key.code == KeyCode::Esc {
+            return Some(Msg::MemorySearchClose);
+        }
+
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) => Some(Msg::MemoryClose),
             (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
@@ -551,11 +562,10 @@ impl crate::app::App {
             (_, KeyCode::Enter) => Some(Msg::MemoryDrillIn),
             (KeyModifiers::NONE, KeyCode::Char('s')) => Some(Msg::MemorySortCycle),
             (KeyModifiers::NONE, KeyCode::Char('f')) => Some(Msg::MemoryFilterOpen),
-            // WHY(#5815): `/` intentionally has no binding here. Semantic recall
-            // has no pylon endpoint, so opening the search overlay could only
-            // ever end in a failure toast. The overlay's state, messages, and
-            // handlers are retained for wiring once the endpoint exists; rebind
-            // `/` to `Msg::MemorySearchOpen` at that point.
+            // WHY(#7197): wired to skene's knowledge_search (GET
+            // /api/v1/knowledge/search) once it existed -- the endpoint was
+            // never missing, only this client method was.
+            (KeyModifiers::NONE, KeyCode::Char('/')) => Some(Msg::MemorySearchOpen),
             (KeyModifiers::NONE, KeyCode::Char('d')) => Some(Msg::MemoryForget),
             (KeyModifiers::NONE, KeyCode::Char('r')) => Some(Msg::MemoryRestore),
             (KeyModifiers::NONE, KeyCode::Char('e')) => Some(Msg::MemoryEditConfidence),

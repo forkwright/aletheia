@@ -268,3 +268,110 @@ pub struct TimelineResponse {
     #[serde(default)]
     pub total: usize,
 }
+
+/// A single result from `GET /api/v1/knowledge/search`. Mirrors pylon's
+/// `SearchResult`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's SearchResult; self-documenting by name"
+)]
+pub struct SearchResult {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub fact_type: String,
+    pub score: f64,
+}
+
+/// Response for `GET /api/v1/knowledge/search`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponse {
+    /// Results ranked by relevance, already filtered to the selected set.
+    pub results: Vec<SearchResult>,
+}
+
+/// Candidate decision reported by `GET /api/v1/knowledge/search/explain`.
+/// Mirrors pylon's `ExplainDecision`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplainDecision {
+    /// Included in the returned result set.
+    Selected,
+    /// Removed because it did not meet a hard gate.
+    Dropped,
+    /// Removed by a policy filter such as forgetting or visibility.
+    Filtered,
+}
+
+/// Per-factor score breakdown. Mirrors pylon's `FactorScoreBreakdown`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's FactorScoreBreakdown; self-documenting by name"
+)]
+pub struct FactorScoreBreakdown {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+}
+
+/// A single candidate in an explain response. Mirrors pylon's
+/// `ExplainCandidate`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's ExplainCandidate; self-documenting by name"
+)]
+pub struct ExplainCandidate {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub fact_type: String,
+    pub score: f64,
+    pub decision: ExplainDecision,
+    pub reasons: Vec<String>,
+    pub factors: FactorScoreBreakdown,
+}
+
+/// Recall weights reported by the explain endpoint. Mirrors pylon's
+/// `RecallWeightsView`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's RecallWeightsView; self-documenting by name"
+)]
+pub struct RecallWeightsView {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+    pub serendipity: f64,
+    pub surprise: f64,
+    pub evidence_coverage: f64,
+    pub convergence: f64,
+}
+
+/// Response for `GET /api/v1/knowledge/search/explain`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExplainResponse {
+    /// The query text that was scored.
+    pub query: String,
+    /// The recall engine weights applied to every candidate.
+    pub weights: RecallWeightsView,
+    /// Total candidates considered (selected + dropped).
+    pub total_candidates: usize,
+    /// Candidates included in the result set.
+    pub selected: Vec<ExplainCandidate>,
+    /// Candidates removed by a hard gate or policy filter.
+    pub dropped: Vec<ExplainCandidate>,
+}

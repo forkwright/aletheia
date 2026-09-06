@@ -1,9 +1,11 @@
 //! Global SSE connection to `GET /api/v1/events/subscribe`.
 //!
-//! Subscribes to the domain event stream for `fact.created`, `turn.complete`,
-//! and `nous.lifecycle`, providing cross-session awareness for newly created
-//! facts, completed turns, and agent lifecycle changes. The connection
-//! auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
+//! Subscribes to `skene::api::sse::SUBSCRIBE_TOPICS` -- `fact.created`,
+//! `turn.complete`, `nous.lifecycle`, `tool.approval_required`, and
+//! `tool.approval_resolved` -- providing cross-session awareness for newly
+//! created facts, completed turns, agent lifecycle changes, and tool calls
+//! blocked on approval in any session. The connection auto-reconnects with
+//! exponential backoff (1s to 30s) and treats 45s of
 //! *byte-level* silence as a stale connection (server keepalives are SSE comments
 //! the parser never surfaces as events). Losses are reported to the UI only once
 //! confirmed; clean reconnects are silent.
@@ -85,16 +87,21 @@ impl SseConnection {
     /// embedded in the client. `Accept: text/event-stream` is set
     /// per-request to override any client-level JSON default.
     ///
-    /// Connects to `/api/v1/events/subscribe` and filters for the domain
-    /// topics `fact.created`, `turn.complete`, and `nous.lifecycle`. The
-    /// returned `SseConnection` emits `Connected`/`Disconnected` lifecycle
-    /// events in addition to parsed server events.
+    /// Connects to `/api/v1/events/subscribe` and filters for
+    /// `skene::api::sse::SUBSCRIBE_TOPICS` -- the same topic list skene's
+    /// own `SseConnection` subscribes to, reused here directly (#7196)
+    /// rather than duplicated as a second hardcoded string, which is
+    /// exactly how this connection's topics previously drifted out of sync
+    /// with skene's. The returned `SseConnection` emits
+    /// `Connected`/`Disconnected` lifecycle events in addition to parsed
+    /// server events.
     #[tracing::instrument(skip_all)]
     pub(crate) fn connect(client: Client, base_url: &str, cancel: CancellationToken) -> Self {
         let (tx, rx) = mpsc::channel(256);
         let url = format!(
-            "{}/api/v1/events/subscribe?topics=fact.created,turn.complete,nous.lifecycle",
-            base_url.trim_end_matches('/')
+            "{}/api/v1/events/subscribe?topics={}",
+            base_url.trim_end_matches('/'),
+            skene::api::sse::SUBSCRIBE_TOPICS
         );
         let child = cancel.child_token();
 

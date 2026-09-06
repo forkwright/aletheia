@@ -467,6 +467,7 @@ impl ChatStateManager {
                 reason,
             } => {
                 state.streaming.approvals.push(ToolApprovalState {
+                    session_id: state.streaming.session_id.clone(),
                     turn_id,
                     tool_id,
                     tool_name,

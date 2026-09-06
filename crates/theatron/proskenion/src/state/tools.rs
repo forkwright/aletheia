@@ -4,7 +4,7 @@
 //! richer data needed for expandable tool panels, inline approval dialogs,
 //! and planning cards.
 
-use skene::id::{PlanId, ToolId, TurnId};
+use skene::id::{ApiSessionId, PlanId, ToolId, TurnId};
 
 /// Status of a single tool invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +93,13 @@ impl RiskLevel {
 /// State for a tool awaiting user approval.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolApprovalState {
+    /// Session the active turn belongs to (#7202): required by the
+    /// session-scoped `POST /api/v1/sessions/{id}/approvals` route so pylon
+    /// can verify token ownership before routing the decision. `None` only
+    /// if the approval somehow arrived before `TurnStart` populated
+    /// `StreamingState::session_id` -- the approve/deny buttons refuse
+    /// rather than send a request pylon would reject anyway.
+    pub session_id: Option<ApiSessionId>,
     /// Turn that owns this tool call.
     pub turn_id: TurnId,
     /// Unique identifier for this tool call.

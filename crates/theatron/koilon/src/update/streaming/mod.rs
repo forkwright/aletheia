@@ -252,6 +252,7 @@ pub(crate) fn handle_stream_tool_approval_required(
     }
 
     app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+        session_id: app.dashboard.focused_session_id.clone(),
         turn_id,
         tool_id,
         tool_name: sanitize_for_display(&tool_name).into_owned(),

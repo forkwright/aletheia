@@ -169,12 +169,13 @@ pub(crate) fn NotificationSettings() -> Element {
                 span {
                     style: "{LABEL_STYLE}",
                     "Tool approval requests"
-                    // WHY(#4871): no event reaches the notification
-                    // dispatcher for this category yet (see
-                    // `NotificationCategory::is_wired`), so the control
-                    // must not read as a working safety feature -- a
-                    // togglable On/Off here previously implied coverage
-                    // that did not exist.
+                    // WHY(#4871, #7196, #7202): `is_wired()` now reports
+                    // real coverage for every category (the domain-bus
+                    // `tool.approval_required` topic feeds
+                    // `NotificationDispatch`) -- this branch is kept, not
+                    // deleted, as the guard against the same control lying
+                    // about coverage if a future category ever ships
+                    // without an event source.
                     if !tool_approval_wired {
                         div { style: "{UNAVAILABLE_NOTE_STYLE}", "Not available yet: no backing notification event for this desktop build." }
                     } else if !tool_approval {

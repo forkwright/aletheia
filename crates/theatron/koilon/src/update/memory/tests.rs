@@ -272,26 +272,73 @@ fn handle_search_backspace_on_empty_closes() {
     assert!(!app.layout.memory.search.search_active);
 }
 
+/// Regression for #7197: `handle_search_submit` previously always cleared
+/// `search_query`'s results and toasted a hard-coded "not available"
+/// message, regardless of what pylon actually had. Now that
+/// `ApiClient::knowledge_search` exists, a successful search must populate
+/// `search_results` with the converted, ranked results.
 #[tokio::test]
-async fn handle_search_submit_shows_unavailable_toast() {
+async fn handle_search_submit_populates_results_on_success() {
+    let (url, _server) = routing_server(vec![(
+        "/api/v1/knowledge/search".into(),
+        r#"{"results":[{"id":"f-1","content":"hello world","confidence":0.9,"tier":"verified","fact_type":"knowledge","score":1.5}]}"#.into(),
+    )])
+    .await;
     let mut app = test_app();
+    point_app_at(&mut app, &url);
     handle_search_open(&mut app);
-    handle_search_input(&mut app, 't');
-    handle_search_input(&mut app, 'e');
-    handle_search_input(&mut app, 's');
-    handle_search_input(&mut app, 't');
+    for c in "test".chars() {
+        handle_search_input(&mut app, c);
+    }
 
     handle_search_submit(&mut app).await;
 
     assert!(!app.layout.memory.search.search_active);
+    assert_eq!(app.layout.memory.search.search_results.len(), 1);
+    let result = &app.layout.memory.search.search_results[0];
+    assert_eq!(result.id, "f-1");
+    assert_eq!(result.content, "hello world");
+    assert!((result.score - 1.5).abs() < f64::EPSILON);
+}
+
+/// A search failure must surface the real error and leave no stale results,
+/// not the previous hard-coded stub text.
+#[tokio::test]
+async fn handle_search_submit_toasts_real_error_on_failure() {
+    let (url, _server) = failing_server().await;
+    let mut app = test_app();
+    point_app_at(&mut app, &url);
+    handle_search_open(&mut app);
+    handle_search_input(&mut app, 'x');
+
+    handle_search_submit(&mut app).await;
+
     assert!(app.layout.memory.search.search_results.is_empty());
+    let toast = app
+        .viewport
+        .error_toast
+        .as_ref()
+        .map(|t| t.message.clone())
+        .unwrap_or_default();
     assert!(
-        app.viewport
-            .error_toast
-            .as_ref()
-            .is_some_and(|t| t.message.contains("not available")),
-        "toast should say API is unavailable"
+        toast.starts_with("Search failed:"),
+        "must surface the real search error, got: {toast}"
     );
+    assert!(!toast.contains("not available"));
+}
+
+/// Submitting an empty query must not call the API at all.
+#[tokio::test]
+async fn handle_search_submit_ignores_empty_query() {
+    let (url, _server) = failing_server().await;
+    let mut app = test_app();
+    point_app_at(&mut app, &url);
+    handle_search_open(&mut app);
+
+    handle_search_submit(&mut app).await;
+
+    assert!(app.layout.memory.search.search_active);
+    assert!(app.viewport.error_toast.is_none());
 }
 
 #[test]

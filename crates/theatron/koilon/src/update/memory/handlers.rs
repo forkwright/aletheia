@@ -289,18 +289,35 @@ pub(crate) fn handle_search_backspace(app: &mut App) {
     }
 }
 
+/// Run a knowledge search against pylon's `GET /api/v1/knowledge/search`
+/// (via skene's `knowledge_search`, #7197) and store the ranked results.
+///
+/// Shared by the memory inspector's `/` search overlay
+/// ([`handle_search_submit`]) and the `:recall <query>` command
+/// (`update::command::execute_recall`) so both entry points into the same
+/// capability stay in lockstep rather than drifting into two
+/// implementations of one API call.
+pub(crate) async fn run_search(app: &mut App, query: &str) {
+    let client = app.client.clone();
+    match client.knowledge_search(query, None, None).await {
+        Ok(response) => {
+            app.layout.memory.search.search_results =
+                response.results.into_iter().map(Into::into).collect();
+        }
+        Err(e) => {
+            app.layout.memory.search.search_results.clear();
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Search failed: {e}")));
+        }
+    }
+}
+
 pub(crate) async fn handle_search_submit(app: &mut App) {
     if app.layout.memory.search.search_query.is_empty() {
         return;
     }
     app.layout.memory.search.search_active = false;
-    // WHY(#175): Semantic recall endpoint (/api/v1/nous/{id}/recall) is not
-    // yet wired in pylon. Show truthful fallback instead of local substring
-    // match against the capped 500-fact buffer.
-    app.layout.memory.search.search_results.clear();
-    app.viewport.error_toast = Some(ErrorToast::new(
-        "Semantic recall API not available — pending pylon support.".into(),
-    ));
+    let query = app.layout.memory.search.search_query.clone();
+    run_search(app, &query).await;
 }
 
 pub(crate) fn handle_search_close(app: &mut App) {

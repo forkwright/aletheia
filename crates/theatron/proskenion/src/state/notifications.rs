@@ -20,12 +20,12 @@ pub(crate) enum NotificationCategory {
     AgentCompletion,
     /// Tool approval required.
     ///
-    /// NOTE: Awaiting a global `ToolApprovalNeeded` SSE event. The event
-    /// pylon streams today (`ToolApprovalRequired`) is scoped to a single
-    /// open turn's SSE stream and already drives the in-chat approval
-    /// overlay -- it is not the global, session-independent signal
-    /// `NotificationDispatch` needs to alert an operator who is not looking
-    /// at that session. See [`Self::is_wired`].
+    /// WHY(#7196/#7202): the global, session-independent signal is
+    /// pylon's domain-bus `tool.approval_required` topic (mirrored
+    /// one-to-one from the per-turn stream event of the same name, which
+    /// only reaches the one client holding that turn's stream open). Fed by
+    /// this app's own domain-event `SseConnection` (`crate::api::sse`),
+    /// which now subscribes to it alongside `tool.approval_resolved`.
     ToolApproval,
     /// Agent error or tool failure (triggered by `ToolFailed` SSE event).
     Error,
@@ -36,14 +36,25 @@ pub(crate) enum NotificationCategory {
 impl NotificationCategory {
     /// Whether a real event source backs this category today.
     ///
-    /// WHY(#4871): `ToolApproval` has a preference toggle and dispatch-side
-    /// handling (DND bypass, toast severity) but no global event ever
-    /// reaches [`crate::services::notification_dispatch::NotificationDispatch`]
-    /// for it -- flipping the preference is currently a no-op. Callers must
-    /// gate the control on this rather than implying live coverage.
+    /// WHY(#4871, #7196, #7202): `ToolApproval` was stubbed out here because
+    /// no global event reached
+    /// [`crate::services::notification_dispatch::NotificationDispatch`] for
+    /// it. The domain-bus `SseConnection` now subscribes to
+    /// `tool.approval_required`/`tool.approval_resolved` and
+    /// `NotificationDispatch::process_event` handles the former, so every
+    /// category is live.
     #[must_use]
     pub(crate) const fn is_wired(self) -> bool {
-        !matches!(self, Self::ToolApproval)
+        // WHY: an exhaustive match (not a blanket `true`) so adding a new
+        // category without an event source forces a deliberate decision
+        // here, rather than silently inheriting "wired" by default --
+        // `ToolApproval` sat unwired for a release cycle before this fix
+        // because nothing forced this method to be revisited.
+        match self {
+            Self::AgentCompletion | Self::ToolApproval | Self::Error | Self::ConnectionStatus => {
+                true
+            }
+        }
     }
 }
 
@@ -293,17 +304,16 @@ mod tests {
     }
 
     #[test]
-    fn tool_approval_is_not_wired() {
-        // WHY(#4871): regression for the control lying about live coverage --
-        // no event reaches the dispatcher for this category today, so it
-        // must not report itself as wired.
-        assert!(!NotificationCategory::ToolApproval.is_wired());
-    }
-
-    #[test]
-    fn other_categories_are_wired() {
+    fn all_categories_are_wired() {
+        // WHY(#4871, #7196, #7202): `ToolApproval` used to lie about live
+        // coverage -- no event reached the dispatcher for it. Now that the
+        // domain-bus `SseConnection` subscribes to
+        // `tool.approval_required`/`tool.approval_resolved` and
+        // `NotificationDispatch` handles the former, every category has a
+        // real event source; this regresses if one is ever stubbed again.
         for cat in [
             NotificationCategory::AgentCompletion,
+            NotificationCategory::ToolApproval,
             NotificationCategory::Error,
             NotificationCategory::ConnectionStatus,
         ] {
