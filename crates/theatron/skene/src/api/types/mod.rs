@@ -7,15 +7,17 @@ pub mod knowledge;
 pub use knowledge::{
     EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier,
     ExplainCandidate, ExplainDecision, ExplainResponse, Fact, FactDetailResponse, FactSensitivity,
-    FactVisibility, FactorScoreBreakdown, FactsResponse, RecallWeightsView, Relationship,
-    RelationshipDirection, RelationshipsResponse, SearchResponse, SearchResult, SimilarFact,
-    TimelineEvent, TimelineResponse,
+    FactVisibility, FactorScoreBreakdown, FactsResponse, FlagRequest, FlagSeverity, MergeRequest,
+    RecallWeightsView, Relationship, RelationshipDirection, RelationshipsResponse, SearchResponse,
+    SearchResult, SimilarFact, TimelineEvent, TimelineResponse,
 };
 
 pub mod insights;
 pub use insights::{
-    AgentCostRow, AgentTokenRow, CostMetricsResponse, CostSeriesPoint, ModelTokenRow,
-    TokenMetricsResponse, TokenSeriesPoint, UnavailableMetric,
+    AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow, AnomalyAlert,
+    CostMetricsResponse, CostSeriesPoint, JournalEvent, JournalResponse, ModelTokenRow,
+    QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse, TokenSeriesPoint,
+    UnavailableMetric,
 };
 
 pub mod verification;
@@ -23,6 +25,24 @@ pub use verification::{
     ProjectVerificationResult, RequirementPriority, RequirementVerification, VerificationEvidence,
     VerificationGap, VerificationStatus,
 };
+
+pub mod workspace;
+pub use workspace::{
+    FileEntry, GitStatusEntry, OpenFileResponse, WorkspaceSearchResult, WriteContentRequest,
+    WriteContentResponse,
+};
+
+pub mod credentials;
+pub use credentials::{
+    AddCredentialRequest, CredentialMutationEffect, CredentialRemoveResponse, CredentialResponse,
+    CredentialUsageCounters, CredentialValidationState, CredentialsListResponse,
+};
+
+pub mod nous;
+pub use nous::{AddressMaskStatus, ModelProviderReadiness, NousStatus, RecoverResponse};
+
+pub mod config;
+pub use config::{ConfigReloadResponse, ConfigUpdateResponse};
 
 use serde::{Deserialize, Serialize};
 

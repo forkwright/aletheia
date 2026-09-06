@@ -197,6 +197,62 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         method: "GET",
         path_template: "/api/v1/providers/route",
     },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/workspace/files",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/workspace/git-status",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/workspace/files/content",
+    },
+    ClientRouteContract {
+        method: "PUT",
+        path_template: "/api/v1/workspace/files/content",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/workspace/open",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/workspace/diff",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/workspace/search",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/metrics/agents",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/metrics/agents/{id}",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/metrics/quality",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/journal",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/knowledge/entities/merge",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/knowledge/entities/{id}/flag",
+    },
+    ClientRouteContract {
+        method: "DELETE",
+        path_template: "/api/v1/knowledge/entities/{id}",
+    },
 ];
 
 /// Encoding helpers for route builders.
@@ -414,6 +470,133 @@ pub mod system {
     }
 }
 
+/// Workspace file-browser API routes.
+pub mod workspace {
+    use super::query_pair;
+
+    /// Template for the workspace directory listing route.
+    pub const FILES_TEMPLATE: &str = "/api/v1/workspace/files";
+
+    /// Template for the normalized git-status route.
+    pub const GIT_STATUS_TEMPLATE: &str = "/api/v1/workspace/git-status";
+
+    /// Template for reading or writing raw file content.
+    pub const CONTENT_TEMPLATE: &str = "/api/v1/workspace/files/content";
+
+    /// Template for opening a workspace file in the system default app.
+    pub const OPEN_TEMPLATE: &str = "/api/v1/workspace/open";
+
+    /// Template for reading a `git diff` for one workspace file.
+    pub const DIFF_TEMPLATE: &str = "/api/v1/workspace/diff";
+
+    /// Template for the workspace filename/content search route.
+    pub const SEARCH_TEMPLATE: &str = "/api/v1/workspace/search";
+
+    /// Build the path for listing workspace files, optionally scoped to a
+    /// directory.
+    ///
+    /// `path` is a workspace-relative directory path, sent as-is in the
+    /// query string (matching pylon's `FilesQuery`, which normalizes and
+    /// validates it server-side) rather than path-segment encoded — it
+    /// legitimately contains `/`.
+    #[must_use]
+    pub fn files_path(path: Option<&str>) -> String {
+        match path {
+            Some(path) => format!("{FILES_TEMPLATE}?{}", query_pair("path", path)),
+            None => FILES_TEMPLATE.to_owned(),
+        }
+    }
+
+    /// Build the path for the normalized git-status listing.
+    #[must_use]
+    pub fn git_status_path() -> &'static str {
+        GIT_STATUS_TEMPLATE
+    }
+
+    /// Build the path for reading raw file content at `path`.
+    #[must_use]
+    pub fn content_path(path: &str) -> String {
+        format!("{CONTENT_TEMPLATE}?{}", query_pair("path", path))
+    }
+
+    /// Build the path for writing raw file content.
+    ///
+    /// Unlike [`content_path`], the target path is not a query parameter
+    /// here — pylon's write endpoint takes it in the JSON request body
+    /// (`WriteContentRequest`), so this returns the bare template.
+    #[must_use]
+    pub fn content_write_path() -> &'static str {
+        CONTENT_TEMPLATE
+    }
+
+    /// Build the path for opening a workspace file in the system default app.
+    #[must_use]
+    pub fn open_path() -> &'static str {
+        OPEN_TEMPLATE
+    }
+
+    /// Build the path for reading a `git diff` for one workspace file.
+    #[must_use]
+    pub fn diff_path(path: &str) -> String {
+        format!("{DIFF_TEMPLATE}?{}", query_pair("path", path))
+    }
+
+    /// Build the path for a filename/content search, capped at `limit` results.
+    #[must_use]
+    pub fn search_path(q: &str, limit: usize) -> String {
+        format!(
+            "{SEARCH_TEMPLATE}?{}&{}",
+            query_pair("q", q),
+            query_pair("limit", &limit.to_string())
+        )
+    }
+}
+
+/// Meta-insights (dashboard) API routes.
+pub mod metrics {
+    use super::encoding;
+
+    /// Template for the all-agent performance list route.
+    pub const AGENTS_TEMPLATE: &str = "/api/v1/metrics/agents";
+
+    /// Template for a single agent's performance route.
+    ///
+    /// `{id}` is a placeholder - do not interpolate directly. Use
+    /// [`agent_performance_path`] to build an encoded path.
+    pub const AGENT_TEMPLATE: &str = "/api/v1/metrics/agents/{id}";
+
+    /// Template for the conversation-quality metrics route.
+    pub const QUALITY_TEMPLATE: &str = "/api/v1/metrics/quality";
+
+    /// Template for the system journal route.
+    pub const JOURNAL_TEMPLATE: &str = "/api/v1/journal";
+
+    /// Build the path for the all-agent performance list.
+    #[must_use]
+    pub fn agents_path() -> &'static str {
+        AGENTS_TEMPLATE
+    }
+
+    /// Build the path for one agent's performance metrics.
+    #[must_use]
+    pub fn agent_performance_path(id: &str) -> String {
+        let encoded = encoding::path_segment(id);
+        format!("/api/v1/metrics/agents/{encoded}")
+    }
+
+    /// Build the path for conversation-quality metrics.
+    #[must_use]
+    pub fn quality_path() -> &'static str {
+        QUALITY_TEMPLATE
+    }
+
+    /// Build the path for the system journal.
+    #[must_use]
+    pub fn journal_path() -> &'static str {
+        JOURNAL_TEMPLATE
+    }
+}
+
 /// Agent API routes.
 pub mod nous {
     use super::encoding;
@@ -516,6 +699,12 @@ pub mod config {
 
     /// Path for the config reload endpoint.
     pub const RELOAD_PATH: &str = "/api/v1/config/reload";
+
+    /// Build the path for the config reload endpoint.
+    #[must_use]
+    pub fn reload_path() -> &'static str {
+        RELOAD_PATH
+    }
 
     /// Build the absolute URL for the config reload endpoint.
     #[must_use]

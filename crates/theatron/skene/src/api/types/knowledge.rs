@@ -375,3 +375,39 @@ pub struct ExplainResponse {
     /// Candidates removed by a hard gate or policy filter.
     pub dropped: Vec<ExplainCandidate>,
 }
+
+/// Request body for `POST /api/v1/knowledge/entities/merge`.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::MergeRequest`.
+#[derive(Debug, Clone, Serialize)]
+pub struct MergeRequest {
+    /// Canonical entity ID to keep.
+    pub canonical_id: String,
+    /// Entity ID to merge and remove.
+    pub merged_id: String,
+}
+
+/// Entity flagging severity.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::FlagSeverity`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FlagSeverity {
+    /// Low-priority review.
+    Low,
+    /// Medium-priority review.
+    Medium,
+    /// High-priority review.
+    High,
+}
+
+/// Request body for `POST /api/v1/knowledge/entities/{id}/flag`.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::FlagRequest`.
+#[derive(Debug, Clone, Serialize)]
+pub struct FlagRequest {
+    /// Human-readable reason for the flag.
+    pub reason: String,
+    /// Review severity.
+    pub severity: FlagSeverity,
+}
