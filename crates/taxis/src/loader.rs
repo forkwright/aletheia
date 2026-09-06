@@ -89,6 +89,11 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         }
         .build()
     })?;
+    // WHY a snapshot here rather than a second `to_value` call after the
+    // merge: `root` above is the exact defaults tree the diff below needs to
+    // compare against, and cloning it before it is mutated is cheaper than
+    // re-deriving the same value from `AletheiaConfig::default()` again.
+    let defaults_json = root.clone();
 
     // Tier 2: TOML file (if present), interpolated + decrypted, then deep-merged.
     let mut file_toml_json: Option<JsonValue> = None;
@@ -129,9 +134,50 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
     // Tier 3: environment variables, ALETHEIA_ prefix, `__` splitting nested keys.
     let applied_env_vars = apply_env_overlay(&mut root, "ALETHEIA_", "__");
 
-    let config = serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
-        reason: deserialize_reason(&applied_env_vars),
-    })?;
+    let config = match serde_json::from_value::<AletheiaConfig>(root.clone()) {
+        Ok(config) => config,
+        Err(source) => {
+            // WHY a dedicated walk rather than relying solely on the
+            // `#[serde(deny_unknown_fields)]` error above: serde rejects one
+            // unknown field per attempt, so an operator who fixes that field
+            // only learns about the *next* one on the *next* run. Gateway
+            // auth posture is already validated as one unit elsewhere
+            // (`validate::validate_gateway_auth_none_posture`, since
+            // 89b33547c) -- this is the config-shape residual: a single
+            // recursive key-set diff of the fully-merged tree against the
+            // compiled defaults, so every unknown dotted path (top-level or
+            // nested, e.g. both a stray root key and an unrecognized
+            // `[gateway]` key) is reported together in this one pass.
+            //
+            // WHY gated on deserialize actually failing rather than run
+            // unconditionally: some real fields (`data`, whose
+            // `#[serde(skip_serializing_if = "DataConfig::is_default")]`
+            // means it is entirely absent from a *default-valued*
+            // `AletheiaConfig`'s serialization) are legitimately missing
+            // from `defaults_json` while still deserializing fine -- an
+            // unconditional diff would misreport them as unknown. Running
+            // the diff only after `from_value` has already rejected the
+            // tree means a config that deserializes successfully can never
+            // be flagged, regardless of what the diff alone would say.
+            let mut unknown_paths = Vec::new();
+            collect_unknown_paths(&root, &defaults_json, "", &mut unknown_paths);
+            if unknown_paths.is_empty() {
+                // Not an unknown-field rejection (e.g. a type mismatch) --
+                // report serde's own, more specific error unchanged.
+                return Err(source).context(ConfigLoadSnafu {
+                    reason: deserialize_reason(&applied_env_vars),
+                });
+            }
+            unknown_paths.sort_unstable();
+            return LoadSnafu {
+                reason: format!(
+                    "unknown configuration field(s): {}",
+                    unknown_paths.join(", ")
+                ),
+            }
+            .fail();
+        }
+    };
 
     validate_contained_relative_paths(&config)?;
 
@@ -300,6 +346,34 @@ fn deep_merge(dst: &mut JsonValue, src: JsonValue) {
             }
         }
         (dst_slot, src_val) => *dst_slot = src_val,
+    }
+}
+
+/// Recursively collect every dotted key path present in `value` that has no
+/// counterpart at the same position in `defaults`, appending each to `out`.
+///
+/// Only descends where both sides are JSON objects: a leaf/type mismatch
+/// (e.g. a table where a scalar is expected) is `serde_json::from_value`'s
+/// concern at the final deserialize, not this key-set diff's.
+fn collect_unknown_paths(
+    value: &JsonValue,
+    defaults: &JsonValue,
+    prefix: &str,
+    out: &mut Vec<String>,
+) {
+    let (JsonValue::Object(value_map), JsonValue::Object(defaults_map)) = (value, defaults) else {
+        return;
+    };
+    for (key, val) in value_map {
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        match defaults_map.get(key) {
+            None => out.push(path),
+            Some(default_val) => collect_unknown_paths(val, default_val, &path, out),
+        }
     }
 }
 
@@ -968,6 +1042,35 @@ mod tests {
         assert_eq!(
             config.gateway.port, 5555,
             "env var should override in-memory toml port"
+        );
+    }
+
+    /// PROOF(#7160): a fixture TOML with both a top-level and a nested
+    /// `[gateway]` unknown field must name both in the single resulting
+    /// error, rather than only the first one `#[serde(deny_unknown_fields)]`
+    /// would otherwise surface on its own.
+    #[test]
+    fn load_config_with_reports_every_unknown_field_in_one_run() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            b"totallyBogusTopLevel = true\n\n[gateway]\nnotARealGatewayField = 1\n",
+        );
+
+        let err = load_config_with(&oikos, &fs)
+            .expect_err("unknown configuration fields must be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("totallyBogusTopLevel"),
+            "error should name the unknown top-level field, got: {message}"
+        );
+        assert!(
+            message.contains("gateway.notARealGatewayField"),
+            "error should name the unknown nested field, got: {message}"
         );
     }
 
