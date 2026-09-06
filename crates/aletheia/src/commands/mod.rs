@@ -24,6 +24,8 @@ pub(crate) mod server;
 pub(crate) mod session_create;
 pub(crate) mod session_export;
 pub(crate) mod session_store;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub(crate) mod tls;
 pub(crate) mod tls_self_signed;
 
@@ -88,6 +90,12 @@ pub(crate) fn current_git_sha() -> Option<String> {
 ///
 /// WHY: Extracted from `main` to keep the binary entrypoint focused on process
 /// setup and top-level routing.
+#[expect(
+    clippy::too_many_lines,
+    reason = "CLI dispatch is inherently verbose — splitting would hurt readability. \
+              Grew past the line cap here because #7205 made several direct-store \
+              commands async, turning their match arms from one line into three."
+)]
 pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> Result<()> {
     match cmd {
         Command::Init(a) => {
@@ -143,14 +151,22 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Benchmark(a) => benchmark::run(a).await.map_err(Into::into),
         Command::Eval(a) => eval::run(a).await.map_err(Into::into),
         Command::EvalEmbeddings(ref a) => eval_embeddings::run(a).map_err(Into::into),
-        Command::Export(a) => agent_io::export_agent(instance_root, &a).map_err(Into::into),
-        Command::SessionCreate(a) => session_create::run(instance_root, &a).map_err(Into::into),
+        Command::Export(a) => agent_io::export_agent(instance_root, &a)
+            .await
+            .map_err(Into::into),
+        Command::SessionCreate(a) => session_create::run(instance_root, &a)
+            .await
+            .map_err(Into::into),
         Command::SessionExport(a) => session_export::run(&a).await.map_err(Into::into),
         Command::SessionStore { action } => {
             session_store::run(action, instance_root).map_err(Into::into)
         }
-        Command::Import(a) => agent_io::import_agent(instance_root, &a).map_err(Into::into),
-        Command::SeedSkills(a) => agent_io::seed_skills(instance_root, &a).map_err(Into::into),
+        Command::Import(a) => agent_io::import_agent(instance_root, &a)
+            .await
+            .map_err(Into::into),
+        Command::SeedSkills(a) => agent_io::seed_skills(instance_root, &a)
+            .await
+            .map_err(Into::into),
         Command::ExportSkills(a) => agent_io::export_skills(instance_root, &a)
             .await
             .map_err(Into::into),
@@ -173,7 +189,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Config { action } => config::run(&action, instance_root).map_err(Into::into),
         Command::AddNous(a) => add_nous::run(instance_root, &a).await.map_err(Into::into),
         Command::Repl(a) => repl::run(instance_root, &a).await.map_err(Into::into),
-        Command::Migrate(a) => migrate::run(&a).map_err(Into::into),
+        Command::Migrate(a) => migrate::run(&a).await.map_err(Into::into),
         Command::Ingest(ref a) => ingest::run(a, instance_root).await.map_err(Into::into),
         // NOTE: Serve is intercepted in main() before dispatch is called.
         // This arm exists only for match exhaustiveness.

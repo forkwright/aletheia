@@ -32,11 +32,16 @@ pub(crate) struct MigrateArgs {
     /// this flag if you understand the risks and want the legacy behavior.
     #[arg(long)]
     pub follow_symlinks: bool,
+    /// Server URL to check the source instance isn't actively running
+    /// before copying it.
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    pub url: String,
 }
 
 // ── Dispatch ───────────────────────────────────────────────────────────────
 
-pub(crate) fn run(args: &MigrateArgs) -> Result<()> {
+pub(crate) async fn run(args: &MigrateArgs) -> Result<()> {
     let source = std::fs::canonicalize(&args.source)
         .whatever_context("failed to canonicalize source path")?;
 
@@ -92,6 +97,22 @@ pub(crate) fn run(args: &MigrateArgs) -> Result<()> {
         collect_dry_run(&source, &dest, &mut manifest)?;
         normalize_config_dry_run(&source, &dest, &mut manifest)?;
     } else {
+        // WHY(#7205): a raw filesystem tree copy bypasses every store's own
+        // fjall lock, so nothing stops this from running concurrently with
+        // the source instance's own server — copying files it is actively
+        // writing produces a torn copy with no warning. `--dry-run` only
+        // reads for a preview and is exempt; the actual copy is not.
+        if crate::commands::is_knowledge_server_running(&args.url).await? {
+            whatever!(
+                "The server at {} is running and may be actively writing to \
+                 the source instance ({}).\n  \
+                 Copying now risks a torn copy. Stop the server first, or \
+                 pass --url pointing at the instance you intend to migrate \
+                 if this one isn't it.",
+                args.url,
+                source.display()
+            );
+        }
         copy_tree(&source, &dest, &mut manifest)?;
         normalize_config(&source, &dest, &mut manifest)?;
     }
@@ -824,16 +845,18 @@ mod tests {
         );
     }
 
-    #[test]
-    fn validate_source_requires_config() {
+    #[tokio::test]
+    async fn validate_source_requires_config() {
+        organon::testing::install_crypto_provider();
         let tmp = tempfile::tempdir().unwrap();
         let args = MigrateArgs {
             source: tmp.path().to_path_buf(),
             dest: PathBuf::from("/tmp/nonexistent-dest-migrate-xyz"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err(), "should fail without config and data");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -842,8 +865,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn validate_dest_must_be_empty() {
+    #[tokio::test]
+    async fn validate_dest_must_be_empty() {
+        organon::testing::install_crypto_provider();
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("config")).unwrap();
         std::fs::create_dir_all(tmp.path().join("data")).unwrap();
@@ -857,15 +881,17 @@ mod tests {
             dest: dest.path().to_path_buf(),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err(), "should fail when dest not empty");
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("not empty"), "expected empty error: {msg}");
     }
 
-    #[test]
-    fn dry_run_counts_files_without_copying() {
+    #[tokio::test]
+    async fn dry_run_counts_files_without_copying() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -879,15 +905,72 @@ mod tests {
             dest: dest.path().to_path_buf(),
             dry_run: true,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         let dest_entries: Vec<_> = std::fs::read_dir(dest.path()).unwrap().collect();
         assert!(dest_entries.is_empty(), "dry run should not copy files");
     }
 
-    #[test]
-    fn migrate_succeeds_with_knowledge_store_and_absent_sessions() {
+    /// Regression for #7205: a raw filesystem tree copy has no fjall lock of
+    /// its own, so nothing previously stopped `migrate` from copying a
+    /// source instance while its own server was actively writing to it.
+    #[tokio::test]
+    async fn migrate_refuses_when_source_server_holds_the_lock() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let src = tempfile::tempdir().unwrap();
+        create_minimal_instance(src.path());
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: false,
+            follow_symlinks: false,
+            url: stub_url,
+        };
+
+        let result = run(&args).await;
+        server.await.unwrap();
+
+        assert!(result.is_err(), "must refuse while the stub server is up");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("risks a torn copy"), "got: {msg}");
+        assert!(
+            !dest.path().join("migrated").exists(),
+            "migrate must not copy anything when the source server holds the lock"
+        );
+    }
+
+    /// `--dry-run` only reads for a preview; it must not be blocked by the
+    /// same-lock check that guards the actual copy.
+    #[tokio::test]
+    async fn migrate_dry_run_ignores_the_lock_check() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let src = tempfile::tempdir().unwrap();
+        create_minimal_instance(src.path());
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: true,
+            follow_symlinks: false,
+            url: stub_url,
+        };
+
+        run(&args).await.unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn migrate_succeeds_with_knowledge_store_and_absent_sessions() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         create_minimal_instance(src.path());
         make_fjall_store(&src.path().join("data/knowledge.fjall/shared"));
@@ -898,9 +981,10 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         assert!(
             dest.path()
@@ -910,8 +994,9 @@ mod tests {
         assert!(!dest.path().join("migrated/data/sessions.db").exists());
     }
 
-    #[test]
-    fn migrate_verifies_current_fjall_sessions_store() {
+    #[tokio::test]
+    async fn migrate_verifies_current_fjall_sessions_store() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         create_minimal_instance(src.path());
         make_current_session_store(&src.path().join("data/sessions.db"));
@@ -922,9 +1007,10 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         assert!(
             dest.path()
@@ -952,8 +1038,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn migrate_rejects_corrupt_current_sessions_store() {
+    #[tokio::test]
+    async fn migrate_rejects_corrupt_current_sessions_store() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         create_minimal_instance(src.path());
         make_corrupt_current_session_store(&src.path().join("data/sessions.db"));
@@ -964,9 +1051,10 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        let result = run(&args);
+        let result = run(&args).await;
 
         assert!(
             result.is_err(),
@@ -1005,8 +1093,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn copy_preserves_directory_structure() {
+    #[tokio::test]
+    async fn copy_preserves_directory_structure() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data/sub")).unwrap();
@@ -1020,15 +1109,17 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         assert!(dest.path().join("migrated/config/aletheia.toml").exists());
         assert!(dest.path().join("migrated/data/sub/file.txt").exists());
     }
 
-    #[test]
-    fn normalize_rewrites_absolute_paths_in_toml() {
+    #[tokio::test]
+    async fn normalize_rewrites_absolute_paths_in_toml() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -1048,8 +1139,9 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         let rewritten =
             std::fs::read_to_string(dest.path().join("migrated/config/aletheia.toml")).unwrap();
@@ -1063,8 +1155,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn normalize_rewrites_absolute_paths_in_json() {
+    #[tokio::test]
+    async fn normalize_rewrites_absolute_paths_in_json() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -1087,8 +1180,9 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         let rewritten =
             std::fs::read_to_string(dest.path().join("migrated/config/aletheia.json")).unwrap();
@@ -1098,8 +1192,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn source_dest_same_fails() {
+    #[tokio::test]
+    async fn source_dest_same_fails() {
+        organon::testing::install_crypto_provider();
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("config")).unwrap();
         std::fs::create_dir_all(tmp.path().join("data")).unwrap();
@@ -1110,14 +1205,16 @@ mod tests {
             dest: tmp.path().to_path_buf(),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("same directory"));
     }
 
-    #[test]
-    fn dest_inside_source_fails() {
+    #[tokio::test]
+    async fn dest_inside_source_fails() {
+        organon::testing::install_crypto_provider();
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("config")).unwrap();
         std::fs::create_dir_all(tmp.path().join("data")).unwrap();
@@ -1128,8 +1225,9 @@ mod tests {
             dest: tmp.path().join("sub/dest"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err());
         assert!(
             result
@@ -1143,8 +1241,9 @@ mod tests {
     // ELOOP partway through a copy, leaving ~40 nested directories on disk.
     // The pre-walk must reject up-front so the destination stays untouched.
     #[cfg(unix)]
-    #[test]
-    fn rejects_symlink_cycle_in_source_by_default() {
+    #[tokio::test]
+    async fn rejects_symlink_cycle_in_source_by_default() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -1159,8 +1258,9 @@ mod tests {
             dest: dest_target.clone(),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err(), "should reject symlink by default");
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -1174,8 +1274,9 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn rejects_symlink_file_in_source_by_default() {
+    #[tokio::test]
+    async fn rejects_symlink_file_in_source_by_default() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -1189,8 +1290,9 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err());
         assert!(
             result.unwrap_err().to_string().contains("link.txt"),
@@ -1199,8 +1301,9 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn rejects_symlink_during_dry_run_too() {
+    #[tokio::test]
+    async fn rejects_symlink_during_dry_run_too() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -1213,8 +1316,9 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: true,
             follow_symlinks: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let result = run(&args);
+        let result = run(&args).await;
         assert!(result.is_err(), "dry-run should also refuse to follow");
     }
 
@@ -1224,8 +1328,9 @@ mod tests {
     // target's contents are present at the link's name in the destination
     // (legacy `std::fs::copy` semantics — it copies the target).
     #[cfg(unix)]
-    #[test]
-    fn follow_symlinks_flag_allows_non_cycle_symlinks() {
+    #[tokio::test]
+    async fn follow_symlinks_flag_allows_non_cycle_symlinks() {
+        organon::testing::install_crypto_provider();
         let src = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(src.path().join("config")).unwrap();
         std::fs::create_dir_all(src.path().join("data")).unwrap();
@@ -1239,8 +1344,9 @@ mod tests {
             dest: dest.path().join("migrated"),
             dry_run: false,
             follow_symlinks: true,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        run(&args).unwrap();
+        run(&args).await.unwrap();
 
         let copied = std::fs::read_to_string(dest.path().join("migrated/data/link.txt")).unwrap();
         assert_eq!(copied, "hello");
