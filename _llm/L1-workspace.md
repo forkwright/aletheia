@@ -9,7 +9,7 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 | `aletheia` | `crates/aletheia` | Aletheia cognitive agent runtime. |
 | `aletheia-classify` | `crates/aletheia-classify` | aletheia-classify crate in the Aletheia workspace. |
 | `aletheia-lexica` | `crates/aletheia-lexica` | Static lexicon and data constants for Aletheia. |
-| `aletheia-memory-mcp` | `crates/aletheia-memory-mcp` | Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents. |
+| `xenodocheion` | `crates/xenodocheion` | Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents. |
 | `aletheia-routing` | `crates/aletheia-routing` | Shared routing trait and empirical success-rate storage for dispatch and interactive paths. |
 | `diaporeia` | `crates/diaporeia` | MCP server interface - the passage through for external AI agents. |
 | `dianoia` | `crates/dianoia` | Planning and project orchestration - multi-phase state machine with workspace persistence. |
@@ -65,7 +65,7 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 
 **LLM, tools, and runtime.** Providers, tools, distillation, domain packs, and the agent actor pipeline: `hermeneus`, `organon`, `melete`, `thesauros`, `nous`.
 
-**Auth, gateway, MCP, and channels.** HTTP, auth/RBAC, external MCP, Signal/channel routing: `symbolon`, `pylon`, `diaporeia`, `agora`, `aletheia-memory-mcp`.
+**Auth, gateway, MCP, and channels.** HTTP, auth/RBAC, external MCP, Signal/channel routing: `symbolon`, `pylon`, `diaporeia`, `agora`, `xenodocheion`.
 
 **Dispatch, daemon, and routing.** Background maintenance, empirical routing, and dispatch orchestration: `oikonomos`, `aletheia-routing`, `energeia`.
 

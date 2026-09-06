@@ -51,15 +51,6 @@ used_by = []
 features = {}
 dev_depends_on = []
 
-[crates.aletheia-memory-mcp]
-path = "crates/aletheia-memory-mcp"
-layer = "cli"
-purpose = "Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents"
-depends_on = ["koina", "mneme", "taxis"]
-used_by = []
-features = {}
-dev_depends_on = []
-
 [crates.aletheia-routing]
 path = "crates/aletheia-routing"
 layer = "types"
@@ -239,7 +230,7 @@ path = "crates/koina"
 layer = "types"
 purpose = "Core types, errors, and tracing for Aletheia"
 depends_on = []
-used_by = ["agora", "aletheia", "aletheia-memory-mcp", "aletheia-sessions-migrate", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "pylon", "skene", "symbolon", "taxis", "thesauros"]
+used_by = ["agora", "aletheia", "aletheia-sessions-migrate", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "pylon", "skene", "symbolon", "taxis", "thesauros", "xenodocheion"]
 dev_depends_on = []
 
 [crates.koina.features]
@@ -280,7 +271,7 @@ path = "crates/mneme"
 layer = "storage"
 purpose = "Session store and memory engine for Aletheia"
 depends_on = ["eidos", "episteme", "graphe", "krites"]
-used_by = ["aletheia", "aletheia-memory-mcp", "diaporeia", "dokimion", "integration-tests", "nous", "oikonomos", "pylon"]
+used_by = ["aletheia", "diaporeia", "dokimion", "integration-tests", "nous", "oikonomos", "pylon", "xenodocheion"]
 dev_depends_on = []
 
 [crates.mneme.features]
@@ -566,7 +557,7 @@ path = "crates/taxis"
 layer = "types"
 purpose = "Configuration cascade and path resolution for Aletheia"
 depends_on = ["dianoia", "eidos", "episteme", "hermeneus", "koina", "melete", "symbolon"]
-used_by = ["agora", "aletheia", "aletheia-memory-mcp", "diaporeia", "integration-tests", "nous", "oikonomos", "organon", "pylon"]
+used_by = ["agora", "aletheia", "diaporeia", "integration-tests", "nous", "oikonomos", "organon", "pylon", "xenodocheion"]
 dev_depends_on = ["agora", "oikonomos", "organon", "pylon", "taxis"]
 
 [crates.taxis.features]
@@ -584,3 +575,12 @@ dev_depends_on = ["taxis"]
 [crates.thesauros.features]
 test-core = "test tier fixtures"
 test-full = "full test tier fixtures"
+
+[crates.xenodocheion]
+path = "crates/xenodocheion"
+layer = "cli"
+purpose = "Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents"
+depends_on = ["koina", "mneme", "taxis"]
+used_by = []
+features = {}
+dev_depends_on = []

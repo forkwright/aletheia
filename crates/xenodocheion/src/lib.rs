@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//! aletheia-memory-mcp: standalone stdio MCP server for Aletheia's memory layer.
+//! xenodocheion: standalone stdio MCP server for Aletheia's memory layer.
 //!
 //! External agents (Claude Code, Cursor, `OpenHands`, etc.) spawn this binary to
 //! query the nous local knowledge graph directly over stdio JSON-RPC. It exposes
@@ -12,7 +12,7 @@
 //! nous agent control, and memory into one authenticated HTTP/stdio surface.
 //! It is meant for operator use against a running Aletheia instance.
 //!
-//! `aletheia-memory-mcp` is a leaf binary that opens the knowledge store
+//! `xenodocheion` is a leaf binary that opens the knowledge store
 //! directly, without the rest of the runtime. It is scoped to the memory-as-
 //! service use case: any agent that speaks MCP can treat Aletheia's KG as a
 //! drop-in memory provider by spawning this binary.

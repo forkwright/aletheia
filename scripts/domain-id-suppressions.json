@@ -2,7 +2,6 @@
   "_why": "Per-file ceiling for RUST/primitive-for-domain-id suppressions (#6755). This number may only go DOWN. Regenerate with scripts/check-domain-id-suppressions.py --write-baseline after converting sites to a validated newtype.",
   "files": {
     "crates/agora/src/command/mod.rs": 3,
-    "crates/aletheia-memory-mcp/src/tools.rs": 5,
     "crates/aletheia-sessions-migrate/src/source.rs": 1,
     "crates/aletheia/src/commands/session_export.rs": 1,
     "crates/aletheia/src/init/mod.rs": 1,
@@ -83,6 +82,7 @@
     "crates/theatron/proskenion/src/state/settings.rs": 1,
     "crates/theatron/proskenion/src/state/tool_metrics.rs": 1,
     "crates/theatron/proskenion/src/state/verification.rs": 2,
-    "crates/theatron/skene/src/api/types/verification.rs": 2
+    "crates/theatron/skene/src/api/types/verification.rs": 2,
+    "crates/xenodocheion/src/tools.rs": 5
   }
 }

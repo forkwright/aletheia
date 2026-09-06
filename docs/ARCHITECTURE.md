@@ -239,7 +239,7 @@ on the same host (`embedded`) or an operator-trusted local endpoint
 | `integration-tests` | `crates/integration-tests` | Cross-crate integration test suite | dokimion, koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
 Additional workspace crates include `aletheia-classify`, `aletheia-lexica`,
-`aletheia-memory-mcp`, `aletheia-routing`, `aletheia-sessions-migrate`,
+`aletheia-routing`, `aletheia-sessions-migrate`, `xenodocheion`,
 `gnosis`, and the poiesis backend/helper crates (`poiesis-doc`,
 `poiesis-diff`, `poiesis-inspect`, `poiesis-intake`, `poiesis-scaffold`,
 `poiesis-text`, `poiesis-typst`). Keep the generated `_llm/L1-workspace.md`

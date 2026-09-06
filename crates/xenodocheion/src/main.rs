@@ -1,4 +1,4 @@
-//! `aletheia-memory-mcp` — stdio MCP binary.
+//! `xenodocheion` — stdio MCP binary.
 //!
 //! Opens a fjall-backed knowledge store and serves read tools plus token-gated
 //! write tools over stdio JSON-RPC. Configuration:
@@ -26,10 +26,10 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use aletheia_memory_mcp::error;
-use aletheia_memory_mcp::server::MemoryServer;
 use taxis::oikos::Oikos;
 use tracing_subscriber::EnvFilter;
+use xenodocheion::error;
+use xenodocheion::server::MemoryServer;
 
 fn main() -> ExitCode {
     // WHY: tracing must go to stderr because stdout is the MCP JSON-RPC
@@ -54,7 +54,7 @@ fn main() -> ExitCode {
     match runtime.block_on(run()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            tracing::error!(error = %e, "aletheia-memory-mcp exited with error");
+            tracing::error!(error = %e, "xenodocheion exited with error");
             ExitCode::FAILURE
         }
     }
