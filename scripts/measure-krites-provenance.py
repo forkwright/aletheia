@@ -136,7 +136,6 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/utilities/constant.rs": None,
     "fixed_rule/utilities/mod.rs": "fixed_rule/utilities/mod.rs",
     "fixed_rule/utilities/reorder_sort.rs": None,
-    "fixed_rule/utilities/rrf.rs": None,
     "fts/README.md": "fts/README.md",
     "fts/ast.rs": "fts/ast.rs",
     "fts/config.rs": "fts/mod.rs",

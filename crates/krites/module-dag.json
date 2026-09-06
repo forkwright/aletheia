@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 208,
-  "statement_count": 1045,
+  "file_count": 207,
+  "statement_count": 1046,
   "required_edges_present": [
     [
       "runtime",

@@ -29,6 +29,7 @@ test-full = ["test-core"]
 [dependencies]
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
+heurema = { workspace = true }
 
 jiff = { workspace = true, features = ["serde"] }
 tokio = { workspace = true }
