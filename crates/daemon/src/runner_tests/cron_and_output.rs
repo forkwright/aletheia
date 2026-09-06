@@ -693,4 +693,242 @@ fn with_state_store_persists_across_restarts() {
     }
 }
 
+// -- #7206: hydration semantics for a disabled task --
+
+/// The runner's own 3-consecutive-failure auto-disable must not stay
+/// disabled forever purely because it survives a restart: hydration re-arms
+/// it for exactly one retry, scheduled promptly, while leaving
+/// `consecutive_failures` at its persisted value so a further failure
+/// re-disables immediately (not after three fresh strikes). #5130's intent
+/// -- a restart must not silently forget an auto-disable happened -- is
+/// still honored: the failure count and `last_error` survive; only `enabled`
+/// and `disable_cause` change, and only because a real hydration is giving
+/// the task a chance to prove the underlying condition is fixed.
+#[test]
+fn restore_state_rearms_auto_disabled_task_for_one_retry_and_clears_cause() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    // First runner: fail the task 3 times to trigger a real auto-disable
+    // through the normal tracking path, not a hand-crafted TaskState.
+    {
+        let token = CancellationToken::new();
+        let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+        let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+        runner.register(make_echo_task("flaky-task"));
+        for _ in 0..3 {
+            runner.record_task_failure("flaky-task", "connection refused");
+        }
+
+        let statuses = runner.status();
+        assert!(
+            !statuses[0].enabled,
+            "task must be auto-disabled after 3 consecutive failures"
+        );
+        assert_eq!(
+            statuses[0].disable_cause,
+            Some(crate::state::DisableCause::AutoFailure)
+        );
+    }
+
+    // Second runner (simulated restart): restore_state must re-arm the
+    // auto-disabled task for one retry, not leave it disabled forever.
+    {
+        let token = CancellationToken::new();
+        let store = crate::state::TaskStateStore::open(&db_path).expect("reopen store");
+        let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+        runner.register(make_echo_task("flaky-task"));
+        runner.restore_state();
+
+        let statuses = runner.status();
+        assert!(
+            statuses[0].enabled,
+            "auto-disabled task must be re-armed for one retry on hydration"
+        );
+        assert_eq!(
+            statuses[0].disable_cause, None,
+            "cause must clear while re-armed -- enabled:true with a stale cause reads as a contradiction"
+        );
+        assert_eq!(
+            statuses[0].consecutive_failures, 3,
+            "failure count must not reset: a further failure must re-disable after ONE \
+             more strike, not three fresh ones"
+        );
+
+        let next_run: jiff::Timestamp = statuses[0]
+            .next_run
+            .as_deref()
+            .expect("next_run must be set")
+            .parse()
+            .expect("next_run must be a valid timestamp");
+        let now = jiff::Timestamp::now();
+        assert!(
+            next_run <= now,
+            "retry must be scheduled promptly (at/before now), not deferred: {next_run}"
+        );
+        assert!(
+            now.duration_since(next_run).as_nanos() < i128::from(5u32) * 1_000_000_000,
+            "retry must be scheduled within a few seconds of hydration, not wait out the \
+             task's normal cadence"
+        );
+    }
+}
+
+/// #5130's acceptance criterion -- "without re-enabling auto-disabled tasks
+/// unless an explicit operator reset exists" -- must still hold exactly for
+/// an operator-caused disable: hydration must never re-arm it. Only the
+/// admin API's own `enable`/`retry` (or the `aletheia maintenance reset`
+/// CLI) re-enables it.
+#[test]
+fn restore_state_never_rearms_operator_disabled_task() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    {
+        let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+        store
+            .save(&crate::state::TaskState {
+                task_id: "quiet-task".to_owned(),
+                enabled: Some(false),
+                disable_cause: Some(crate::state::DisableCause::Operator),
+                consecutive_failures: 0,
+                ..crate::state::TaskState::default()
+            })
+            .expect("seed operator-disabled task state");
+    }
+
+    let token = CancellationToken::new();
+    let store = crate::state::TaskStateStore::open(&db_path).expect("reopen store");
+    let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+    runner.register(make_echo_task("quiet-task"));
+    runner.restore_state();
+
+    let statuses = runner.status();
+    assert!(
+        !statuses[0].enabled,
+        "an operator's explicit disable must survive hydration unchanged"
+    );
+    assert_eq!(
+        statuses[0].disable_cause,
+        Some(crate::state::DisableCause::Operator)
+    );
+}
+
+/// A disabled record written before `disable_cause` existed carries no cause
+/// at all. Every such record predates the admin API this field was added
+/// alongside, so it was -- by construction -- always an auto-disable; it
+/// must get the same one-retry treatment as an explicit `AutoFailure`, not
+/// be mistaken for (or defensively treated as) an operator's decision.
+#[test]
+fn restore_state_treats_legacy_disabled_record_as_auto_failure() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    {
+        let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+        store
+            .save(&crate::state::TaskState {
+                task_id: "legacy-task".to_owned(),
+                enabled: Some(false),
+                disable_cause: None,
+                consecutive_failures: 3,
+                ..crate::state::TaskState::default()
+            })
+            .expect("seed legacy disabled task state");
+    }
+
+    let token = CancellationToken::new();
+    let store = crate::state::TaskStateStore::open(&db_path).expect("reopen store");
+    let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+    runner.register(make_echo_task("legacy-task"));
+    runner.restore_state();
+
+    let statuses = runner.status();
+    assert!(
+        statuses[0].enabled,
+        "a legacy disabled record (no cause on file) must be re-armed like AutoFailure"
+    );
+}
+
+// -- #7206: live external-write sync (no restart) --
+
+/// A periodic [`TaskRunner::sync_external_state`] sync -- unlike a
+/// hydration -- must NOT re-arm a still-disabled auto-failure task on its
+/// own: only a hydration (restart) gets the automatic one-retry treatment.
+/// Otherwise auto-disable would never actually stick between restarts.
+#[test]
+fn sync_external_state_does_not_rearm_auto_disabled_task_on_its_own() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    let token = CancellationToken::new();
+    let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+    let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
+    runner.register(make_echo_task("flaky-task"));
+    for _ in 0..3 {
+        runner.record_task_failure("flaky-task", "connection refused");
+    }
+    assert!(!runner.status()[0].enabled, "precondition: auto-disabled");
+
+    // A sync while nothing external touched the store must be a no-op.
+    runner.sync_external_state();
+
+    let statuses = runner.status();
+    assert!(
+        !statuses[0].enabled,
+        "an untouched auto-disabled task must stay disabled between restarts"
+    );
+    assert_eq!(
+        statuses[0].disable_cause,
+        Some(crate::state::DisableCause::AutoFailure)
+    );
+}
+
+/// The one channel that crosses the process boundary between the pylon
+/// daemon-task admin API (or the `aletheia maintenance reset` CLI) and this
+/// live runner is the shared [`crate::state::TaskStateStore`]. A write made
+/// there -- simulated here without going through pylon -- must take effect
+/// live, promptly, without requiring a restart (#7206).
+#[test]
+fn sync_external_state_picks_up_an_external_enable_and_schedules_immediately() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    let token = CancellationToken::new();
+    let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+    let mut runner = TaskRunner::new("test-nous", token.clone()).with_state_store(store.clone());
+    runner.register(make_echo_task("flaky-task"));
+    for _ in 0..3 {
+        runner.record_task_failure("flaky-task", "connection refused");
+    }
+    assert!(!runner.status()[0].enabled, "precondition: auto-disabled");
+
+    // Simulate an external write to the SAME store -- exactly what the
+    // pylon `enable`/`retry` handlers and `aletheia maintenance reset` do.
+    let mut external_write = store.load_all().expect("load persisted state")[0].clone();
+    external_write.enabled = Some(true);
+    external_write.disable_cause = None;
+    store
+        .save(&external_write)
+        .expect("persist external enable");
+
+    runner.sync_external_state();
+
+    let statuses = runner.status();
+    assert!(
+        statuses[0].enabled,
+        "an external enable write must take effect live, without a restart"
+    );
+    let next_run: jiff::Timestamp = statuses[0]
+        .next_run
+        .as_deref()
+        .expect("next_run must be set")
+        .parse()
+        .expect("next_run must be a valid timestamp");
+    assert!(
+        next_run <= jiff::Timestamp::now(),
+        "an external enable must schedule an immediate attempt, not wait out the cadence"
+    );
+}
+
 // -- Self-prompt integration tests --

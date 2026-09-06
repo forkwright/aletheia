@@ -47,6 +47,9 @@ pub use nous::{AddressMaskStatus, ModelProviderReadiness, NousStatus, RecoverRes
 pub mod config;
 pub use config::{ConfigReloadResponse, ConfigUpdateResponse};
 
+pub mod daemon;
+pub use daemon::{DaemonTask, DaemonTaskListResponse};
+
 use serde::{Deserialize, Serialize};
 
 use crate::id::{ApiNousId, ApiSessionId, GitSha, PlanId, TurnId};

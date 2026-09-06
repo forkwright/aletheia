@@ -20,6 +20,8 @@
 pub mod config;
 /// Operator credential management.
 pub mod credentials;
+/// Daemon-task admin: list, enable, disable, retry a registered daemon task.
+pub mod daemon_tasks;
 /// Domain event subscription and discovery.
 pub mod events;
 /// System health and readiness check.

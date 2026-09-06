@@ -19,8 +19,8 @@ use taxis::config::MetricsMode;
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse, classify_by_status};
 use crate::handlers::{
-    config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
-    providers, sessions, workspace,
+    config, credentials, daemon_tasks, events, health, insights, knowledge, metrics, nous, ops,
+    planning, providers, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -174,6 +174,22 @@ pub fn build_router_with(
         // WHY(#5313): authoritative subsystem-status API — the canonical
         // backend source for desktop/TUI control-plane status views.
         .route("/system/status", get(health::system_status))
+        // WHY(#7206): daemon-task admin — list every registered daemon task
+        // with its persisted state and disable cause, and enable/disable/
+        // retry one, without hand-editing persisted state or restarting.
+        .route("/system/daemon/tasks", get(daemon_tasks::list_tasks))
+        .route(
+            "/system/daemon/tasks/{runner}/{task_id}/enable",
+            post(daemon_tasks::enable_task),
+        )
+        .route(
+            "/system/daemon/tasks/{runner}/{task_id}/disable",
+            post(daemon_tasks::disable_task),
+        )
+        .route(
+            "/system/daemon/tasks/{runner}/{task_id}/retry",
+            post(daemon_tasks::retry_task),
+        )
         .route(
             "/system/credentials/rotate",
             post(credentials::rotate_credentials),

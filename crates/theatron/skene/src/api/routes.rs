@@ -144,6 +144,22 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "GET",
+        path_template: "/api/v1/system/daemon/tasks",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/system/daemon/tasks/{runner}/{task_id}/enable",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/system/daemon/tasks/{runner}/{task_id}/disable",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/system/daemon/tasks/{runner}/{task_id}/retry",
+    },
+    ClientRouteContract {
+        method: "GET",
         path_template: "/api/v1/knowledge/facts",
     },
     ClientRouteContract {
@@ -480,6 +496,78 @@ pub mod system {
     #[must_use]
     pub fn credential_rotate_url(base_url: &str, provider: &str) -> String {
         keryx::url::join_base_path(base_url, &credential_rotate_path(provider))
+    }
+
+    /// Template for the daemon-task list route.
+    pub const DAEMON_TASKS_TEMPLATE: &str = "/api/v1/system/daemon/tasks";
+
+    /// Template for enabling one daemon task.
+    ///
+    /// `{runner}`/`{task_id}` are placeholders - do not interpolate
+    /// directly. Use [`daemon_task_enable_path`] to build an encoded path.
+    pub const DAEMON_TASK_ENABLE_TEMPLATE: &str =
+        "/api/v1/system/daemon/tasks/{runner}/{task_id}/enable";
+
+    /// Template for disabling one daemon task.
+    pub const DAEMON_TASK_DISABLE_TEMPLATE: &str =
+        "/api/v1/system/daemon/tasks/{runner}/{task_id}/disable";
+
+    /// Template for retrying one daemon task.
+    pub const DAEMON_TASK_RETRY_TEMPLATE: &str =
+        "/api/v1/system/daemon/tasks/{runner}/{task_id}/retry";
+
+    /// Build the path for listing daemon tasks (#7206).
+    #[must_use]
+    pub fn daemon_tasks_path() -> &'static str {
+        DAEMON_TASKS_TEMPLATE
+    }
+
+    /// Build the absolute URL for listing daemon tasks (#7206).
+    #[must_use]
+    pub fn daemon_tasks_url(base_url: &str) -> String {
+        keryx::url::join_base_path(base_url, daemon_tasks_path())
+    }
+
+    /// Build the path for enabling one daemon task (#7206).
+    #[must_use]
+    pub fn daemon_task_enable_path(runner: &str, task_id: &str) -> String {
+        let runner = encoding::path_segment(runner);
+        let task_id = encoding::path_segment(task_id);
+        format!("{DAEMON_TASKS_TEMPLATE}/{runner}/{task_id}/enable")
+    }
+
+    /// Build the absolute URL for enabling one daemon task (#7206).
+    #[must_use]
+    pub fn daemon_task_enable_url(base_url: &str, runner: &str, task_id: &str) -> String {
+        keryx::url::join_base_path(base_url, &daemon_task_enable_path(runner, task_id))
+    }
+
+    /// Build the path for disabling one daemon task (#7206).
+    #[must_use]
+    pub fn daemon_task_disable_path(runner: &str, task_id: &str) -> String {
+        let runner = encoding::path_segment(runner);
+        let task_id = encoding::path_segment(task_id);
+        format!("{DAEMON_TASKS_TEMPLATE}/{runner}/{task_id}/disable")
+    }
+
+    /// Build the absolute URL for disabling one daemon task (#7206).
+    #[must_use]
+    pub fn daemon_task_disable_url(base_url: &str, runner: &str, task_id: &str) -> String {
+        keryx::url::join_base_path(base_url, &daemon_task_disable_path(runner, task_id))
+    }
+
+    /// Build the path for retrying one daemon task (#7206).
+    #[must_use]
+    pub fn daemon_task_retry_path(runner: &str, task_id: &str) -> String {
+        let runner = encoding::path_segment(runner);
+        let task_id = encoding::path_segment(task_id);
+        format!("{DAEMON_TASKS_TEMPLATE}/{runner}/{task_id}/retry")
+    }
+
+    /// Build the absolute URL for retrying one daemon task (#7206).
+    #[must_use]
+    pub fn daemon_task_retry_url(base_url: &str, runner: &str, task_id: &str) -> String {
+        keryx::url::join_base_path(base_url, &daemon_task_retry_path(runner, task_id))
     }
 }
 
@@ -1097,6 +1185,24 @@ mod tests {
         assert_eq!(
             system::credential_rotate_path("open ai/a?b#c:100%"),
             "/api/v1/system/credentials/rotate?provider=open+ai%2Fa%3Fb%23c%3A100%25"
+        );
+    }
+
+    /// #7206
+    #[test]
+    fn daemon_task_routes_encode_both_path_segments() {
+        assert_eq!(system::daemon_tasks_path(), "/api/v1/system/daemon/tasks");
+        assert_eq!(
+            system::daemon_task_enable_path("system", "routing-store-refresh"),
+            "/api/v1/system/daemon/tasks/system/routing-store-refresh/enable"
+        );
+        assert_eq!(
+            system::daemon_task_disable_path("agent/one", "prosoche check"),
+            "/api/v1/system/daemon/tasks/agent%2Fone/prosoche%20check/disable"
+        );
+        assert_eq!(
+            system::daemon_task_retry_path("system", "routing-store-refresh"),
+            "/api/v1/system/daemon/tasks/system/routing-store-refresh/retry"
         );
     }
 

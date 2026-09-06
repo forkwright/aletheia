@@ -114,6 +114,9 @@ struct RegisteredTask {
     last_error: Option<String>,
     /// Number of non-fatal errors reported by the last execution.
     last_errors: u32,
+    /// Why the task is disabled, when `!def.enabled`. `None` when enabled, or
+    /// for a disabled task whose cause predates this field (#7206).
+    disable_cause: Option<crate::state::DisableCause>,
 }
 
 /// Terminal outcome classification for a single task action.

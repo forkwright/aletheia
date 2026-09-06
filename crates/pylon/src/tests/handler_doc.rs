@@ -35,6 +35,10 @@ const ROUTES: &[&str] = &[
     "/api/v1/config/{section}",
     "/api/v1/system/health",
     "/api/v1/system/status",
+    "/api/v1/system/daemon/tasks",
+    "/api/v1/system/daemon/tasks/{runner}/{task_id}/enable",
+    "/api/v1/system/daemon/tasks/{runner}/{task_id}/disable",
+    "/api/v1/system/daemon/tasks/{runner}/{task_id}/retry",
     // knowledge
     "/api/v1/knowledge/facts",
     "/api/v1/knowledge/facts/{id}",

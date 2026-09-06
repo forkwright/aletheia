@@ -16,10 +16,10 @@ use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
     AddCredentialRequest, Agent, AgentPerformance, AgentPerformanceListResponse, AgentsResponse,
     ConfigReloadResponse, ConfigUpdateResponse, CostMetricsResponse, CredentialRemoveResponse,
-    CredentialResponse, CredentialsListResponse, EntitiesResponse, ExplainResponse,
-    FactDetailResponse, FactsResponse, FileEntry, FlagRequest, FlagSeverity, GitStatusEntry,
-    HealthResponse, HistoryMessage, HistoryResponse, JournalResponse, ListSessionsRequest,
-    MergeRequest, NousStatus, NousTool, NousToolsResponse, OpenFileResponse,
+    CredentialResponse, CredentialsListResponse, DaemonTask, DaemonTaskListResponse,
+    EntitiesResponse, ExplainResponse, FactDetailResponse, FactsResponse, FileEntry, FlagRequest,
+    FlagSeverity, GitStatusEntry, HealthResponse, HistoryMessage, HistoryResponse, JournalResponse,
+    ListSessionsRequest, MergeRequest, NousStatus, NousTool, NousToolsResponse, OpenFileResponse,
     PaginatedSessionsResponse, PendingApprovalsResponse, ProjectVerificationResult,
     ProviderListResponse, ProviderRouteResponse, QualityMetricsResponse, RecoverResponse,
     RelationshipsResponse, SearchResponse, Session, SessionReplayResponse, SessionsResponse,
@@ -1147,6 +1147,145 @@ impl ApiClient {
         let resp = Self::check_status(resp, "cost metrics request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "cost metrics response",
+        })
+    }
+
+    /// List every daemon task with persisted execution history, across every
+    /// attached runner (#7206).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn daemon_tasks(&self) -> Result<Vec<DaemonTask>> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                super::routes::system::daemon_tasks_path(),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load daemon tasks",
+            })?;
+        let resp = Self::check_status(resp, "daemon tasks request").await?;
+        let wrapper: DaemonTaskListResponse = resp.json().await.context(HttpSnafu {
+            operation: "daemon tasks response",
+        })?;
+        Ok(wrapper.tasks)
+    }
+
+    /// Fully re-enable a daemon task, resetting its failure history (#7206).
+    ///
+    /// Equivalent to the `aletheia maintenance reset` CLI command.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status
+    /// (including 404 for an unknown `runner`/`task_id`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn enable_daemon_task(&self, runner: &str, task_id: &str) -> Result<DaemonTask> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::daemon_task_enable_path(runner, task_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "enable daemon task",
+            })?;
+        let resp = Self::check_status(resp, "enable daemon task request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "enable daemon task response",
+        })
+    }
+
+    /// Explicitly disable a daemon task (#7206).
+    ///
+    /// Unlike an auto-disable, this persists an `operator` cause that is
+    /// never re-armed on the daemon's own restart -- only [`Self::enable_daemon_task`]
+    /// or [`Self::retry_daemon_task`] re-enables it. `reason`, when given, is
+    /// recorded as the task's operator-facing `last_error`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status
+    /// (including 404 for an unknown `runner`/`task_id`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn disable_daemon_task(
+        &self,
+        runner: &str,
+        task_id: &str,
+        reason: Option<&str>,
+    ) -> Result<DaemonTask> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::daemon_task_disable_path(runner, task_id),
+            )
+            .json(&serde_json::json!({ "reason": reason }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "disable daemon task",
+            })?;
+        let resp = Self::check_status(resp, "disable daemon task request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "disable daemon task response",
+        })
+    }
+
+    /// Give a disabled daemon task exactly one more attempt now, without
+    /// resetting its failure history (#7206).
+    ///
+    /// Unlike [`Self::enable_daemon_task`], a subsequent failure re-disables
+    /// the task immediately rather than after three fresh strikes -- see the
+    /// pylon handler's doc comment for why.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status
+    /// (including 404 for an unknown `runner`/`task_id`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn retry_daemon_task(&self, runner: &str, task_id: &str) -> Result<DaemonTask> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::daemon_task_retry_path(runner, task_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "retry daemon task",
+            })?;
+        let resp = Self::check_status(resp, "retry daemon task request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "retry daemon task response",
         })
     }
 

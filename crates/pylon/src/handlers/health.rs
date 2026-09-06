@@ -1769,8 +1769,13 @@ fn subsystem_domain_packs(state: &HealthState, generated_at: &str) -> SubsystemS
 struct DaemonTaskStateSummary {
     /// One `{runner, task_count}` record per attached store.
     runner_task_counts: Vec<serde_json::Value>,
-    /// Tasks auto-disabled after 3 consecutive failures (#5130).
+    /// Tasks disabled (auto-disabled or operator-disabled; see
+    /// `oikonomos::state::DisableCause`, #7206).
     disabled_tasks: Vec<serde_json::Value>,
+    /// Human-readable `"task_id (cause)"` labels for `disabled_tasks`, in the
+    /// same order, so [`subsystem_daemon_runtime`] can name every disabled
+    /// task in `degraded_reason` without re-deriving the label (#7206).
+    disabled_task_labels: Vec<String>,
     /// Enabled tasks currently in backoff after a recent failure.
     backoff_tasks: Vec<serde_json::Value>,
     /// Stores that could not be read at all.
@@ -1792,6 +1797,7 @@ fn summarize_daemon_task_states(
     let mut summary = DaemonTaskStateSummary {
         runner_task_counts: Vec::with_capacity(daemon_task_states.len()),
         disabled_tasks: Vec::new(),
+        disabled_task_labels: Vec::new(),
         backoff_tasks: Vec::new(),
         read_errors: Vec::new(),
     };
@@ -1807,13 +1813,30 @@ fn summarize_daemon_task_states(
                     // WHY(#5130): legacy records predate the persisted
                     // `enabled` flag; absence means "was enabled", not unknown.
                     let enabled = task.enabled.unwrap_or(true);
+                    // WHY(#7206): a legacy disabled record (or one written by
+                    // the runner's own 3-consecutive-failure policy) has no
+                    // `Operator` cause on file; both read as `auto_failure`,
+                    // matching `runner::persistence::apply_saved_state`'s
+                    // hydration treatment of the same ambiguity.
+                    let cause = (!enabled)
+                        .then(|| {
+                            task.disable_cause
+                                .unwrap_or(oikonomos::state::DisableCause::AutoFailure)
+                        })
+                        .map(disable_cause_label);
                     let detail = serde_json::json!({
                         "runner": component,
                         "task_id": task.task_id,
                         "consecutive_failures": task.consecutive_failures,
                         "last_error": task.last_error,
+                        "cause": cause,
                     });
                     if !enabled {
+                        summary.disabled_task_labels.push(format!(
+                            "{} ({})",
+                            task.task_id,
+                            cause.unwrap_or("unknown")
+                        ));
                         summary.disabled_tasks.push(detail);
                     } else if task.consecutive_failures > 0 {
                         summary.backoff_tasks.push(detail);
@@ -1825,6 +1848,15 @@ fn summarize_daemon_task_states(
     }
 
     summary
+}
+
+/// Stable wire label for [`oikonomos::state::DisableCause`] (`snake_case`,
+/// matching the enum's own `#[serde(rename_all)]`).
+pub(crate) fn disable_cause_label(cause: oikonomos::state::DisableCause) -> &'static str {
+    match cause {
+        oikonomos::state::DisableCause::AutoFailure => "auto_failure",
+        oikonomos::state::DisableCause::Operator => "operator",
+    }
 }
 
 /// Daemon / cron / maintenance runtime subsystem: real task state read from
@@ -1892,19 +1924,36 @@ fn subsystem_daemon_runtime(
         "backoff_tasks": summary.backoff_tasks,
     }));
 
+    // WHY(#7206): every task in `oikonomos::maintenance::registry` is
+    // background cron/maintenance work (trace rotation, drift detection,
+    // routing-store refresh, knowledge-graph upkeep, ...) -- none sit on the
+    // request-serving path, unlike `provider_reachability`, `session_store`,
+    // `nous_runtime`, or `config_security_posture` elsewhere in
+    // `collect_subsystem_status`, whose `"failed"` correctly still promotes
+    // the aggregate to 503 (see `aggregate_subsystem_status`). A daemon task
+    // being disabled or in backoff is real and must not be hidden -- it is
+    // "degraded", not "the gateway is unusable" -- so this subsystem's floor
+    // for that case is `degraded`, never `failed`/503. A `read_errors`
+    // failure below is a different animal: the `TaskStateStore` itself
+    // (fjall) being unreadable is a storage-layer fault, not a fact about any
+    // one task, so it keeps `failed`/503.
     let (status, degraded_reason, failure_reason, suggested_action) =
         if summary.read_errors.is_empty() {
             if !summary.disabled_tasks.is_empty() {
                 (
-                    "failed",
-                    None,
+                    "degraded",
                     Some(format!(
-                        "{} task(s) auto-disabled after 3 consecutive failures",
-                        summary.disabled_tasks.len()
+                        "{} task(s) disabled: {}",
+                        summary.disabled_tasks.len(),
+                        summary.disabled_task_labels.join(", ")
                     )),
+                    None,
                     Some(
-                        "Check daemon logs for the disabled task's last_error and re-enable \
-                         once fixed."
+                        "Check daemon logs for the disabled task's last_error. An \
+                         `auto_failure` cause is retried automatically on the next daemon \
+                         restart, or immediately via POST /api/v1/system/daemon/tasks/\
+                         {runner}/{task_id}/retry; an `operator` cause stays disabled until \
+                         POST .../enable."
                             .to_owned(),
                     ),
                 )
@@ -2594,13 +2643,20 @@ mod tests {
         assert_eq!(details["backoff_tasks"].as_array().unwrap().len(), 1);
     }
 
+    /// WHY(#7206): a disabled daemon task is background, non-serving-path
+    /// work -- it must degrade the payload (and name the task) without ever
+    /// pinning the whole gateway's HTTP status to 503. Before this fix, this
+    /// case (and its `Operator`-cause sibling below) forced `"failed"`, and
+    /// `aggregate_subsystem_status` promoted that straight to a 503 that
+    /// nothing except hand-editing persisted state could ever clear.
     #[test]
-    fn subsystem_daemon_runtime_reports_failed_when_task_auto_disabled() {
+    fn subsystem_daemon_runtime_reports_degraded_when_task_auto_disabled() {
         let (_dir, handle) = seeded_daemon_task_store(
             "syn",
             &oikonomos::state::TaskState {
                 task_id: "syn-prosoche".to_owned(),
                 enabled: Some(false),
+                disable_cause: Some(oikonomos::state::DisableCause::AutoFailure),
                 consecutive_failures: 3,
                 last_error: Some("provider unreachable".to_owned()),
                 ..Default::default()
@@ -2611,14 +2667,50 @@ mod tests {
             &taxis::config::ProsocheMaintenanceSettings::default(),
             "2026-01-01T00:00:00Z",
         );
-        assert_eq!(status.status, "failed");
-        let reason = status.failure_reason.expect("failure_reason present");
+        assert_eq!(
+            status.status, "degraded",
+            "a disabled non-serving-path task must degrade, never fail, the aggregate"
+        );
+        assert!(status.failure_reason.is_none());
+        let reason = status.degraded_reason.expect("degraded_reason present");
         assert!(
-            reason.contains("auto-disabled"),
-            "reason should name auto-disable: {reason}"
+            reason.contains("syn-prosoche") && reason.contains("auto_failure"),
+            "reason should name the disabled task and its cause: {reason}"
         );
         let details = status.details.expect("details present");
         assert_eq!(details["disabled_tasks"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            details["disabled_tasks"][0]["cause"],
+            serde_json::json!("auto_failure")
+        );
+    }
+
+    /// An operator-disabled task degrades the same way an auto-disabled one
+    /// does -- `Operator` only changes hydration behavior (stays disabled
+    /// forever, see `oikonomos::runner::persistence`), not aggregation.
+    #[test]
+    fn subsystem_daemon_runtime_reports_degraded_when_task_operator_disabled() {
+        let (_dir, handle) = seeded_daemon_task_store(
+            "system",
+            &oikonomos::state::TaskState {
+                task_id: "routing-store-refresh".to_owned(),
+                enabled: Some(false),
+                disable_cause: Some(oikonomos::state::DisableCause::Operator),
+                consecutive_failures: 0,
+                ..Default::default()
+            },
+        );
+        let status = subsystem_daemon_runtime(
+            &[handle],
+            &taxis::config::ProsocheMaintenanceSettings::default(),
+            "2026-01-01T00:00:00Z",
+        );
+        assert_eq!(status.status, "degraded");
+        let details = status.details.expect("details present");
+        assert_eq!(
+            details["disabled_tasks"][0]["cause"],
+            serde_json::json!("operator")
+        );
     }
 
     #[test]
