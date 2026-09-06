@@ -1187,6 +1187,10 @@ Organon tool size and timeout limits. WHY configurable: filesystem write caps, s
 | `datalogDefaultTimeoutSecs` | float | 5.0 | Default query timeout in seconds for the Datalog memory tool. Default: 5.0. Also present in `AgentBehaviorDefaults::tool_datalog_default_timeout_secs`. |
 | `maxImageBytes` | integer | 20_971_520 | Maximum image file size in bytes for the view-file tool. Default: 20971520 (20 MiB). Also present in `AgentBehaviorDefaults::tool_max_image_bytes`. |
 | `maxPdfBytes` | integer | 33_554_432 | Maximum PDF file size in bytes for the view-file tool. Default: 33554432 (32 MiB). Also present in `AgentBehaviorDefaults::tool_max_pdf_bytes`. |
+| `httpTimeoutSecs` | integer | 30 | Ceiling in seconds for `http_request`/`web_fetch` timeouts. A caller-supplied `timeoutSecs` is clamped to this value; `web_fetch` (which takes no caller override) uses it directly. |
+| `httpMaxResponseBytes` | integer | 1_000_000 | Maximum bytes read from an `http_request`/`web_fetch` response body. Enforced while streaming so an oversized or slow-drip response is cut off instead of being fully buffered before the size check runs. |
+| `httpMaxHeaderBytes` | integer | 1_000_000 | Maximum bytes budgeted for an `http_request`/`web_fetch` response's headers. |
+| `httpMaxRedirects` | integer | 5 | Maximum redirect hops `http_request`/`web_fetch` will follow. |
 
 ## serverTools
 

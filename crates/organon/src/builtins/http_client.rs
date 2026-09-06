@@ -84,9 +84,25 @@ const FORBIDDEN_REQUEST_HEADERS: &[&str] = &[
 /// `pub` (SECURITY #4842): shared with `aletheia::external_tools` so a
 /// configured external HTTP tool truncates at the same bound as this crate's
 /// own `http_request`, rather than an unbounded `.text()` read.
+///
+/// Fallback default; `http_request`'s own body read runs against
+/// `ctx.tool_config.http_max_response_bytes` (SECURITY #5228) so an operator
+/// can raise or lower the cap without a rebuild.
 pub const MAX_RESPONSE_BYTES: usize = 1_000_000;
 
+/// Fallback default matching `ToolLimitsConfig::http_timeout_secs`
+/// (SECURITY #5228); `http_request`/`web_fetch` read the ceiling from
+/// `ctx.tool_config` at runtime.
+pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
 const MAX_REDIRECTS: usize = 5;
+
+/// Clamp a caller-supplied `timeoutSecs` to `ceiling`, the
+/// operator-configured `ToolLimitsConfig::http_timeout_secs` (SECURITY
+/// #5228). An absent caller value uses `ceiling` directly.
+fn clamp_timeout_secs(caller_secs: Option<u64>, ceiling: u64) -> u64 {
+    caller_secs.map_or(ceiling, |t| t.min(ceiling))
+}
 
 fn parse_method(raw: &str) -> std::result::Result<Method, String> {
     match raw.to_ascii_uppercase().as_str() {
@@ -298,6 +314,39 @@ where
     }
 }
 
+/// Read a response body chunk-by-chunk, aborting as soon as `cap` bytes have
+/// been buffered.
+///
+/// SECURITY(#5228): `Response::bytes()`/`Response::text()` buffer the entire
+/// body before the caller gets a chance to check its length, so a large or
+/// deliberately slow-drip response is fully allocated regardless of any
+/// after-the-fact truncation. Streaming via `chunk()` and stopping the read
+/// itself once `cap` is exceeded bounds memory use to roughly `cap` plus one
+/// chunk, never the full body.
+///
+/// Returns the bytes read (which may run slightly over `cap`, by at most one
+/// chunk) and whether the cap was hit before the body was fully read.
+///
+/// # Errors
+/// Returns the underlying `reqwest::Error` if a chunk read fails.
+pub(crate) async fn read_body_capped(
+    mut response: reqwest::Response,
+    cap: usize,
+) -> std::result::Result<(Vec<u8>, bool), reqwest::Error> {
+    let mut body = Vec::new();
+    loop {
+        match response.chunk().await? {
+            Some(chunk) => {
+                body.extend_from_slice(&chunk);
+                if body.len() > cap {
+                    return Ok((body, true));
+                }
+            }
+            None => return Ok((body, false)),
+        }
+    }
+}
+
 struct HttpRequestExecutor {
     egress: EgressGate,
 }
@@ -325,7 +374,14 @@ impl ToolExecutor for HttpRequestExecutor {
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let method_str = extract_opt_str(&input.arguments, "method").unwrap_or("GET");
             let body = extract_opt_str(&input.arguments, "body");
-            let timeout_secs = extract_opt_u64(&input.arguments, "timeoutSecs").unwrap_or(30);
+            // SECURITY(#5228): clamp a caller-supplied timeoutSecs to the
+            // operator-configured ceiling instead of trusting it outright --
+            // mirrors ExecExecutor's `timeout.min(configured_timeout_ms)`
+            // clamp in workspace.rs.
+            let timeout_secs = clamp_timeout_secs(
+                extract_opt_u64(&input.arguments, "timeoutSecs"),
+                ctx.tool_config.http_timeout_secs,
+            );
 
             // SECURITY(#5229): HTTPS-only by default, with a plaintext
             // exception for loopback only -- the same rule hermeneus's
@@ -386,19 +442,22 @@ impl ToolExecutor for HttpRequestExecutor {
                 .collect();
             header_summary.sort_by(|a, b| a.0.cmp(&b.0));
 
-            let body_bytes = match response.bytes().await {
-                Ok(b) => b,
+            // SECURITY(#5228): capped while streaming, not after a full
+            // `.bytes()` read -- see `read_body_capped`.
+            let max_response_bytes = ctx.tool_config.http_max_response_bytes;
+            let (body_bytes, capped) = match read_body_capped(response, max_response_bytes).await {
+                Ok(v) => v,
                 Err(e) => {
                     return Ok(ToolResult::error(format!("failed to read body: {e}")));
                 }
             };
 
-            let (body_text, truncated) = if body_bytes.len() > MAX_RESPONSE_BYTES {
+            let (body_text, truncated) = if capped {
                 // WHY: truncate at a valid UTF-8 boundary in the decoded
                 // string so the rendered text stays valid UTF-8 even when
                 // the response body is arbitrary binary.
                 let decoded = String::from_utf8_lossy(&body_bytes).into_owned();
-                let mut end = MAX_RESPONSE_BYTES.min(decoded.len());
+                let mut end = max_response_bytes.min(decoded.len());
                 while end > 0 && !decoded.is_char_boundary(end) {
                     end -= 1;
                 }
@@ -549,6 +608,8 @@ fn http_request_def() -> ToolDef {
 mod tests {
     use std::collections::HashMap;
     use std::net::SocketAddr;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use koina::http::ResolveHostFuture;
 
@@ -750,5 +811,98 @@ mod tests {
                 "header {header} must be rejected, got: {err}"
             );
         }
+    }
+
+    // SECURITY(#5228) proof: "an over-ceiling caller timeout is clamped".
+    #[test]
+    fn clamp_timeout_secs_caps_an_over_ceiling_caller_value() {
+        assert_eq!(clamp_timeout_secs(Some(9_999), 30), 30);
+    }
+
+    #[test]
+    fn clamp_timeout_secs_passes_through_an_under_ceiling_caller_value() {
+        assert_eq!(clamp_timeout_secs(Some(5), 30), 5);
+    }
+
+    #[test]
+    fn clamp_timeout_secs_passes_through_a_value_exactly_at_the_ceiling() {
+        assert_eq!(clamp_timeout_secs(Some(30), 30), 30);
+    }
+
+    #[test]
+    fn clamp_timeout_secs_uses_the_ceiling_when_caller_supplies_nothing() {
+        assert_eq!(clamp_timeout_secs(None, 30), 30);
+    }
+
+    // SECURITY(#5228) proof: "a mock server streaming past the cap is cut
+    // off without full allocation".
+    //
+    // Talks plain HTTP/1.1 directly to a hand-rolled local server so this
+    // stays a focused test of `read_body_capped` itself, independent of the
+    // SSRF/scheme validation `HttpRequestExecutor`/`WebFetchExecutor` layer
+    // on top of it (covered separately by the egress/DNS-rebinding tests in
+    // this module and in `research.rs`).
+    #[tokio::test]
+    async fn read_body_capped_aborts_once_the_cap_is_exceeded() {
+        crate::testing::install_crypto_provider();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test listener should bind");
+        let local_addr = listener.local_addr().expect("local addr");
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let mut buf = [0u8; 4096];
+            // Best-effort drain of the request line/headers; a raw string
+            // match is enough since this test controls both ends.
+            let _ = socket.read(&mut buf).await;
+
+            let header =
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n";
+            socket.write_all(header).await.expect("write headers");
+            // Far more than the 5,000-byte cap below, sent as one burst so
+            // it is available to the client immediately.
+            socket
+                .write_all(&vec![b'a'; 50_000])
+                .await
+                .expect("write burst");
+            socket.flush().await.expect("flush burst");
+            // Stall far longer than a cap-aware read should ever wait once
+            // the cap is already exceeded. The OLD `.bytes()`/`.text()` read
+            // blocks until the connection closes (i.e. through this stall);
+            // `read_body_capped` must return long before it.
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        });
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{local_addr}/"))
+            .send()
+            .await
+            .expect("request to the local mock server should succeed");
+
+        let started = std::time::Instant::now();
+        let (body, capped) = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            read_body_capped(response, 5_000),
+        )
+        .await
+        .expect("must return well before the server's multi-second stall")
+        .expect("chunk read should not error");
+        let elapsed = started.elapsed();
+
+        server.abort();
+
+        assert!(capped, "a body far exceeding the cap must report capped");
+        assert!(
+            body.len() < 50_000,
+            "capped read pulled {} bytes -- looks like it kept reading past the cap",
+            body.len()
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "capped read took {elapsed:?} -- looks like it waited through the \
+             server's stall instead of aborting once the cap was exceeded"
+        );
     }
 }

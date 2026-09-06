@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use koina::http::{TokioHostResolver, validate_url_not_internal};
 use koina::id::ToolName;
 
-use crate::builtins::http_client::{SafeRequest, send_with_safe_redirects};
+use crate::builtins::http_client::{SafeRequest, read_body_capped, send_with_safe_redirects};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{EgressGate, SandboxConfig};
@@ -94,6 +94,10 @@ impl ToolExecutor for WebFetchExecutor {
             // `http_request` uses (every hop revalidated against `gate` and
             // `resolver`, remote address checked post-connect) rather than a
             // second, independently-maintained GET-only copy of it.
+            //
+            // SECURITY(#5228): `web_fetch` takes no caller-supplied timeout,
+            // so there is nothing to clamp -- it uses the operator-configured
+            // ceiling directly instead of a hardcoded literal.
             let response = match send_with_safe_redirects(
                 &services.http_clients.ssrf_safe,
                 SafeRequest {
@@ -101,7 +105,7 @@ impl ToolExecutor for WebFetchExecutor {
                     url,
                     headers: &headers,
                     body: None,
-                    timeout: std::time::Duration::from_secs(30),
+                    timeout: std::time::Duration::from_secs(ctx.tool_config.http_timeout_secs),
                 },
                 &TokioHostResolver,
                 &self.egress,
@@ -123,10 +127,14 @@ impl ToolExecutor for WebFetchExecutor {
                 .unwrap_or("")
                 .to_owned();
 
-            let body = match response.text().await {
-                Ok(t) => t,
-                Err(e) => return Ok(ToolResult::error(format!("failed to read body: {e}"))),
-            };
+            // SECURITY(#5228): capped while streaming, not after a full
+            // `.text()` read -- see `http_client::read_body_capped`.
+            let (body_bytes, _capped) =
+                match read_body_capped(response, ctx.tool_config.http_max_response_bytes).await {
+                    Ok(v) => v,
+                    Err(e) => return Ok(ToolResult::error(format!("failed to read body: {e}"))),
+                };
+            let body = String::from_utf8_lossy(&body_bytes).into_owned();
 
             let text = if content_type.contains("text/html") {
                 strip_html_tags(&body)
