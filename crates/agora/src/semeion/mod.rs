@@ -228,6 +228,7 @@ impl SignalProvider {
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
                     self.raw_payload.clone(),
+                    account_id,
                 )
                 .instrument(span),
             );
@@ -470,6 +471,7 @@ async fn poll_loop(
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
     raw_payload: taxis::config::RawPayloadPolicy,
+    account_id: String,
 ) {
     tracing::info!("polling started");
     loop {
@@ -542,7 +544,9 @@ async fn poll_loop(
                         }
 
                         for env in &envelopes {
-                            if let Some(msg) = envelope::extract_message(env, &raw_payload) {
+                            if let Some(msg) =
+                                envelope::extract_message(env, &raw_payload, &account_id)
+                            {
                                 if tx.send(msg).await.is_err() {
                                     tracing::info!("receiver dropped, stopping poll");
                                     return;
@@ -788,6 +792,7 @@ mod tests {
                 CIRCUIT_BREAKER_THRESHOLD,
                 HALTED_HEALTH_CHECK_INTERVAL,
                 taxis::config::RawPayloadPolicy::default(),
+                "test-account".to_owned(),
             )
             .instrument(tracing::info_span!("test_poll_loop")),
         );

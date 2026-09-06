@@ -339,6 +339,8 @@ mod proptests {
                 source,
                 nous_id,
                 session_key: session_key.unwrap_or_else(default_session_pattern),
+                receiving_account_id: None,
+                command_tier: CommandTier::default(),
             })
     }
 

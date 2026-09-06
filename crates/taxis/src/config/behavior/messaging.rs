@@ -53,6 +53,11 @@ pub struct MessagingConfig {
     /// Per-agent outbound-recipient allowlist and default-deny posture,
     /// enforced by `agora::ChannelRegistry::send` before any provider send.
     pub outbound: OutboundMessagePolicy,
+    /// Per-channel inbound-sender (participant) allowlist and default-deny
+    /// posture, enforced by `agora::router::MessageRouter::allows_sender`
+    /// before an inbound message is routed at all -- see
+    /// [`InboundMessagePolicy`].
+    pub inbound: InboundMessagePolicy,
     /// Opt-in, bounded raw provider-payload retention on
     /// `InboundMessage::raw` (Signal envelopes, Matrix events).
     pub raw_payload: RawPayloadPolicy,
@@ -71,6 +76,7 @@ impl Default for MessagingConfig {
             agent_dispatch_timeout_secs: DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS,
             max_concurrent_handlers: 64,
             outbound: OutboundMessagePolicy::default(),
+            inbound: InboundMessagePolicy::default(),
             raw_payload: RawPayloadPolicy::default(),
         }
     }
@@ -166,6 +172,80 @@ impl OutboundMessagePolicy {
     }
 }
 
+/// Per-channel inbound-sender (participant) allowlist and default-deny
+/// posture for external channel messages, checked by
+/// `agora::router::MessageRouter::allows_sender` before an inbound message
+/// is routed to any nous agent at all -- upstream of `ChannelBinding`
+/// resolution and the `!`-command tier grant it carries.
+///
+/// WHY a policy owner distinct from `ChannelBinding` (decision record,
+/// forkwright/aletheia#5193): the binding answers "which nous, and which
+/// command tier, for a route that already matched"; this answers "may this
+/// sender reach the fleet at all", independent of whether any binding
+/// exists. Folding the second question into the first would give the
+/// allowlist a second default-deny semantic to drift out of sync with its
+/// outbound sibling -- so it lives beside [`OutboundMessagePolicy`] in the
+/// same module and reuses the identical `default_deny: true` posture
+/// instead.
+///
+/// WHY default-deny (#5193): an inbound `!`-command reaches fleet-state
+/// surfaces (agent enumeration, channel health, model choice, skills,
+/// blackboard) with no policy check between route resolution and execution
+/// today. An operator who never configures `[messaging.inbound]` should
+/// get "no external sender may talk to the fleet" as the safe starting
+/// point, not "every sender may" -- matching `OutboundMessagePolicy`'s
+/// stance that an unconfigured policy is a closed gate, not an open one.
+///
+/// WHY this locks out existing wildcard deployments on upgrade: any
+/// deployment relying on `docs/QUICKSTART.md`'s wildcard source-routing
+/// recommendation with no `[messaging.inbound]` section will, after this
+/// default takes effect, have every inbound sender denied until the
+/// operator adds an explicit allowlist entry (or sets `defaultDeny =
+/// false` to keep the pre-upgrade posture). This is a deliberate breaking
+/// change to close the fail-open gap the issue reported; see the ADR
+/// tracking this decision (forkwright/kanon `projects/aletheia/decisions/`)
+/// for the migration note.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct InboundMessagePolicy {
+    /// Allowed senders per channel: channel id (e.g. `"signal"`) -> sender
+    /// patterns (phone numbers, Matrix IDs, group IDs). A pattern of
+    /// exactly `"*"` allows any sender on that channel; any other pattern
+    /// must match the sender exactly.
+    pub allowlist: HashMap<String, Vec<String>>,
+    /// Deny an inbound message when its channel has no `allowlist` entry
+    /// at all. Default: `true` (fail closed), reusing
+    /// `OutboundMessagePolicy::default_deny`'s posture.
+    pub default_deny: bool,
+}
+
+impl Default for InboundMessagePolicy {
+    fn default() -> Self {
+        Self {
+            allowlist: HashMap::new(),
+            default_deny: true,
+        }
+    }
+}
+
+impl InboundMessagePolicy {
+    /// Whether `sender` may be routed at all on `channel` under this
+    /// policy.
+    ///
+    /// Unlike [`OutboundMessagePolicy::allows`], there is no "unattributed
+    /// sender" case here: every inbound message has a concrete `channel`
+    /// and `sender` by construction (`InboundMessage`'s required fields).
+    #[must_use]
+    pub fn allows(&self, channel: &str, sender: &str) -> bool {
+        match self.allowlist.get(channel) {
+            Some(patterns) => patterns.iter().any(|p| p == "*" || p == sender),
+            None => !self.default_deny,
+        }
+    }
+}
+
 #[cfg(test)]
 const _: () =
     assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000);
@@ -197,7 +277,7 @@ const _: () =
 // be the final item in the file.
 #[cfg(test)]
 mod outbound_policy_tests {
-    use super::OutboundMessagePolicy;
+    use super::{InboundMessagePolicy, OutboundMessagePolicy};
 
     #[test]
     fn default_denies_unconfigured_sender() {
@@ -253,5 +333,49 @@ mod outbound_policy_tests {
     #[test]
     fn messaging_config_defaults_to_raw_payload_capture_disabled() {
         assert!(!super::MessagingConfig::default().raw_payload.capture);
+    }
+
+    // PROOF(#5193): inbound participant allowlist is denied by default.
+    #[test]
+    fn inbound_default_denies_unconfigured_channel() {
+        let policy = InboundMessagePolicy::default();
+        assert!(!policy.allows("signal", "+15550100"));
+    }
+
+    #[test]
+    fn inbound_allowlisted_exact_sender_is_allowed() {
+        let mut policy = InboundMessagePolicy::default();
+        policy
+            .allowlist
+            .insert("signal".to_owned(), vec!["+15550100".to_owned()]);
+        assert!(policy.allows("signal", "+15550100"));
+        assert!(!policy.allows("signal", "+15559999"));
+        // WHY: the allowlist is per-channel -- a sender allowed on one
+        // channel is not implicitly allowed on another.
+        assert!(!policy.allows("matrix", "+15550100"));
+    }
+
+    #[test]
+    fn inbound_wildcard_pattern_allows_any_sender() {
+        let mut policy = InboundMessagePolicy::default();
+        policy
+            .allowlist
+            .insert("signal".to_owned(), vec!["*".to_owned()]);
+        assert!(policy.allows("signal", "+15550100"));
+        assert!(policy.allows("signal", "anything"));
+    }
+
+    #[test]
+    fn inbound_default_deny_false_allows_unconfigured_channel() {
+        let policy = InboundMessagePolicy {
+            default_deny: false,
+            ..InboundMessagePolicy::default()
+        };
+        assert!(policy.allows("signal", "+15550100"));
+    }
+
+    #[test]
+    fn messaging_config_defaults_to_inbound_default_deny() {
+        assert!(super::MessagingConfig::default().inbound.default_deny);
     }
 }

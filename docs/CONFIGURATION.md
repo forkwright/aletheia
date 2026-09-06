@@ -600,6 +600,8 @@ Routes mapping channel sources to nous agents.
 | `source` | string | *required* | Source pattern: phone number, group ID, or "*" for default. |
 | `nousId` | string | *required* | Nous ID to route to. |
 | `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}` and `{group}` placeholders. |
+| `receivingAccountId` | string | unset | Restrict this binding to messages received on one named channel account (the key an operator gives that account under `channels.signal.accounts`/`channels.matrix.accounts`), or match any account when `None`. WHY not named `account_id` (decision record, forkwright/aletheia#5193 residual risk): `SendParams::account_id` (`crates/agora/src/ types.rs`) already fixes that term to mean "which account an outbound send goes out FROM"; a binding field of the same name here would mean "which account an inbound message was RECEIVED on" -- the opposite direction. Reusing the name would conflate the two senses in the same `[[bindings]]`/`channels.*.accounts` config surface, so this field is named for the direction it actually matches: `receiving_account_id`. Matches nothing until `InboundMessage::receiving_account_id` is populated by a provider (the #5193 prerequisite): a binding scoped to an account is inert, not silently permissive, on a provider that does not yet carry the receiving account through. |
+| `commandTier` | "public" \| "operator" | "public" | Which `!`-command tier this binding grants the sender it matches. WHY explicit-over-wildcard, not "whatever the binding says" (decision record, #5193): a binding matched by [`crate::config::ChannelBinding`]'s wildcard/default source (`"*"`) or the global-default nous grants [`CommandTier::Public`] regardless of what `command_tier` it declares -- `MessageRouter::match_route` only honors an explicit grant above `Public` for an exact group or source match. This is enforced structurally in the router (not merely by convention) because the issue's ask is "fail closed for operator commands unless an EXACT source/group binding grants them" -- a wildcard binding is definitionally not that. |
 
 ## feature_flags[]
 
@@ -1235,6 +1237,15 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 |-------|------|---------|-------------|
 | `allowlist` | map<string, string[]> | {} | Allowed recipients per sending agent: `nous_id` -> recipient patterns. A pattern of exactly `"*"` allows any recipient for that agent; any other pattern must match the recipient exactly. |
 | `defaultDeny` | bool | true | Deny a send when the sending agent has no `allowlist` entry at all. Default: `true` (fail closed) -- an operator who never configured `[messaging.outbound]` blocks every send rather than allowing every send, matching `RecallSourcesConfig`'s network-source default-off posture. |
+
+### messaging.inbound
+
+Per-channel inbound-sender (participant) allowlist and default-deny posture, enforced by `agora::router::MessageRouter::allows_sender` before an inbound message is routed at all -- see [`InboundMessagePolicy`].
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allowlist` | map<string, string[]> | {} | Allowed senders per channel: channel id (e.g. `"signal"`) -> sender patterns (phone numbers, Matrix IDs, group IDs). A pattern of exactly `"*"` allows any sender on that channel; any other pattern must match the sender exactly. |
+| `defaultDeny` | bool | true | Deny an inbound message when its channel has no `allowlist` entry at all. Default: `true` (fail closed), reusing `OutboundMessagePolicy::default_deny`'s posture. |
 
 ### messaging.rawPayload
 

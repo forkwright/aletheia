@@ -1603,6 +1603,42 @@ fn accepts_matrix_binding() {
     );
 }
 
+// PROOF(#5193): a wildcard binding granting the operator command tier is
+// surfaced as a config error, not silently ignored at routing time.
+#[test]
+fn rejects_wildcard_binding_granting_operator_tier() {
+    let section = json!([
+        { "channel": "signal", "source": "*", "nousId": "main", "commandTier": "operator" }
+    ]);
+    let result = validate_section("bindings", &section);
+    assert!(
+        result.is_err(),
+        "a wildcard binding must not be allowed to declare commandTier = operator"
+    );
+}
+
+#[test]
+fn accepts_exact_source_binding_granting_operator_tier() {
+    let section = json!([
+        { "channel": "signal", "source": "+15550100", "nousId": "main", "commandTier": "operator" }
+    ]);
+    assert!(
+        validate_section("bindings", &section).is_ok(),
+        "an exact source binding may grant the operator command tier"
+    );
+}
+
+#[test]
+fn accepts_wildcard_binding_with_public_tier() {
+    let section = json!([
+        { "channel": "signal", "source": "*", "nousId": "main", "commandTier": "public" }
+    ]);
+    assert!(
+        validate_section("bindings", &section).is_ok(),
+        "a wildcard binding declaring the default public tier is fine"
+    );
+}
+
 #[test]
 fn accepts_feature_flags() {
     let section = json!([

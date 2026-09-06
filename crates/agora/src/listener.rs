@@ -330,6 +330,7 @@ mod tests {
                     text: text.to_owned(),
                     timestamp: 100,
                     attachments: vec![],
+                    receiving_account_id: None,
                     raw: None,
                 }],
             }
@@ -397,6 +398,7 @@ mod tests {
             text: "hello".to_owned(),
             timestamp: 100,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         };
 

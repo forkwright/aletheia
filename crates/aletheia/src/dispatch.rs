@@ -125,6 +125,21 @@ async fn dispatch_one(
     channel_registry: Arc<ChannelRegistry>,
     session_store: Arc<tokio::sync::Mutex<SessionStore>>,
 ) {
+    // SECURITY(#5193): checked before route resolution, command parsing, or
+    // any agent turn -- a sender absent from the inbound participant
+    // allowlist (`taxis::config::InboundMessagePolicy`, default-deny) is
+    // refused here, distinctly from "no route" below. WHY `warn!`, not
+    // `debug!` (surfaced, not silent): a missing binding is a config gap;
+    // a denied sender is a refusal the operator should be able to see.
+    if !router.allows_sender(&msg) {
+        warn!(
+            channel = %msg.channel,
+            sender = %redact_channel_id(&msg.sender),
+            "inbound sender denied by participant allowlist"
+        );
+        return;
+    }
+
     let Some(decision) = router.resolve(&msg) else {
         warn!(
             channel = %msg.channel,
@@ -877,7 +892,7 @@ mod tests {
     use nous::manager::NousManager;
     use organon::registry::ToolRegistry;
     use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
-    use taxis::config::ChannelBinding;
+    use taxis::config::{ChannelBinding, CommandTier, InboundMessagePolicy};
     use taxis::oikos::Oikos;
     use tokio::sync::Mutex;
 
@@ -1078,15 +1093,27 @@ mod tests {
             .await
             .expect("spawn alice");
         let nous_manager = Arc::new(mgr);
-        let router = Arc::new(MessageRouter::new(
-            vec![ChannelBinding {
-                channel: "signal".to_owned(),
-                source: "*".to_owned(),
-                nous_id: "alice".to_owned(),
-                session_key: "signal:{source}".to_owned(),
-            }],
-            None,
-        ));
+        let router = Arc::new(
+            MessageRouter::new(
+                vec![ChannelBinding {
+                    channel: "signal".to_owned(),
+                    source: "*".to_owned(),
+                    nous_id: "alice".to_owned(),
+                    session_key: "signal:{source}".to_owned(),
+                    receiving_account_id: None,
+                    command_tier: CommandTier::default(),
+                }],
+                None,
+            )
+            // WHY permissive here (#5193): these tests exercise dedupe and
+            // concurrency capping, not the participant allowlist -- the
+            // production default (fail closed) would deny every message
+            // and make both indistinguishable from an unrelated regression.
+            .with_inbound_policy(InboundMessagePolicy {
+                default_deny: false,
+                ..InboundMessagePolicy::default()
+            }),
+        );
         let sent = Arc::new(Mutex::new(Vec::new()));
         let provider: Arc<dyn ChannelProvider> =
             Arc::new(RecordingChannel::new(Arc::clone(&sent), SendResult::ok()));
@@ -1128,6 +1155,7 @@ mod tests {
             text: text.to_owned(),
             timestamp,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         }
     }
@@ -1191,15 +1219,27 @@ mod tests {
             .await
             .expect("spawn alice");
         let nous_manager = Arc::new(mgr);
-        let router = Arc::new(MessageRouter::new(
-            vec![ChannelBinding {
-                channel: "signal".to_owned(),
-                source: "*".to_owned(),
-                nous_id: "alice".to_owned(),
-                session_key: "signal:{source}".to_owned(),
-            }],
-            None,
-        ));
+        let router = Arc::new(
+            MessageRouter::new(
+                vec![ChannelBinding {
+                    channel: "signal".to_owned(),
+                    source: "*".to_owned(),
+                    nous_id: "alice".to_owned(),
+                    session_key: "signal:{source}".to_owned(),
+                    receiving_account_id: None,
+                    command_tier: CommandTier::default(),
+                }],
+                None,
+            )
+            // WHY permissive here (#5193): these tests exercise dedupe and
+            // concurrency capping, not the participant allowlist -- the
+            // production default (fail closed) would deny every message
+            // and make both indistinguishable from an unrelated regression.
+            .with_inbound_policy(InboundMessagePolicy {
+                default_deny: false,
+                ..InboundMessagePolicy::default()
+            }),
+        );
 
         let current = Arc::new(AtomicUsize::new(0));
         let peak = Arc::new(AtomicUsize::new(0));
@@ -1426,6 +1466,47 @@ mod tests {
         assert_eq!(
             json_str(&record_json(&history[1]), "/event"),
             Some("result")
+        );
+
+        shutdown_harness(harness).await;
+    }
+
+    // PROOF(#5193): an inbound sender not on the participant allowlist is
+    // denied by default -- no reply is sent and no command/turn record is
+    // written, distinct from the "no route" path (which also drops silently
+    // but for an unrelated reason: a missing binding, not a refusal).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dispatch_one_denies_sender_not_in_participant_allowlist() {
+        let harness = make_dispatch_harness().await;
+        // WHY a second, strict router (not harness.router): the harness
+        // router is deliberately permissive (see make_dispatch_harness) so
+        // unrelated tests aren't coupled to this policy. This test needs
+        // the actual production default -- fail closed.
+        let strict_router = Arc::new(MessageRouter::new(
+            vec![ChannelBinding {
+                channel: "signal".to_owned(),
+                source: "*".to_owned(),
+                nous_id: "alice".to_owned(),
+                session_key: "signal:{source}".to_owned(),
+                receiving_account_id: None,
+                command_tier: CommandTier::default(),
+            }],
+            None,
+        ));
+        let msg = command_message("!ping", 1_709_312_345_681);
+
+        dispatch_one(
+            msg,
+            strict_router,
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+        )
+        .await;
+
+        assert!(
+            harness.sent.lock().await.is_empty(),
+            "a denied sender must never reach the channel"
         );
 
         shutdown_harness(harness).await;
@@ -1722,6 +1803,7 @@ mod tests {
             text: "!ping".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         };
 
@@ -1761,6 +1843,7 @@ mod tests {
             text: "!ping".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         };
 
@@ -1787,6 +1870,7 @@ mod tests {
             text: "!ping".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec![],
+            receiving_account_id: None,
             raw: None,
         };
 

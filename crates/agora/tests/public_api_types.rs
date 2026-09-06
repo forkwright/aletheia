@@ -235,6 +235,7 @@ fn inbound_message_construction() {
         text: "Hello!".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec!["photo.jpg".to_owned()],
+        receiving_account_id: None,
         raw: Some(serde_json::json!({"extra": "data"})),
     };
 
@@ -259,6 +260,7 @@ fn inbound_message_serde_roundtrip() {
         text: "Direct message".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],
+        receiving_account_id: None,
         raw: None,
     };
 

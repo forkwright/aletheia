@@ -17,7 +17,7 @@ pub use behavior::{
     AcademicSourceConfig, AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig,
     BookkeepingProviderKind, CapacityConfig, CompactionStrategyKind, CronTaskConfig,
     DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
-    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig,
+    DispatchSpecConfig, ExtractionConfig, InboundMessagePolicy, JwtSettings, KnowledgeConfig,
     LOCAL_ADMISSION_MAX_RUNNING, LOCAL_ADMISSION_MAX_WAITING, LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS,
     LOCAL_BUDGET_CONTEXT_TOKENS, LOCAL_BUDGET_MAX_OUTPUT_TOKENS, LlmProviderConfig,
     MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy, PromptCacheMode,
@@ -415,10 +415,69 @@ pub struct ChannelBinding {
     #[serde(default = "default_session_pattern")]
     // kanon:ignore RUST/plain-string-secret
     pub session_key: String,
+    /// Restrict this binding to messages received on one named channel
+    /// account (the key an operator gives that account under
+    /// `channels.signal.accounts`/`channels.matrix.accounts`), or match any
+    /// account when `None`.
+    ///
+    /// WHY not named `account_id` (decision record, forkwright/aletheia#5193
+    /// residual risk): `SendParams::account_id` (`crates/agora/src/
+    /// types.rs`) already fixes that term to mean "which account an
+    /// outbound send goes out FROM"; a binding field of the same name here
+    /// would mean "which account an inbound message was RECEIVED on" --
+    /// the opposite direction. Reusing the name would conflate the two
+    /// senses in the same `[[bindings]]`/`channels.*.accounts` config
+    /// surface, so this field is named for the direction it actually
+    /// matches: `receiving_account_id`.
+    ///
+    /// Matches nothing until `InboundMessage::receiving_account_id` is
+    /// populated by a provider (the #5193 prerequisite): a binding scoped
+    /// to an account is inert, not silently permissive, on a provider that
+    /// does not yet carry the receiving account through.
+    #[serde(default)]
+    pub receiving_account_id: Option<String>,
+    /// Which `!`-command tier this binding grants the sender it matches.
+    ///
+    /// WHY explicit-over-wildcard, not "whatever the binding says"
+    /// (decision record, #5193): a binding matched by
+    /// [`crate::config::ChannelBinding`]'s wildcard/default source (`"*"`)
+    /// or the global-default nous grants [`CommandTier::Public`]
+    /// regardless of what `command_tier` it declares --
+    /// `MessageRouter::match_route` only honors an explicit grant above
+    /// `Public` for an exact group or source match. This is enforced
+    /// structurally in the router (not merely by convention) because the
+    /// issue's ask is "fail closed for operator commands unless an EXACT
+    /// source/group binding grants them" -- a wildcard binding is
+    /// definitionally not that.
+    #[serde(default)]
+    pub command_tier: CommandTier,
 }
 
 fn default_session_pattern() -> String {
     "{source}".to_owned()
+}
+
+/// Which `!`-commands a resolved route may invoke.
+///
+/// WHY fail-closed default (#5193): `Public` is the [`Default`] so that a
+/// `ChannelBinding` (or the synthetic global-default route, which has no
+/// binding at all) never grants fleet-state command access unless an
+/// operator explicitly sets `commandTier = "operator"` on an exact
+/// source/group binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum CommandTier {
+    /// Safe commands available to any routed sender (e.g. `!help`,
+    /// `!status`, `!ping`).
+    #[default]
+    Public,
+    /// Fleet-state commands that enumerate agents, channel health, model
+    /// choice, skills, and blackboard entries (e.g. `!agents`,
+    /// `!channels`, `!model`, `!skills`, `!blackboard`). Only honored when
+    /// granted by an exact (group or source) binding -- see
+    /// `ChannelBinding::command_tier`.
+    Operator,
 }
 
 /// Embedding provider configuration for recall pipeline.
