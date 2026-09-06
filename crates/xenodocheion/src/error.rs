@@ -1,4 +1,4 @@
-//! Error types for aletheia-memory-mcp.
+//! Error types for xenodocheion.
 //!
 //! Each variant maps to an rmcp error code via `impl From<Error> for
 //! rmcp::ErrorData`. Server-side paths are not included in MCP messages so

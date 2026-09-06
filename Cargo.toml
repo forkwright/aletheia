@@ -5,7 +5,7 @@ members = [
     "crates/aletheia",
     "crates/aletheia-classify",
     "crates/aletheia-lexica",
-    "crates/aletheia-memory-mcp",
+    "crates/xenodocheion",
     "crates/aletheia-routing",
     "crates/diaporeia",
     "crates/dianoia",

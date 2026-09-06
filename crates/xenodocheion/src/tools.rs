@@ -275,6 +275,11 @@ fn opaque_store_id(store_path: Option<&Path>) -> String {
     };
 
     let mut hasher = Sha256::new();
+    // WHY: stable hash domain separator, not a crate-identity string --
+    // kept literal across the aletheia-memory-mcp -> xenodocheion rename
+    // (aletheia#5584/kanon#540) so an unchanged store path keeps producing
+    // the same opaque `nous_stats` store id. Bump the trailing version
+    // segment instead if the domain itself ever needs to change.
     hasher.update(b"aletheia-memory-mcp/store-path/v1");
     hasher.update(store_path.to_string_lossy().as_bytes());
     let digest = hasher.finalize();

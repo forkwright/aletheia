@@ -1,4 +1,4 @@
-# aletheia-memory-mcp
+# xenodocheion
 
 **Purpose:** Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents.
 
@@ -13,14 +13,14 @@
 
 ## Public API surface
 
-- `aletheia-memory-mcp::error` - public items from `src/error.rs`
-- `aletheia-memory-mcp::server` - public items from `src/server.rs`
-- `aletheia-memory-mcp::tools` - public items from `src/tools.rs`
+- `xenodocheion::error` - public items from `src/error.rs`
+- `xenodocheion::server` - public items from `src/server.rs`
+- `xenodocheion::tools` - public items from `src/tools.rs`
 
 ## When to look here
 
-- When work touches `crates/aletheia-memory-mcp` or downstream imports from `aletheia-memory-mcp`.
-- For exact signatures, load `_llm/L3-api-index/aletheia-memory-mcp.md` if present, then source.
+- When work touches `crates/xenodocheion` or downstream imports from `xenodocheion`.
+- For exact signatures, load `_llm/L3-api-index/xenodocheion.md` if present, then source.
 
 ## Recent changes
 

@@ -1,4 +1,4 @@
-# aletheia-memory-mcp
+# xenodocheion
 
 Standalone stdio MCP server exposing Aletheia's nous local knowledge store to external agents (Claude Code, Cursor, OpenHands, etc.) without requiring the full Aletheia runtime. This is the session-scoped Aletheia nous store, not kanon mnemosyne's durable corpus.
 
@@ -54,7 +54,7 @@ This produces a 64-character hexadecimal string suitable for use as `ALETHEIA_ME
 ```bash
 export ALETHEIA_MEMORY_MCP_WRITE_TOKEN=$(openssl rand -hex 32)
 export ALETHEIA_MEMORY_MCP_NOUS_ID=alice
-aletheia-memory-mcp  # server inherits the token
+xenodocheion  # server inherits the token
 ```
 
 ### Example: MCP client call
@@ -91,15 +91,15 @@ Write tools validate required fields, bound caller identity, ownership, lifecycl
 Run tests:
 
 ```bash
-cargo nextest run -p aletheia-memory-mcp
-cargo test -p aletheia-memory-mcp --doc  # doctest examples
+cargo nextest run -p xenodocheion
+cargo test -p xenodocheion --doc  # doctest examples
 ```
 
 Format and lint:
 
 ```bash
-cargo fmt -p aletheia-memory-mcp
-cargo clippy -p aletheia-memory-mcp --all-targets -- -D warnings
+cargo fmt -p xenodocheion
+cargo clippy -p xenodocheion --all-targets -- -D warnings
 ```
 
 Full gate (simulates CI):
