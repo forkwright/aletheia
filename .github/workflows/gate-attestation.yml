@@ -425,6 +425,20 @@ jobs:
       - name: Check stub-shaped sites carry accountability
         run: scripts/check-stub-accountability.py
 
+      # WHY(#7198): ruling B (#7187) is that skene is the sole protocol
+      # boundary for koilon and proskenion. #7187's own route-contract test
+      # (crates/pylon/src/tests/route_contract.rs) only validates skene
+      # against pylon; nothing validated a client against skene, so a new
+      # `reqwest` call, hand-built `/api/v1/` route string, or re-invented
+      # SSE decoder could drift back out from under the boundary with CI
+      # green. Pure-python, no compile, so it runs here with the other
+      # coverage checks.
+      - name: Test check-client-boundary.py
+        run: scripts/test-check-client-boundary.py
+
+      - name: Check client crates route through skene, not the server directly
+        run: scripts/check-client-boundary.py
+
       - name: Check for unresolved conflict markers
         run: scripts/check-conflict-markers.py
 
