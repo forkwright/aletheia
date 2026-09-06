@@ -373,9 +373,36 @@ async fn identity_continuity_pins_top_three_facts_and_late_injects_anchor() {
         "mock provider should have received at least one request"
     );
 
-    // Check the last request for late-inject anchor: recalled knowledge should
-    // appear as a trailing system message, not inside the main system prompt.
-    let req = requests.last().expect("last request");
+    // Check the last TURN request for late-inject anchor: recalled knowledge
+    // should appear as a trailing system message, not inside the main system
+    // prompt.
+    //
+    // WHY filter to requests carrying a `Role::System` message rather than
+    // just `requests.last()`: this fixture's `NousConfig` sets no
+    // `generation.extraction_model` override, so background extraction now
+    // correctly resolves to the nous's own primary model (`"mock-model"`,
+    // #4235/#3740's background-routing fix) instead of a compiled default no
+    // provider here serves. The mock's fixed "ack" reply never uses a tool,
+    // so the no-progress/doom-loop guard synthesizes a longer nudge message
+    // in place of the assistant's turn 5 content -- long enough to clear
+    // `min_message_length: 50` -- and the mock now also captures the
+    // resulting background extraction request once finalize_turn's corpus
+    // side effects fire. That request has no `Role::System` message at all
+    // -- extraction builds its own request straight from
+    // `ConversationMessage`s with the engine's own instructions in
+    // `CompletionRequest.system`, not as a trailing message -- so it is
+    // never a "turn" request in the sense this assertion cares about, and
+    // `requests.last()` picking it up would be testing the wrong thing, not
+    // a regression in late-inject anchor itself.
+    let req = requests
+        .iter()
+        .rev()
+        .find(|r| {
+            r.messages
+                .iter()
+                .any(|m| m.role == hermeneus::types::Role::System)
+        })
+        .expect("at least one turn request should carry a system message");
     let system_messages: Vec<_> = req
         .messages
         .iter()
