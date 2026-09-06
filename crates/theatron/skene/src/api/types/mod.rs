@@ -3,6 +3,9 @@
 pub mod providers;
 pub use providers::{ProviderInfo, ProviderListResponse, ProviderRouteResponse};
 
+pub mod approvals;
+pub use approvals::{PendingApproval, PendingApprovalsResponse};
+
 pub mod knowledge;
 pub use knowledge::{
     EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier,

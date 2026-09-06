@@ -20,10 +20,11 @@ use super::types::{
     FactDetailResponse, FactsResponse, FileEntry, FlagRequest, FlagSeverity, GitStatusEntry,
     HealthResponse, HistoryMessage, HistoryResponse, JournalResponse, ListSessionsRequest,
     MergeRequest, NousStatus, NousTool, NousToolsResponse, OpenFileResponse,
-    PaginatedSessionsResponse, ProjectVerificationResult, ProviderListResponse,
-    ProviderRouteResponse, QualityMetricsResponse, RecoverResponse, RelationshipsResponse,
-    SearchResponse, Session, SessionReplayResponse, SessionsResponse, TimelineResponse,
-    TokenMetricsResponse, WorkspaceSearchResult, WriteContentRequest, WriteContentResponse,
+    PaginatedSessionsResponse, PendingApprovalsResponse, ProjectVerificationResult,
+    ProviderListResponse, ProviderRouteResponse, QualityMetricsResponse, RecoverResponse,
+    RelationshipsResponse, SearchResponse, Session, SessionReplayResponse, SessionsResponse,
+    TimelineResponse, TokenMetricsResponse, WorkspaceSearchResult, WriteContentRequest,
+    WriteContentResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -627,6 +628,75 @@ impl ApiClient {
             })?;
         Self::check_status(resp, "session approval request").await?;
         Ok(())
+    }
+
+    /// List pending tool approvals for a session (#7207): the read half of
+    /// [`Self::resolve_session_approval`]'s model. Lets a client that
+    /// connects late, restarts, or reconnects after missing the live
+    /// `tool.approval_required` event discover what is still waiting,
+    /// instead of depending on having seen it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn pending_session_approvals(
+        &self,
+        session_id: &str,
+    ) -> Result<PendingApprovalsResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::sessions::session_approvals_path(session_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "list session pending approvals",
+            })?;
+        let resp = Self::check_status(resp, "list session pending approvals request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "list session pending approvals response",
+        })
+    }
+
+    /// List pending tool approvals across every session belonging to
+    /// `nous_id` (#7207): the scoped-token shape of
+    /// [`Self::pending_session_approvals`], for a caller that has no
+    /// session id to enumerate against.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn pending_approvals_for_nous(
+        &self,
+        nous_id: &str,
+    ) -> Result<PendingApprovalsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/approvals")
+            .query(&[("nous_id", nous_id)])
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "list nous pending approvals",
+            })?;
+        let resp = Self::check_status(resp, "list nous pending approvals request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "list nous pending approvals response",
+        })
     }
 
     /// Fetch registered tools for an agent.
@@ -2088,6 +2158,55 @@ mod tests {
             request.contains(r#""decision":"approved""#),
             "got: {request}"
         );
+    }
+
+    #[tokio::test]
+    async fn pending_session_approvals_gets_the_session_scoped_route() {
+        // WHY(#7207): the read half of `resolve_session_approval` -- a
+        // client that reconnects must be able to list what is still
+        // pending on the same session-scoped route the write uses.
+        crate::install_test_crypto_provider();
+        let body = r#"{"approvals":[{"session_id":"ses-1","turn_id":"turn-1","tool_id":"tool-1","tool_name":"shell_execute","risk":"critical","requested_at":"2026-01-01T00:00:00Z","deadline":"2026-01-01T00:02:00Z"}]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .pending_session_approvals("ses-1")
+            .await
+            .expect("pending session approvals should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/sessions/ses-1/approvals"),
+            "must GET pylon's session-scoped approval route, got: {request}"
+        );
+        assert_eq!(response.approvals.len(), 1);
+        assert_eq!(response.approvals[0].tool_id, "tool-1");
+        assert_eq!(response.approvals[0].turn_id, "turn-1");
+        assert_eq!(response.approvals[0].risk, "critical");
+        assert_eq!(response.approvals[0].deadline, "2026-01-01T00:02:00Z");
+    }
+
+    #[tokio::test]
+    async fn pending_approvals_for_nous_gets_the_nous_scoped_route_with_query_param() {
+        // WHY(#7207): the scoped-token shape -- a caller with no session id
+        // to enumerate against lists by agent instead.
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"approvals":[]}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .pending_approvals_for_nous("syn")
+            .await
+            .expect("pending nous approvals should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/approvals?"),
+            "must GET pylon's nous-scoped approval route, got: {request}"
+        );
+        assert!(request.contains("nous_id=syn"), "got: {request}");
+        assert!(response.approvals.is_empty());
     }
 
     #[tokio::test]
