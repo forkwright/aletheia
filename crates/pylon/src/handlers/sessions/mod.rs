@@ -34,7 +34,7 @@ use crate::error::{
     ApiError, ConflictSnafu, ErrorResponse, FieldError, NousNotFoundSnafu, SessionNotFoundSnafu,
     ValidationFailedSnafu,
 };
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::state::SessionsState;
 
 const SESSION_REPLAY_VERSION: u32 = 1;
@@ -342,7 +342,7 @@ pub async fn list_sessions(
     // SECURITY(#7200): Readonly is dashboard-only (symbolon::types::Role
     // doc); session content is Agent-or-above, scoped to the caller's own
     // nous_id below.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
 
     // WHY: a token scoped to a single nous_id may only see its own agent's
     // sessions, regardless of the `nous_id` query parameter. Without this
@@ -442,7 +442,7 @@ pub async fn get_session(
 ) -> Result<Json<SessionResponse>, ApiError> {
     // SECURITY(#7200): Readonly is dashboard-only; session content is
     // Agent-or-above, scoped to the caller's own nous_id below.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
     // WHY: archived sessions must not be visible via normal GET (#3196).
@@ -489,7 +489,7 @@ pub async fn replay(
     // SECURITY(#7200): Readonly is dashboard-only; the full replay export
     // (messages, usage, tool audit) is Agent-or-above, scoped to the
     // caller's own nous_id below.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
@@ -790,7 +790,7 @@ pub async fn history(
 ) -> Result<Json<HistoryResponse>, ApiError> {
     // SECURITY(#7200): Readonly is dashboard-only; conversation history is
     // Agent-or-above, scoped to the caller's own nous_id below.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 

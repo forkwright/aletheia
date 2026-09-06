@@ -344,8 +344,12 @@ schema, so it is gated the same way `/metrics` is (#5174).
 All session endpoints require a valid Bearer token (`Claims` extractor). Reads (list,
 detail, history, replay, pending approvals) additionally require `Role::Agent` or above --
 `Role::Readonly` is dashboard-only and cannot read session content -- and are scoped to
-the caller's own `nous_id` when the token carries one. State-changing endpoints also
-require CSRF header when CSRF is enabled.
+the caller's own `nous_id` when the token carries one. This read floor does not apply to
+the synthetic identity `auth.mode = "none"` produces (`require_read_role`, #7234): that
+mode never had a role check on these routes before it was added, and disabling auth
+entirely must not retroactively lock an instance out of its own sessions because
+`none_role` schema-defaults to `"readonly"`. State-changing endpoints also require CSRF
+header when CSRF is enabled.
 
 ```
 POST /api/v1/sessions/{id}/messages  ─── Idempotency-Key header (optional, max 64 chars)
@@ -787,8 +791,10 @@ operator inspection and debugging.
 ## Nous (agents)
 
 List/status/tools reads require `Role::Agent` or above -- `Role::Readonly` is
-dashboard-only and cannot read agent info. Visibility is then narrowed per agent:
-a token scoped to a `nous_id` only sees that agent, and a private agent (per its
+dashboard-only and cannot read agent info -- except for the synthetic identity
+`auth.mode = "none"` produces, which this floor never applied to before it was added and
+so does not apply to now (`require_read_role`, #7234). Visibility is then narrowed per
+agent: a token scoped to a `nous_id` only sees that agent, and a private agent (per its
 config) additionally requires unscoped `Role::Operator`+. Mutations
 (enable/disable, tool toggle, recovery, creation) require `Role::Operator` and are
 scoped the same way.
@@ -932,8 +938,11 @@ Knowledge endpoints are feature-gated on the `knowledge` feature and require a v
 token. Reads (facts, entities, search, timeline) additionally require `Role::Agent` or
 above -- `Role::Readonly` is dashboard-only -- with per-fact/entity visibility then
 resolved by `KnowledgeReadPolicy` (own nous_id, or `Shared`/`Published` visibility, or
-unscoped `Role::Operator`+ for everything). Write operations (forget, restore, confidence
-update, import, ingest) require `Role::Operator` and CSRF header when enabled.
+unscoped `Role::Operator`+ for everything). The `Role::Agent` floor is exempted for the
+synthetic `auth.mode = "none"` identity (`require_read_role`, #7234), which this floor
+never applied to before it was added; `KnowledgeReadPolicy`'s own visibility resolution
+still runs. Write operations (forget, restore, confidence update, import, ingest) require
+`Role::Operator` and CSRF header when enabled.
 
 ```
 GET  /api/v1/knowledge/facts
@@ -1243,8 +1252,11 @@ Validate a stored credential by making a lightweight probe to the target service
 
 Metrics endpoints expose aggregated behavioral and cost analytics. Aggregate endpoints
 (`/metrics/agents`, `/metrics/quality`, `/metrics/tokens`, `/metrics/costs`) require an
-unscoped `Role::Operator`+ token. `/metrics/agents/{id}` requires `Role::Agent` or above,
-admitting a token scoped to that same agent in addition to unscoped Operator+.
+unscoped `Role::Operator`+ token; this floor predates #7234 and applies to `auth.mode =
+"none"` the same as any other caller. `/metrics/agents/{id}` requires `Role::Agent` or
+above, admitting a token scoped to that same agent in addition to unscoped Operator+ --
+except the synthetic `auth.mode = "none"` identity, which this per-agent floor never
+applied to before it was added (`require_read_role`, #7234).
 
 ### `GET /api/v1/metrics/agents`
 
@@ -1342,11 +1354,13 @@ in the window).
 
 ## Planning
 
-Both routes require an unscoped `Role::Operator`+ token. No project-scoped role exists in
-the RBAC model yet, so this is a coarse floor rather than per-project access control; the
-per-workspace `planning_meta.json` visibility sidecar classifies a project as
-public/private/internal and redacts evidence/gap detail in the response, but it is
-presentation metadata, not the security boundary.
+Both routes require an unscoped `Role::Operator`+ token, except the synthetic `auth.mode =
+"none"` identity, which this floor never applied to before it was added
+(`require_read_role`, #7234). No project-scoped role exists in the RBAC model yet, so this
+is a coarse floor rather than per-project access control; the per-workspace
+`planning_meta.json` visibility sidecar classifies a project as public/private/internal
+and redacts evidence/gap detail in the response, but it is presentation metadata, not the
+security boundary.
 
 ### `GET /api/v1/planning/projects/{project_id}/verification`
 

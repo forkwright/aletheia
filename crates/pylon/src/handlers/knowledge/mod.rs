@@ -8,7 +8,7 @@ use axum::extract::{Path, Query, State};
 use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::state::KnowledgeState;
 
 mod dto;
@@ -181,7 +181,7 @@ pub async fn list_facts(
     // SECURITY(#7200): Readonly is dashboard-only (symbolon::types::Role
     // doc); knowledge reads are Agent-or-above. Nous/visibility scope is
     // enforced below via `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
     query.nous_id = policy.single_target_nous_id().map(ToOwned::to_owned);
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
@@ -271,7 +271,7 @@ pub async fn get_fact(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_claims(&claims)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &policy;
@@ -338,7 +338,7 @@ pub async fn list_entities(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_agent_filters(&claims, &query.agent)?;
     query.agent = policy.target_agents();
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
@@ -433,7 +433,7 @@ pub async fn entity_relationships(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_claims(&claims)?;
     policy.require_entity(&state, &id)?;
     let relationships = get_entity_relationships(&state, &policy, &id)?;

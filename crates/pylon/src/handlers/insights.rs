@@ -11,7 +11,7 @@ use jiff::ToSpan;
 use mneme::types::{Message, Role, Session, ToolAuditRecord, UsageRecord};
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::insights::anomaly::detect_anomalies;
 use crate::insights::usize_to_f64;
 use crate::state::InsightsState;
@@ -132,7 +132,7 @@ pub async fn get_agent_perf_one(
     // SECURITY(#4618, #7200): Readonly is dashboard-only (symbolon::types::Role
     // doc); per-agent metrics are Agent-or-above. Scoped tokens may only view
     // their own agent's metrics; unscoped Operator+ may query any agent.
-    require_role(&claims, symbolon::types::Role::Agent)?;
+    require_read_role(&claims, symbolon::types::Role::Agent)?;
     require_nous_access(&claims, &id)?;
     let config = state
         .nous_manager

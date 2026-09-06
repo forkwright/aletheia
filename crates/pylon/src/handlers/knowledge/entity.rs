@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use symbolon::types::Role;
 
 use crate::error::ApiError;
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_read_role, require_role};
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
@@ -197,7 +197,7 @@ pub async fn get_entity(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
     let policy = super::KnowledgeReadPolicy::from_claims(&claims)?;
@@ -241,7 +241,7 @@ pub async fn entity_memories(
     // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
     // Agent-or-above. Nous/visibility scope is enforced below via
     // `KnowledgeReadPolicy`.
-    require_role(&claims, Role::Agent)?;
+    require_read_role(&claims, Role::Agent)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
     let policy = super::KnowledgeReadPolicy::from_claims(&claims)?;

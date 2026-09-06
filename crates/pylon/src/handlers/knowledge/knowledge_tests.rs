@@ -375,6 +375,7 @@ async fn update_sensitivity_handler_persists_to_fact_list_path() {
         sub: "alice".to_owned(),
         role: Role::Operator,
         nous_id: None,
+        unauthenticated: false,
     };
 
     let response = match update_sensitivity(
@@ -515,6 +516,7 @@ fn operator_claims() -> Claims {
         sub: "alice".to_owned(),
         role: Role::Operator,
         nous_id: None,
+        unauthenticated: false,
     }
 }
 
@@ -523,6 +525,7 @@ fn readonly_claims() -> Claims {
         sub: "bob".to_owned(),
         role: Role::Readonly,
         nous_id: None,
+        unauthenticated: false,
     }
 }
 
@@ -532,6 +535,7 @@ fn scoped_agent_claims(nous_id: &str) -> Claims {
         sub: format!("{nous_id}-user"),
         role: Role::Agent,
         nous_id: Some(nous_id.to_owned()),
+        unauthenticated: false,
     }
 }
 
