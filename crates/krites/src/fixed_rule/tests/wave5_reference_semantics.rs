@@ -8,7 +8,7 @@
 //! implementations directly. `PageRank` is one of wave 5's "live 3"
 //! (RETIREMENT-PLAN.md §5) and completed the same cycle in #7042: the
 //! CozoDB-derived shell it soaked against is deleted, so the tests below
-//! query the sovereign `pagerank_native.rs` shell — the only one — through
+//! query the sovereign `pagerank.rs` shell — the only one — through
 //! `PageRank(...)`. The shell delegates to the already-sovereign numeric
 //! core (`fixed_rule::csr::page_rank`), so this is a genuine check on the
 //! option-parsing glue, not a restatement of the core's own math.

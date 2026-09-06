@@ -28,6 +28,12 @@ UPSTREAM_REPO = "https://github.com/cozodb/cozo"
 # INVARIANT: pin an exact commit, never a moving ref (main/HEAD) — the ledger's
 # verbatim_pct must be reproducible from this file alone.
 UPSTREAM_REF = "481af058abac9444ea8c9c52c78f096ed4b5bfc4"
+# #6799: hand-verified against `gh api repos/cozodb/cozo/commits/main` — UPSTREAM_REF
+# IS upstream's default-branch HEAD, so the pin carries zero commits of drift. Not a
+# moving measurement: re-verify by hand (same command) before ever changing this pair,
+# the same way UPSTREAM_REF itself is only ever changed by hand.
+UPSTREAM_LAST_COMMIT_DATE = "2024-12-04"
+UPSTREAM_STATUS = "pin_is_upstream_head"
 RAW_BASE = f"https://raw.githubusercontent.com/cozodb/cozo/{UPSTREAM_REF}/cozo-core/src"
 
 # Explicit, individually-verified path map: local (relative to crates/krites/src/)
@@ -107,7 +113,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/algos/label_propagation.rs": None,
     "fixed_rule/algos/louvain.rs": "fixed_rule/algos/louvain.rs",
     "fixed_rule/algos/mod.rs": "fixed_rule/algos/mod.rs",
-    "fixed_rule/algos/pagerank_native.rs": None,
+    "fixed_rule/algos/pagerank.rs": None,
     "fixed_rule/algos/prim.rs": None,
     "fixed_rule/algos/random_walk.rs": None,
     "fixed_rule/algos/shortest_path_bfs.rs": None,
@@ -339,7 +345,7 @@ SOVEREIGN_VERIFY_MAP: dict[str, str] = {
     "fixed_rule/algos/dfs.rs": "fixed_rule/algos/dfs.rs",
     "fixed_rule/algos/kruskal.rs": "fixed_rule/algos/kruskal.rs",
     "fixed_rule/algos/label_propagation.rs": "fixed_rule/algos/label_propagation.rs",
-    "fixed_rule/algos/pagerank_native.rs": "fixed_rule/algos/pagerank.rs",
+    "fixed_rule/algos/pagerank.rs": "fixed_rule/algos/pagerank.rs",
     "fixed_rule/algos/prim.rs": "fixed_rule/algos/prim.rs",
     "fixed_rule/algos/random_walk.rs": "fixed_rule/algos/random_walk.rs",
     "fixed_rule/algos/shortest_path_bfs.rs": "fixed_rule/algos/shortest_path_bfs.rs",
@@ -783,7 +789,12 @@ def main() -> None:
 
     check_dual_survives_move(graduated, prior_paths, rows)
 
-    meta = {"upstream_repo": UPSTREAM_REPO, "upstream_ref": UPSTREAM_REF}
+    meta = {
+        "upstream_repo": UPSTREAM_REPO,
+        "upstream_ref": UPSTREAM_REF,
+        "upstream_last_commit_date": UPSTREAM_LAST_COMMIT_DATE,
+        "upstream_status": UPSTREAM_STATUS,
+    }
     LEDGER_PATH.write_text(dump_ledger(meta, rows))
     NOTICE_PATH.write_text(render_notice(meta, rows))
     derived_ct = sum(1 for r in rows if r["status"] == "derived")
