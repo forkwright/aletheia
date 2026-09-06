@@ -30,3 +30,4 @@ tracing = { workspace = true }
 futures = { workspace = true }
 taxis = { path = "../taxis" }
 tempfile = { workspace = true }
+tracing-subscriber = { workspace = true }
