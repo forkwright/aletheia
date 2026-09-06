@@ -2027,3 +2027,117 @@ fn register_accepts_tool_covering_current_host() {
     assert!(failures.is_empty(), "failures: {failures:?}");
     assert_eq!(registry.definitions().len(), 1);
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_executor_warn_stderr_field_is_present_bounded_and_redacted() {
+    // PROOF(#5212): stderr must reach the operator-only "pack tool wrote
+    // stderr" warning as a structured field, and that field name must be
+    // registered in `RedactionSettings::truncate_fields` so the redaction
+    // layer both caps its length and scans it for secret patterns like
+    // every other field crossing that layer.
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+
+    use koina::redacting_layer::RedactingLayer;
+    use tracing_subscriber::layer::SubscriberExt as _;
+
+    #[derive(Clone)]
+    struct BufWriter(Arc<Mutex<Vec<u8>>>);
+    impl Write for BufWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction boundary test; not a real credential
+    const SECRET: &str = "sk-ant-api03-abcdef123456_789XYZ";
+    let long_stderr = format!("auth failed for {SECRET} {}", "x".repeat(400));
+    assert!(
+        long_stderr.len() > 200,
+        "fixture must exceed the default truncate_length to prove bounding"
+    );
+
+    let dir = setup_pack_dir(&[(
+        "tools/warn_stderr.sh",
+        &format!("#!/bin/sh\necho ok\necho '{long_stderr}' >&2\nexit 0"),
+    )]);
+    make_executable(&dir, "tools/warn_stderr.sh");
+    let executor = test_executor(&dir, "tools/warn_stderr.sh", 5000);
+    let input = ToolInput {
+        name: ToolName::new("warn_stderr_tool").expect("valid tool name"),
+        tool_use_id: "toolu_warn_stderr".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+
+    // Mirror production wiring (tracing_setup.rs): the redacting layer is
+    // built straight from `RedactionSettings::default()`, so this test
+    // fails if the field name registration in taxis and the field emitted
+    // by thesauros ever drift apart.
+    let redaction = taxis::config::RedactionSettings::default();
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let layer = RedactingLayer::new(
+        BufWriter(Arc::clone(&buffer)),
+        redaction.redact_fields.clone(),
+        redaction.truncate_fields.clone(),
+        redaction.truncate_length,
+    );
+    let subscriber = tracing_subscriber::registry().with(layer);
+
+    let result = {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        executor
+            .execute(&input, &test_ctx(&dir))
+            .await
+            .expect("executor should return result")
+    };
+    assert!(!result.is_error, "stderr with a zero exit is not a failure");
+
+    let log = String::from_utf8(
+        buffer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone(),
+    )
+    .expect("captured log is valid utf8");
+    let event: serde_json::Value = log
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("event is valid json"))
+        .find(|event| event["fields"]["message"] == "pack tool wrote stderr")
+        .expect("the stderr warning must have been emitted");
+
+    let fields = &event["fields"];
+    let stderr_field = fields["stderr"]
+        .as_str()
+        .expect("stderr field must be present as a string");
+
+    // Bounded: the redaction layer's truncate_length (default 200) caps it,
+    // well short of the raw fixture and marked as such.
+    assert!(
+        stderr_field.len() < long_stderr.len(),
+        "stderr field must be bounded, not the raw capture: {stderr_field}"
+    );
+    assert!(
+        stderr_field.contains("[TRUNCATED]"),
+        "stderr field must show the redaction layer's truncation marker: {stderr_field}"
+    );
+
+    // Redacted: the same pass that bounds it scrubs secret-shaped content.
+    assert!(
+        !log.contains(SECRET),
+        "the API-key-shaped substring must not survive the redaction layer: {log}"
+    );
+
+    // Sanity: the other existing fields on this event are untouched by
+    // this change.
+    assert_eq!(fields["tool"], "warn_stderr_tool");
+    assert_eq!(fields["exit_code"], 0);
+    assert!(fields["stderr_bytes"].as_u64().unwrap_or(0) > 200);
+}

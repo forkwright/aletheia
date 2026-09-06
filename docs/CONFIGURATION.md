@@ -918,7 +918,7 @@ Redaction settings for tracing spans and events.
 |-------|------|---------|-------------|
 | `enabled` | bool | true | Primary switch for the redaction layer. Default: `true`. |
 | `redactFields` | string[] | ["token", "api_key", "secret", "password", "bearer", "authorization", "credential"] | Field names whose values are replaced with `[REDACTED]`. |
-| `truncateFields` | string[] | ["message", "content", "body", "input", "output"] | Field names whose values are truncated to `truncate_length` chars. |
+| `truncateFields` | string[] | ["message", "content", "body", "input", "output", "stderr"] | Field names whose values are truncated to `truncate_length` chars. |
 | `truncateLength` | integer | 200 | Maximum character length for truncated fields. Default: 200. |
 
 ## observability

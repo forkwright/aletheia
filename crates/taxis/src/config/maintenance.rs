@@ -488,6 +488,9 @@ impl Default for RedactionSettings {
                 "body".to_owned(),
                 "input".to_owned(),
                 "output".to_owned(),
+                // #5212: pack tool stderr, emitted as a field on thesauros's
+                // "pack tool wrote stderr" warning.
+                "stderr".to_owned(),
             ],
             truncate_length: 200,
         }

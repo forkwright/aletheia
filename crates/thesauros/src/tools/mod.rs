@@ -117,10 +117,17 @@ impl ToolExecutor for ShellToolExecutor {
             let is_error = code != 0;
 
             if !output_result.stderr.trim().is_empty() {
+                // WHY(#5212): stderr is bounded by the subprocess capture limit
+                // (`MAX_OUTPUT_BYTES`) before it ever reaches this event, and the
+                // "stderr" field name is registered in `RedactionSettings::truncate_fields`
+                // so the redaction layer caps and secret-scans it like every other
+                // tracing field. It stays out of the model-visible ToolDiagnostics below;
+                // this operator-only warning is its only sink.
                 tracing::warn!(
                     tool = %input.name,
                     exit_code = code,
                     stderr_bytes = output_result.stderr.len(),
+                    stderr = %output_result.stderr,
                     "pack tool wrote stderr"
                 );
             }
