@@ -238,6 +238,80 @@ Tracked subsystems today: `provider_reachability`, `provider_credentials`,
 `training_qa_persistence`, `metrics_exposure`, `event_bus`,
 `config_security_posture`.
 
+`daemon_runtime` (#7206): every registered daemon task is background,
+non-serving-path work (cron/maintenance -- nothing on the request-serving
+path). A disabled or backed-off task therefore floors this subsystem at
+`"degraded"` and names the task(s) and cause in `degraded_reason` -- it never
+promotes the aggregate to `"failed"`/503 the way it used to. Only the
+task-state store itself being unreadable (a storage-layer fault, not a fact
+about any one task) still reports `"failed"`. See
+`GET /api/v1/system/daemon/tasks` below to inspect and recover a disabled
+task without hand-editing persisted state or waiting for a restart.
+
+---
+
+### `GET /api/v1/system/daemon/tasks`
+
+List every daemon task with persisted execution history, across every
+attached runner (`"system"` plus one per configured agent). Requires
+`Role::Operator` (#7206).
+
+**Response `200 OK`:**
+
+```json
+{
+  "tasks": [
+    {
+      "runner": "system",
+      "task_id": "routing-store-refresh",
+      "name": "Routing after-action store refresh",
+      "enabled": false,
+      "cause": "auto_failure",
+      "consecutive_failures": 3,
+      "last_error": "I/O error reading after-action log ...",
+      "last_outcome": "failed",
+      "last_run": "2026-09-04T08:00:00Z",
+      "backoff_until": null
+    }
+  ]
+}
+```
+
+`cause` is `"auto_failure"` (the runner's own 3-consecutive-failure policy) or
+`"operator"` (explicitly disabled through the routes below); `null`/omitted
+when `enabled` is `true`.
+
+---
+
+### `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/enable`
+
+Fully re-enable a task: resets `consecutive_failures` to `0` and clears
+`backoff_until`/`last_error`/`cause`. Equivalent to the `aletheia maintenance
+reset` CLI command, exposed over HTTP so agents and humans share one
+capability through one route. Requires `Role::Operator`. `404` for an
+unknown `runner`/`task_id`.
+
+---
+
+### `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/disable`
+
+Explicitly disable a task. Persists `cause: "operator"`, which -- unlike an
+auto-disable -- is never automatically re-armed when the daemon restarts;
+only `enable` or `retry` re-enables it. Optional body `{"reason": "..."}` is
+recorded as the task's `last_error`. Requires `Role::Operator`. `404` for an
+unknown `runner`/`task_id`.
+
+---
+
+### `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/retry`
+
+Give a disabled task exactly one more attempt now, without resetting
+`consecutive_failures`. Unlike `enable`, a further failure re-disables the
+task after one more strike rather than three fresh ones -- this is the
+on-demand form of the automatic one-retry hydration an `auto_failure`
+disable already gets on every daemon restart. Requires `Role::Operator`.
+`404` for an unknown `runner`/`task_id`.
+
 ---
 
 ### `GET /metrics`

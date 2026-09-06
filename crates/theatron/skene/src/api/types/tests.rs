@@ -500,3 +500,38 @@ fn paginated_sessions_response_accepts_items_alias() {
     assert!(!resp.has_more);
     assert!(resp.next_cursor.is_none());
 }
+
+/// Mirrors pylon's `DaemonTaskListResponse` wire shape (#7206): a disabled
+/// task carries a `cause`, an enabled one omits it entirely.
+#[test]
+fn daemon_task_list_response_deserializes_pylon_shape() {
+    let json = r#"{
+        "tasks": [
+            {
+                "runner": "system",
+                "task_id": "routing-store-refresh",
+                "name": "Routing after-action store refresh",
+                "enabled": false,
+                "cause": "auto_failure",
+                "consecutive_failures": 3,
+                "last_error": "ENOENT",
+                "last_outcome": "failed",
+                "last_run": "2026-09-04T12:00:00Z",
+                "backoff_until": null
+            },
+            {
+                "runner": "system",
+                "task_id": "trace-rotation",
+                "name": "Trace rotation",
+                "enabled": true,
+                "consecutive_failures": 0
+            }
+        ]
+    }"#;
+    let resp: DaemonTaskListResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.tasks.len(), 2);
+    assert_eq!(resp.tasks[0].cause.as_deref(), Some("auto_failure"));
+    assert!(!resp.tasks[0].enabled);
+    assert!(resp.tasks[1].cause.is_none());
+    assert!(resp.tasks[1].enabled);
+}

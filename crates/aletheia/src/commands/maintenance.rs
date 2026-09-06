@@ -184,8 +184,11 @@ async fn run_manual_tasks(
 /// Clear the persisted failure/backoff/disable state for a single task. (#5130)
 ///
 /// Re-enables the task, zeroes the consecutive-failure counter, and clears the
-/// backoff deadline and last error so the daemon will schedule it again on its
-/// next start.
+/// backoff deadline and last error. Writes to the same `TaskStateStore` the
+/// live daemon reads through, so a running daemon picks this up on its own
+/// within `TaskRunner::sync_external_state`'s sync interval -- it no longer
+/// takes a restart to observe (#7206). Equivalent to the pylon
+/// `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/enable` route.
 fn reset_task_state(oikos: &Oikos, task_id: &str) -> Result<()> {
     let state_root = oikos.data().join("daemon-task-state").join("system");
     if !state_root.exists() {
@@ -203,6 +206,10 @@ fn reset_task_state(oikos: &Oikos, task_id: &str) -> Result<()> {
     };
 
     state.enabled = Some(true);
+    // WHY(#7206): a reset is a full "I've fixed it" reset, the same as the
+    // pylon admin API's `enable` action -- any stale disable cause from
+    // before must not linger once the task is enabled again.
+    state.disable_cause = None;
     state.consecutive_failures = 0;
     state.backoff_until_ts = None;
     state.last_error = None;
@@ -658,6 +665,7 @@ fn merge_unavailable_tasks(
             last_errors: 0,
             available: reason.is_none(),
             reason,
+            disable_cause: None,
         });
     }
 

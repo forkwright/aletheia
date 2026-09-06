@@ -16,6 +16,7 @@ mod approval_turns;
 mod auth;
 mod config;
 mod credentials;
+mod daemon_tasks;
 mod error;
 mod error_envelope;
 mod handler_doc;

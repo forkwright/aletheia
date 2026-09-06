@@ -353,6 +353,10 @@ pub struct TaskStatus {
     /// Human-readable reason when the task is unavailable or not scheduled.
     #[serde(default)]
     pub reason: Option<String>,
+    /// Why the task is disabled, when `!enabled`. `None` when enabled, or for
+    /// a disabled task whose cause predates this field (#7206).
+    #[serde(default)]
+    pub disable_cause: Option<crate::state::DisableCause>,
 }
 
 fn default_data_source() -> String {
@@ -519,6 +523,7 @@ mod tests {
             last_errors: 3,
             available: true,
             reason: Some("test reason".to_owned()),
+            disable_cause: None,
         };
         assert_eq!(status.id, "test-id");
         assert_eq!(status.name, "Test Task");
