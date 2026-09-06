@@ -12,6 +12,18 @@
 
 #let data = json("data.json")
 
+// Required fields per the schema documented above: a document missing either
+// must fail template compilation rather than silently rendering an
+// incomplete report.
+#assert(
+  "summary" in data,
+  message: "graph-audit template requires a top-level \"summary\" field (see file header schema)",
+)
+#assert(
+  "facts" in data,
+  message: "graph-audit template requires a top-level \"facts\" field (see file header schema)",
+)
+
 #set page(paper: "us-letter", margin: 0.75in)
 #set text(font: "Liberation Sans", size: 10pt)
 #set par(leading: 0.65em, spacing: 0.8em)
