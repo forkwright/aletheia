@@ -61,7 +61,7 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Production usage
 
-- `Plan::new` is **not called** in any non-test production path. The reconciler (`crates/dianoia/src/reconciler.rs:303`) creates `Project::new` and `Phase::new`, but never `Plan::new`.
+- `Plan::new` is **not called** in any non-test production path.
 - The pylon planning verification endpoints load dianoia project workspaces from the instance planning root and compute the desktop verification response through `dianoia::verify::verify_phase`.
 
 ### Missing grounds
