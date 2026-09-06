@@ -799,15 +799,40 @@ fn when_an_fts_reindex_is_killed_it_aborts_and_commits_no_index() {
     let db = DbInstance::default();
     seed_docs(&db, MULTI_BATCH_ROWS);
 
-    let builder = db.clone();
-    let build = std::thread::spawn(move || builder.run_default(FTS_CREATE));
-    let killed = kill_when_listed(&db, &build);
-    let outcome = build.join().expect("the build thread must not panic");
+    // A deterministic rendezvous with the FTS batch loop (#6987) replaces
+    // polling for ::kill to land: `reached` fires once the build has blocked
+    // at the loop's first checkpoint (so it is provably still running, not
+    // racing to finish), and the build stays blocked until `proceed` is sent
+    // -- which happens only after ::kill has already been issued below.
+    let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+    let (proceed_tx, proceed_rx) = std::sync::mpsc::channel();
 
-    assert!(
-        killed,
-        "the FTS reindex completed before ::running ever listed it, so nothing was cancelled"
+    let builder = db.clone();
+    let build = std::thread::spawn(move || {
+        crate::runtime::fts_reindex_test_barrier::arm(reached_tx, proceed_rx);
+        builder.run_default(FTS_CREATE)
+    });
+
+    reached_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the FTS reindex must reach its test barrier before finishing");
+    let running = read_rows(&db, "::running");
+    let id = running
+        .rows
+        .first()
+        .and_then(|row| row[0].get_int())
+        .expect("a build blocked at the test barrier must still be listed in ::running");
+    let res = read_rows(&db, &format!("::kill {id}"));
+    assert_eq!(
+        res.rows[0][0],
+        crate::DataValue::from("KILLING"),
+        "::kill must reach the operation the barrier is blocking"
     );
+    proceed_tx
+        .send(())
+        .expect("the build thread must still be waiting on the barrier");
+
+    let outcome = build.join().expect("the build thread must not panic");
     let err = outcome.expect_err("a killed FTS reindex must not report success");
     assert_eq!(
         cancellation_reason(&err),

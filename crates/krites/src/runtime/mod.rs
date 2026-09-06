@@ -58,6 +58,8 @@ pub(crate) mod error;
     reason = "engine query executor — complex control flow with bounds-checked indexing"
 )]
 pub(crate) mod exec;
+#[cfg(test)]
+pub(crate) mod fts_reindex_test_barrier;
 #[expect(
     clippy::as_conversions,
     clippy::default_trait_access,
