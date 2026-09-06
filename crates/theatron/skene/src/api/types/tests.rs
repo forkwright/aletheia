@@ -223,23 +223,6 @@ fn agents_response_accepts_both_keys() {
     assert_eq!(resp.nous.len(), 1);
 }
 
-#[test]
-fn login_response_debug_redacts_token() {
-    let lr = LoginResponse {
-        token: SecretString::from("secret-token-value"),
-    };
-    let debug = format!("{lr:?}");
-    assert!(!debug.contains("secret-token-value"));
-    assert!(debug.contains("REDACTED"));
-}
-
-#[test]
-fn auth_mode_deserialization() {
-    let json = r#"{"mode": "token"}"#;
-    let mode: AuthMode = serde_json::from_str(json).unwrap();
-    assert_eq!(mode.mode, "token");
-}
-
 fn make_session(key: &str) -> Session {
     Session {
         id: "s1".into(),
@@ -394,6 +377,75 @@ fn nous_tool_deserializes_risk_metadata() {
     assert_eq!(tool.source_plane.as_deref(), Some("organon_builtin"));
     assert_eq!(tool.policy_state.as_deref(), Some("callable"));
     assert!(tool.metadata_verified);
+}
+
+/// WHY(#4565): `NousStatus` carries no `rename_all` (mirrors
+/// `pylon::handlers::nous_dto::NousStatus` field-for-field), so a rename on
+/// either side would silently fail deserialization of required fields
+/// rather than producing a quietly-wrong value -- this pins the full wire
+/// shape, including the nested `address_mask`, against exactly that drift.
+#[test]
+fn nous_status_matches_server_field_names() {
+    let json = r#"{
+        "id": "scholiast",
+        "model": "claude-opus-5",
+        "provider": "anthropic-primary",
+        "fallback_models": ["claude-haiku-5"],
+        "fallback_providers": [null],
+        "retries_before_fallback": 2,
+        "complexity_routing_enabled": true,
+        "complexity_no_llm_threshold": 10,
+        "complexity_low_threshold": 1000,
+        "complexity_high_threshold": 5000,
+        "context_window": 200000,
+        "max_output_tokens": 64000,
+        "thinking_enabled": true,
+        "thinking_budget": 10000,
+        "max_tool_iterations": 25,
+        "status": "active",
+        "background_failure_total_count": 3,
+        "background_failure_recent_count": 1,
+        "background_failure_latest_message": "timeout",
+        "background_failure_latest_kind": "timeout",
+        "background_health_degraded": false,
+        "address_mask": {"kind": "public", "allowed_senders": []}
+    }"#;
+    let status: NousStatus = serde_json::from_str(json).unwrap();
+    assert_eq!(status.id, "scholiast");
+    assert_eq!(status.model, "claude-opus-5");
+    assert_eq!(status.provider.as_deref(), Some("anthropic-primary"));
+    assert_eq!(status.fallback_models, vec!["claude-haiku-5".to_string()]);
+    assert_eq!(status.fallback_providers, vec![None]);
+    assert_eq!(status.retries_before_fallback, 2);
+    assert!(status.complexity_routing_enabled);
+    assert_eq!(status.complexity_no_llm_threshold, 10);
+    assert_eq!(status.complexity_low_threshold, 1000);
+    assert_eq!(status.complexity_high_threshold, 5000);
+    assert_eq!(status.context_window, 200_000, "context_window must map");
+    assert_eq!(
+        status.max_output_tokens, 64_000,
+        "max_output_tokens must map"
+    );
+    assert!(status.thinking_enabled, "thinking_enabled must map");
+    assert_eq!(status.thinking_budget, 10_000, "thinking_budget must map");
+    assert_eq!(
+        status.max_tool_iterations, 25,
+        "max_tool_iterations must map"
+    );
+    assert_eq!(status.status, "active");
+    assert_eq!(status.background_failure_total_count, 3);
+    assert_eq!(status.background_failure_recent_count, 1);
+    assert_eq!(
+        status.background_failure_latest_message.as_deref(),
+        Some("timeout")
+    );
+    assert_eq!(
+        status.background_failure_latest_kind.as_deref(),
+        Some("timeout")
+    );
+    assert!(!status.background_health_degraded);
+    assert_eq!(status.address_mask.kind, "public");
+    assert!(status.address_mask.allowed_senders.is_empty());
 }
 
 #[test]

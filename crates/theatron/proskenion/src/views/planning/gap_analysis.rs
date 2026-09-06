@@ -208,7 +208,10 @@ fn priority_badge_style(priority: RequirementPriority) -> &'static str {
             "background: var(--status-warning-bg); color: var(--status-warning);"
         }
         RequirementPriority::P2 => "background: var(--bg-surface-dim); color: var(--accent);",
-        RequirementPriority::P3 => "background: var(--bg-surface); color: var(--text-muted);",
+        // WHY: skene's `RequirementPriority` is `#[non_exhaustive]`, so a
+        // cross-crate match needs a catch-all -- folded into the P3 arm
+        // (lowest priority) rather than a separate identical-body arm.
+        RequirementPriority::P3 | _ => "background: var(--bg-surface); color: var(--text-muted);",
     }
 }
 
@@ -218,6 +221,7 @@ fn priority_label(priority: RequirementPriority) -> &'static str {
         RequirementPriority::P1 => "P1",
         RequirementPriority::P2 => "P2",
         RequirementPriority::P3 => "P3",
+        _ => "Unknown",
     }
 }
 
@@ -227,6 +231,7 @@ fn status_label(status: VerificationStatus) -> &'static str {
         VerificationStatus::PartiallyVerified => "Partial",
         VerificationStatus::Unverified => "Unverified",
         VerificationStatus::Failed => "Failed",
+        _ => "Unknown",
     }
 }
 
@@ -234,7 +239,9 @@ fn status_color(status: VerificationStatus) -> &'static str {
     match status {
         VerificationStatus::Verified => "var(--status-success)",
         VerificationStatus::PartiallyVerified => "var(--status-warning)",
-        VerificationStatus::Unverified => "var(--text-secondary)",
         VerificationStatus::Failed => "var(--status-error)",
+        // WHY: skene's `VerificationStatus` is `#[non_exhaustive]`; an
+        // unrecognized future variant renders the same as `Unverified`.
+        VerificationStatus::Unverified | _ => "var(--text-secondary)",
     }
 }

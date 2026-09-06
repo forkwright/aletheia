@@ -1,10 +1,7 @@
 //! Toggle controls panel: agent enable/disable, tool toggles, feature flags.
 
 use dioxus::prelude::*;
-use skene::api::routes::{
-    config::{feature_flags_url, reload_url},
-    nous::{agent_recover_url, agent_tools_url, agent_url},
-};
+use skene::api::routes::nous::{agent_tools_url, agent_url};
 use skeue::EmptyState;
 
 use crate::api::client::authenticated_client;
@@ -748,13 +745,6 @@ impl AgentToggleUpdateResponse {
     }
 }
 
-/// Server response shape for `GET /api/v1/nous/{id}` after a toggle.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct AgentStatusRefreshResponse {
-    #[serde(default)]
-    status: Option<String>,
-}
-
 /// Tool entry returned by `PATCH /api/v1/nous/{id}/tools`.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct ToolToggleUpdateEntry {
@@ -831,16 +821,19 @@ fn fire_agent_toggle(
             Ok(resp) if resp.status().is_success() => {
                 match resp.json::<AgentToggleUpdateResponse>().await {
                     Ok(mut body) => {
-                        let status_url = agent_url(&cfg.server_url, agent_id.as_ref());
-                        match client.get(&status_url).send().await {
-                            Ok(status_resp) if status_resp.status().is_success() => {
-                                if let Ok(status_body) =
-                                    status_resp.json::<AgentStatusRefreshResponse>().await
-                                {
-                                    body.status = status_body.status.or(body.status);
-                                }
-                            }
-                            Ok(_) | Err(_) => {}
+                        // WHY(#4565): nous get-one now goes through skene's
+                        // typed `ApiClient` rather than a second hand-built
+                        // `/api/v1/nous/{id}` request on the same raw
+                        // client -- best-effort as before: any failure here
+                        // just leaves `body.status` at the toggle
+                        // response's own value.
+                        if let Ok(status_client) = skene::api::client::ApiClient::new(
+                            &cfg.server_url,
+                            cfg.auth_token.clone(),
+                        ) && let Ok(status_body) =
+                            status_client.agent_status(agent_id.as_ref()).await
+                        {
+                            body.status = Some(status_body.status);
                         }
                         let action_result = body.action_result();
                         store.write().resolve_agent_result(
@@ -961,19 +954,6 @@ fn fire_tool_toggle(
     });
 }
 
-/// Server response shape for `PUT /api/v1/config/feature_flags`.
-///
-/// WHY(#4986): `config` carries the canonical, server-normalized section
-/// (`ConfigUpdateResponse.config` in pylon) -- read it back into the store on
-/// every success instead of trusting the client's optimistic guess.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct ConfigFeatureFlagsUpdateResponse {
-    #[serde(default)]
-    restart_required: Vec<String>,
-    #[serde(default)]
-    config: Vec<FeatureFlagConfigEntry>,
-}
-
 fn fire_feature_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
@@ -989,21 +969,21 @@ fn fire_feature_toggle(
     let flag_key = key.clone();
 
     spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
-            Err(err) => {
-                store.write().resolve_feature(
-                    &flag_key,
-                    false,
-                    prev_val,
-                    Some(err.to_string()),
-                    Vec::new(),
-                    None,
-                );
-                return;
-            }
-        };
-        let url = feature_flags_url(&cfg.server_url);
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    store.write().resolve_feature(
+                        &flag_key,
+                        false,
+                        prev_val,
+                        Some(err.to_string()),
+                        Vec::new(),
+                        None,
+                    );
+                    return;
+                }
+            };
 
         // WHY: Send the complete feature_flags section so the server replaces
         // the array wholesale; a partial PATCH would silently drop sibling flags.
@@ -1011,20 +991,35 @@ fn fire_feature_toggle(
             let data = store.read();
             data.feature_flags_payload()
         };
+        let payload_value = match serde_json::to_value(&payload) {
+            Ok(value) => value,
+            Err(err) => {
+                store.write().resolve_feature(
+                    &flag_key,
+                    false,
+                    prev_val,
+                    Some(format!("failed to encode feature flags: {err}")),
+                    Vec::new(),
+                    None,
+                );
+                return;
+            }
+        };
 
-        let result = client.put(&url).json(&payload).send().await;
-
-        match result {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.json::<ConfigFeatureFlagsUpdateResponse>().await {
-                    Ok(body) => {
+        match client.update_feature_flags(&payload_value).await {
+            Ok(body) => {
+                // WHY(#4986): `config` carries the canonical, server-normalized
+                // section -- read it back into the store on every success
+                // instead of trusting the client's optimistic guess.
+                match serde_json::from_value::<Vec<FeatureFlagConfigEntry>>(body.config) {
+                    Ok(entries) => {
                         store.write().resolve_feature(
                             &flag_key,
                             true,
                             prev_val,
                             None,
                             body.restart_required,
-                            Some(body.config),
+                            Some(entries),
                         );
                     }
                     Err(err) => {
@@ -1039,24 +1034,12 @@ fn fire_feature_toggle(
                     }
                 }
             }
-            Ok(resp) => {
-                let status = resp.status();
-                let message = status_failure_message(status, resp).await;
+            Err(err) => {
                 store.write().resolve_feature(
                     &flag_key,
                     false,
                     prev_val,
-                    Some(message),
-                    Vec::new(),
-                    None,
-                );
-            }
-            Err(e) => {
-                store.write().resolve_feature(
-                    &flag_key,
-                    false,
-                    prev_val,
-                    Some(format!("connection error: {e}")),
+                    Some(err.to_string()),
                     Vec::new(),
                     None,
                 );
@@ -1065,62 +1048,33 @@ fn fire_feature_toggle(
     });
 }
 
-/// Server response shape for `POST /api/v1/config/reload`.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct ConfigReloadResponse {
-    #[serde(default)]
-    hot_reloaded: usize,
-    #[serde(default)]
-    restart_required: Vec<String>,
-    #[serde(default)]
-    changed: Vec<String>,
-}
-
 fn fire_config_reload(mut store: Signal<ToggleStore>, config: Signal<ConnectionConfig>) {
     store.write().begin_reload();
 
     let cfg = config.read().clone();
 
     spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
-            Err(err) => {
-                store.write().resolve_reload_failure(err.to_string());
-                return;
-            }
-        };
-        let url = reload_url(&cfg.server_url);
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    store.write().resolve_reload_failure(err.to_string());
+                    return;
+                }
+            };
 
         // NOTE: no body -- POST /api/v1/config/reload re-reads aletheia.toml
         // + env overrides from disk; there is nothing for the client to send.
-        let result = client.post(&url).send().await;
-
-        match result {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.json::<ConfigReloadResponse>().await {
-                    Ok(body) => {
-                        store.write().resolve_reload_success(
-                            body.hot_reloaded,
-                            body.changed.len(),
-                            body.restart_required,
-                        );
-                    }
-                    Err(err) => {
-                        store.write().resolve_reload_failure(format!(
-                            "failed to parse reload response: {err}"
-                        ));
-                    }
-                }
+        match client.reload_config().await {
+            Ok(body) => {
+                store.write().resolve_reload_success(
+                    body.hot_reloaded,
+                    body.changed.len(),
+                    body.restart_required,
+                );
             }
-            Ok(resp) => {
-                let status = resp.status();
-                let message = status_failure_message(status, resp).await;
-                store.write().resolve_reload_failure(message);
-            }
-            Err(e) => {
-                store
-                    .write()
-                    .resolve_reload_failure(format!("connection error: {e}"));
+            Err(err) => {
+                store.write().resolve_reload_failure(err.to_string());
             }
         }
     });
@@ -1140,13 +1094,6 @@ async fn status_failure_message(status: reqwest::StatusCode, resp: reqwest::Resp
         Ok(_) => format!("server returned {status}"),
         Err(err) => format!("server returned {status} (body unreadable: {err})"),
     }
-}
-
-/// Server response shape for `POST /api/v1/nous/{id}/recover`.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct NousRecoverResponse {
-    #[serde(default)]
-    recovered: bool,
 }
 
 /// Summarize a recovery outcome as `(text, is_error)`.
@@ -1183,43 +1130,23 @@ fn fire_agent_recover(
     let cfg = config.read().clone();
 
     spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
-            Err(err) => {
-                store.write().resolve_recover_failure(&id, err.to_string());
-                return;
-            }
-        };
-        let url = agent_recover_url(&cfg.server_url, id.as_str());
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    store.write().resolve_recover_failure(&id, err.to_string());
+                    return;
+                }
+            };
 
         // NOTE: no body -- the agent is identified by the path segment and
         // recovery takes no parameters.
-        let result = client.post(&url).send().await;
-
-        match result {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.json::<NousRecoverResponse>().await {
-                    Ok(body) => {
-                        store.write().resolve_recover_success(&id, body.recovered);
-                    }
-                    Err(err) => {
-                        store.write().resolve_recover_failure(
-                            &id,
-                            format!("failed to parse recover response: {err}"),
-                        );
-                    }
-                }
+        match client.agent_recover(id.as_str()).await {
+            Ok(body) => {
+                store.write().resolve_recover_success(&id, body.recovered);
             }
-            Ok(resp) => {
-                let status = resp.status();
-                store
-                    .write()
-                    .resolve_recover_failure(&id, status_failure_message(status, resp).await);
-            }
-            Err(e) => {
-                store
-                    .write()
-                    .resolve_recover_failure(&id, format!("connection error: {e}"));
+            Err(err) => {
+                store.write().resolve_recover_failure(&id, err.to_string());
             }
         }
     });
@@ -1228,60 +1155,10 @@ fn fire_agent_recover(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use skene::api::routes::config::{feature_flags_url, reload_url};
-    use skene::api::routes::nous::agent_recover_url;
     use skene::id::ApiNousId;
 
     use super::{recover_summary, reload_summary};
     use crate::state::ops::{FeatureFlag, RecoverOutcome, ReloadOutcome, ToggleStore};
-
-    #[test]
-    fn feature_flags_url_uses_put_section_endpoint() {
-        assert_eq!(
-            feature_flags_url("https://example.com"),
-            "https://example.com/api/v1/config/feature_flags"
-        );
-    }
-
-    #[test]
-    fn feature_flags_url_trims_trailing_slash() {
-        assert_eq!(
-            feature_flags_url("http://localhost:8080/"),
-            "http://localhost:8080/api/v1/config/feature_flags"
-        );
-    }
-
-    #[test]
-    fn reload_url_uses_reload_endpoint() {
-        assert_eq!(
-            reload_url("https://example.com"),
-            "https://example.com/api/v1/config/reload"
-        );
-    }
-
-    #[test]
-    fn reload_url_trims_trailing_slash() {
-        assert_eq!(
-            reload_url("http://localhost:8080/"),
-            "http://localhost:8080/api/v1/config/reload"
-        );
-    }
-
-    #[test]
-    fn agent_recover_url_uses_recover_endpoint() {
-        assert_eq!(
-            agent_recover_url("https://example.com", "alpha"),
-            "https://example.com/api/v1/nous/alpha/recover"
-        );
-    }
-
-    #[test]
-    fn agent_recover_url_percent_encodes_the_id() {
-        assert_eq!(
-            agent_recover_url("http://localhost:8080/", "a/b"),
-            "http://localhost:8080/api/v1/nous/a%2Fb/recover"
-        );
-    }
 
     #[test]
     fn recover_summary_none_when_no_outcome_yet() {
