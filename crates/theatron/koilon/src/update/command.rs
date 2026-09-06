@@ -248,7 +248,7 @@ pub(crate) async fn execute_command(app: &mut App) {
     match cmd_name {
         "quit" | "q" => app.should_quit = true,
         "help" | "?" => {
-            app.layout.overlay = Some(Overlay::Help);
+            app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         }
         "agents" | "a" => {
             app.layout.overlay = Some(Overlay::AgentPicker { cursor: 0 });
@@ -296,9 +296,6 @@ pub(crate) async fn execute_command(app: &mut App) {
             app.connection.streaming_thinking.clear();
             app.connection.streaming_tool_calls.clear();
             app.scroll_to_bottom();
-        }
-        "compact" => {
-            execute_compact(app);
         }
         "recall" | "r" => {
             if args.is_empty() {
@@ -416,12 +413,6 @@ fn execute_model(app: &mut App) {
             app.viewport.error_toast = Some(ErrorToast::new("No agent focused".into()));
         }
     }
-}
-
-fn execute_compact(app: &mut App) {
-    app.viewport.error_toast = Some(ErrorToast::new(
-        "Session distillation API not available - pending pylon support.".into(),
-    ));
 }
 
 /// `:recall <query>` (#7197): run the same knowledge search the memory

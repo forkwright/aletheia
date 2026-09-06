@@ -116,9 +116,9 @@ mod tests {
     #[test]
     fn handle_diff_close_ignores_other_overlays() {
         let mut app = test_app();
-        app.layout.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         handle_diff_close(&mut app);
-        assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
+        assert!(matches!(app.layout.overlay, Some(Overlay::Help { .. })));
     }
 
     #[test]

@@ -225,6 +225,37 @@ mod tests {
         ));
     }
 
+    /// Regression for #7220: `map_selection_key` hardcodes its own copy of
+    /// the Global bindings rather than falling through to the shared
+    /// `KeyMap`, so its System Status chord needed the same F4 rebind as
+    /// Chat context's -- otherwise Selection mode would still carry a dead
+    /// `Ctrl+I` arm nothing else in this PR's fix or its regression test
+    /// would ever catch.
+    #[test]
+    fn selection_mode_f4_opens_system_status() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.interaction.selected_message = Some(0);
+        let event = Event::Terminal(key(KeyCode::F(4)));
+        let msg = app.map_event(event);
+        assert!(matches!(
+            msg,
+            Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
+        ));
+    }
+
+    #[test]
+    fn selection_mode_ctrl_i_no_longer_bound() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.interaction.selected_message = Some(0);
+        let event = Event::Terminal(key_mod(KeyCode::Char('i'), KeyModifiers::CONTROL));
+        let msg = app.map_event(event);
+        assert!(
+            msg.is_none(),
+            "Ctrl+I is a dead terminal-byte alias for Tab (#7220) -- it must not be \
+             bound to anything, in any context, or a real terminal can never fire it"
+        );
+    }
+
     #[test]
     fn palette_esc_closes() {
         let mut app = test_app();
@@ -296,7 +327,7 @@ mod tests {
     #[test]
     fn overlay_esc_closes() {
         let mut app = test_app();
-        app.layout.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CloseOverlay)));

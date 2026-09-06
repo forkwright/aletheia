@@ -125,6 +125,8 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CloseOverlay => overlay::handle_close_overlay(app),
         Msg::OverlayUp => overlay::handle_overlay_up(app),
         Msg::OverlayDown => overlay::handle_overlay_down(app),
+        Msg::OverlayPageUp => overlay::handle_overlay_page_up(app),
+        Msg::OverlayPageDown => overlay::handle_overlay_page_down(app),
         Msg::OverlaySelect => overlay::handle_overlay_select(app).await,
         Msg::ToolApprovalAlwaysAllow => overlay::handle_tool_approval_always_allow(app),
         Msg::ToolApprovalCompleted {

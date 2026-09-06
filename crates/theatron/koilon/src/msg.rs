@@ -136,6 +136,10 @@ pub enum Msg {
 
     OverlayUp,
     OverlayDown,
+    /// Page-scroll a scroll-offset-carrying overlay (Help, Notification
+    /// History) up/down by a fixed step (#7221).
+    OverlayPageUp,
+    OverlayPageDown,
     OverlaySelect,
     OverlayFilter(char),
     OverlayFilterBackspace,

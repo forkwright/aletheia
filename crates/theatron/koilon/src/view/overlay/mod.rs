@@ -40,7 +40,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(Clear, popup_area);
 
     match overlay {
-        Overlay::Help => render_help(app, frame, popup_area, theme),
+        Overlay::Help { scroll } => render_help(app, frame, popup_area, *scroll, theme),
         Overlay::AgentPicker { cursor } => {
             pickers::render_agent_picker(app, frame, popup_area, *cursor, theme)
         }
@@ -105,14 +105,21 @@ fn overlay_block_accent(
 
 /// Margin around the help overlay in columns.
 const HELP_OVERLAY_MARGIN: u16 = 4; // 2 chars each side
-/// Width reserved for the key column in the help overlay.
-const HELP_KEY_COLUMN_WIDTH: usize = 13;
+/// Minimum gap (in columns) reserved between the key column and the
+/// description, no matter how long the longest key label is (#7221: the old
+/// fixed `HELP_KEY_COLUMN_WIDTH = 13` was shorter than several real compound
+/// labels -- e.g. `"Ctrl+E / Ctrl+G"` at 16 chars -- so Rust's `{:<13}`
+/// padding, which pads but never truncates, ran the key straight into the
+/// description with zero separator: `"Ctrl+GOpen $EDITOR"`).
+const HELP_COLUMN_GAP: usize = 2;
+/// Rows reserved for the overlay's own border (top + bottom).
+const HELP_BORDER_ROWS: u16 = 2;
 
 #[expect(
     clippy::string_slice,
     reason = "desc_max_width < description.len() checked before slicing"
 )]
-fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+fn render_help(app: &App, frame: &mut Frame, area: Rect, scroll: usize, theme: &Theme) {
     let key_style = Style::default()
         .fg(theme.colors.accent)
         .add_modifier(Modifier::BOLD);
@@ -124,10 +131,23 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let contexts = keybindings::current_contexts(app);
     let groups = keybindings::grouped_keybindings(&contexts);
 
+    // WHY(#7221): computed from the longest label actually being rendered
+    // (not a hand-picked constant that silently falls behind a new,
+    // longer registry entry) plus a fixed gap, so the description can never
+    // collide with the key column regardless of what `all_keybindings()`
+    // grows to contain.
+    let key_col_width = groups
+        .iter()
+        .flat_map(|(_, bindings)| bindings.iter())
+        .map(|kb| kb.keys.chars().count())
+        .max()
+        .unwrap_or(0);
+    let key_column_total_width = key_col_width + HELP_COLUMN_GAP;
+
     let mut lines: Vec<Line> = Vec::new();
 
     let max_width = usize::from(area.width.saturating_sub(HELP_OVERLAY_MARGIN).max(1));
-    let desc_max_width = max_width.saturating_sub(HELP_KEY_COLUMN_WIDTH + 2); // +2 for padding
+    let desc_max_width = max_width.saturating_sub(key_column_total_width + 2); // +2 for leading indent
 
     for (section_label, bindings) in &groups {
         lines.push(Line::raw(""));
@@ -138,7 +158,7 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::raw(""));
         for kb in bindings {
             let key_span =
-                Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
+                Span::styled(format!("  {:<key_column_total_width$}", kb.keys), key_style);
             let desc = if kb.description.len() > desc_max_width && desc_max_width > 3 {
                 // kanon:ignore RUST/indexing-slicing — slice end is clamped and guarded by len() > desc_max_width > 3
                 // kanon:ignore RUST/string-slice — slice end is clamped and guarded by len() > desc_max_width > 3
@@ -152,12 +172,22 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     lines.push(Line::raw(""));
 
+    // WHY(#7221): clamp at render time so `scroll` (a raw line offset that
+    // Up/Down/PageUp/PageDown only ever increment/decrement, mirroring
+    // `render_diff_view`'s pattern) can never scroll past the point where
+    // the last line is still visible -- the same trick used there to avoid
+    // needing the line count inside the update handler.
+    let total_lines = lines.len();
+    let visible_height = usize::from(area.height.saturating_sub(HELP_BORDER_ROWS));
+    let clamped_scroll = scroll.min(total_lines.saturating_sub(visible_height));
+
     let label = keybindings::context_label(app);
     let title = format!("Help — {label}");
     let block = overlay_block(&title, theme);
     let paragraph = Paragraph::new(lines)
         .block(block)
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((u16::try_from(clamped_scroll).unwrap_or(u16::MAX), 0));
     frame.render_widget(paragraph, area);
 }
 
@@ -443,7 +473,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
         Span::styled(" close", theme.style_muted()),
     ]));
 
-    let block = overlay_block("System Status — Ctrl+I", theme);
+    let block = overlay_block("System Status — F4", theme);
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
