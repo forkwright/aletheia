@@ -1,17 +1,9 @@
 //! Unified channel listener: merges inbound messages from channel providers.
 
-use std::future::Future;
-use std::sync::Arc;
-
-use futures::FutureExt;
-
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tracing::{Instrument, info_span, instrument};
 
 use tokio_util::sync::CancellationToken;
-
-use koina::redact::redact_channel_id;
 
 use crate::types::{ChannelProvider, InboundMessage};
 
@@ -23,11 +15,23 @@ use crate::types::{ChannelProvider, InboundMessage};
 /// [`ActiveSubscriptionGuard`] over the handles to the caller. Ownership of
 /// the active-subscriptions gauge moves with the guard, since the listener
 /// can no longer observe when tasks it no longer holds actually stop.
+///
+/// WHY(#7103): two shapes for consuming this listener were developed in
+/// parallel and never reconciled -- a callback-owning `run(handler)` that
+/// held the provider task handles for its own lifetime, and the
+/// receiver-owning shape below, where `into_receiver` hands the raw
+/// receiver and an `ActiveSubscriptionGuard` over the handles to the
+/// caller. Receiver-owning won: it is what `aletheia::runtime::setup` has
+/// run in production, and what #7101 (gauge-clearing on drop) and #7102
+/// (inbound dedupe, `crate::dedupe::DedupeFilter`) were both landed
+/// against. `run()` and its tests were deleted rather than kept
+/// half-present as a second, unused consumption path; `into_receiver` plus
+/// `ActiveSubscriptionGuard` is the one production affordance this type
+/// offers, and handle ownership transfers to the caller on every
+/// consumption, full stop.
 pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
     handles: Option<JoinSet<()>>,
-    /// Maximum concurrent inbound-message handler tasks.
-    max_concurrent_handlers: usize,
 }
 
 impl ChannelListener {
@@ -118,6 +122,11 @@ impl ChannelListener {
         // Handle count is small (single-digit), fits in i64
         let count = i64::try_from(handles.len()).unwrap_or(0);
         crate::metrics::set_active_subscriptions(count);
+        // WHY(#7103): `max_concurrent_handlers` is accepted here (and by the
+        // `_with_config` constructors above) purely to log what the caller
+        // configured -- since `run()`'s deletion, nothing in this type
+        // enforces it. The cap is enforced by the receiver-owning consumer
+        // (`aletheia::dispatch::spawn_dispatcher`), not stored on this type.
         tracing::info!(
             subscriptions = count,
             max_concurrent_handlers,
@@ -126,7 +135,6 @@ impl ChannelListener {
         Self {
             rx: Some(rx),
             handles: Some(handles),
-            max_concurrent_handlers,
         }
     }
 
@@ -146,92 +154,6 @@ impl ChannelListener {
 
     /// Fallback default; runtime reads `MessagingConfig::max_concurrent_handlers`.
     const DEFAULT_MAX_CONCURRENT_HANDLERS: usize = 64;
-
-    /// Run the listener loop, dispatching each message to the handler concurrently.
-    ///
-    /// Each inbound message is dispatched to `handler` in a separate spawned task,
-    /// so a slow handler does not block delivery of subsequent messages.
-    /// Concurrency is capped at `max_concurrent_handlers` (from `MessagingConfig`)
-    /// to prevent unbounded task growth under load.
-    ///
-    /// Returns after all senders are dropped (all polling tasks have stopped) and
-    /// all in-flight handler tasks have completed.
-    #[instrument(skip_all)]
-    pub async fn run<F, Fut>(mut self, handler: F)
-    where
-        F: Fn(InboundMessage) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        let handler = Arc::new(handler);
-        let mut handler_set = JoinSet::new();
-
-        if let Some(ref mut rx) = self.rx {
-            while let Some(msg) = rx.recv().await {
-                // WHY: cap concurrent handler tasks to prevent unbounded growth
-                // when messages arrive faster than handlers complete.
-                while handler_set.len() >= self.max_concurrent_handlers {
-                    // Each handler task records its own failure, so we only need
-                    // to await a slot here.
-                    let _ = handler_set.join_next().await;
-                }
-
-                let span = info_span!(
-                    "inbound_message",
-                    msg.channel = %msg.channel,
-                    msg.source = %redact_channel_id(&msg.sender),
-                );
-                let channel_id = msg.channel.clone();
-                let h = Arc::clone(&handler);
-                // WHY: run handler future directly in handler_set so JoinSet owns all
-                // handler futures; when run() is cancelled JoinSet::drop aborts them
-                // atomically — eliminates the orphaned-task risk of a nested
-                // tokio::spawn whose JoinHandle is dropped (detaches) on cancellation.
-                //
-                // Catch panics inside the handler so the channel-attributed failure
-                // metric is recorded before the panic is absorbed by the JoinSet;
-                // otherwise JoinError loses the channel_id and the metric is recorded
-                // as "_unknown".
-                handler_set.spawn(async move {
-                    if let Err(e) = std::panic::AssertUnwindSafe(h(msg).instrument(span))
-                        .catch_unwind()
-                        .await
-                    {
-                        tracing::warn!(
-                            error = ?e,
-                            channel_id = %channel_id,
-                            "handler task failed"
-                        );
-                        crate::metrics::record_handler_failure(&channel_id);
-                    }
-                });
-            }
-        }
-
-        // WHY: wait for all in-flight handler tasks to complete before shutdown;
-        // any uncaught panic (e.g. in the wrapper itself) surfaces as JoinError.
-        while let Some(result) = handler_set.join_next().await {
-            if let Err(e) = result {
-                tracing::warn!(error = %e, "handler task panicked");
-                crate::metrics::record_handler_failure("_unknown");
-            }
-        }
-
-        // Drain provider/forwarding handles so provider failures are surfaced.
-        #[expect(
-            clippy::expect_used,
-            reason = "run consumes self and handles are only taken here"
-        )]
-        let mut forwarding_handles = self.handles.take().expect("handles already consumed");
-        while let Some(result) = forwarding_handles.join_next().await {
-            if let Err(e) = result {
-                tracing::warn!(error = %e, "listener forwarding task failed");
-                crate::metrics::record_handler_failure("_forwarder");
-            }
-        }
-
-        self.decrement_on_drop();
-        tracing::info!("channel listener stopped");
-    }
 
     /// Unwrap into the raw receiver and a guard over the background task
     /// handles for manual control.
@@ -335,9 +257,10 @@ impl ActiveSubscriptionGuard {
     /// Await every background task to completion, logging failures, then
     /// clear the active-subscriptions gauge on drop.
     ///
-    /// Mirrors the drain [`ChannelListener::run`] performs for the receiver
-    /// it kept; this is the equivalent for a caller that took ownership
-    /// through `into_receiver` instead.
+    /// [`ChannelListener::into_receiver`] transferred these handles to the
+    /// caller along with ownership of when they stop and of the
+    /// active-subscriptions gauge, so draining them and clearing the gauge
+    /// is this type's job, not the listener's.
     pub async fn shutdown(mut self) {
         while let Some(result) = self.handles.join_next().await {
             if let Err(e) = result {
@@ -371,6 +294,7 @@ impl Drop for ActiveSubscriptionGuard {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::future::Future;
     use std::pin::Pin;
 
     use tracing::Instrument;
@@ -511,46 +435,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn listener_run_dispatches_to_handler() {
-        let (tx, rx) = mpsc::channel(16);
-        let listener = ChannelListener::from_parts(rx, JoinSet::new());
-
-        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let count_clone = count.clone();
-
-        for i in 0_u64..3 {
-            tx.send(InboundMessage {
-                channel: "signal".to_owned(),
-                sender: format!("+{i}"),
-                sender_name: None,
-                group_id: None,
-                message_id: None,
-                text: format!("msg-{i}"),
-                timestamp: i,
-                attachments: vec![],
-                raw: None,
-            })
-            .await
-            .expect("send");
-        }
-        drop(tx);
-
-        listener
-            .run(move |_msg| {
-                let c = count_clone.clone();
-                async move {
-                    c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
-            })
-            .await;
-
-        assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 3);
-    }
-
-    #[tokio::test]
     #[expect(
         clippy::await_holding_lock,
-        reason = "current_thread executor; no deadlock risk — GAUGE_TEST_LOCK is never acquired inside run()"
+        reason = "current_thread executor; no deadlock risk — GAUGE_TEST_LOCK is never reacquired within this test's own scope"
     )]
     async fn listener_drop_aborts_tasks() {
         let _guard = crate::metrics::GAUGE_TEST_LOCK
@@ -616,69 +503,12 @@ mod tests {
 
     // ── Lifecycle/metrics tests ──
 
-    struct PanicProvider;
-
-    impl ChannelProvider for PanicProvider {
-        fn id(&self) -> &'static str {
-            "panic-provider"
-        }
-
-        fn name(&self) -> &'static str {
-            "panic-provider"
-        }
-
-        fn capabilities(&self) -> &crate::types::ChannelCapabilities {
-            &TEST_CAPABILITIES
-        }
-
-        fn send<'a>(
-            &'a self,
-            _params: &'a crate::types::SendParams,
-        ) -> Pin<Box<dyn Future<Output = crate::types::SendResult> + Send + 'a>> {
-            Box::pin(async { crate::types::SendResult::ok() })
-        }
-
-        fn listen(
-            &self,
-            _poll_interval: Option<std::time::Duration>,
-            _cancel: CancellationToken,
-        ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
-            let (tx, rx) = mpsc::channel(16);
-            drop(tx);
-            let mut handles = JoinSet::new();
-            handles.spawn(async move { panic!("provider polling task failed") });
-            (rx, handles)
-        }
-
-        fn probe<'a>(
-            &'a self,
-        ) -> Pin<Box<dyn Future<Output = crate::types::ProbeResult> + Send + 'a>> {
-            Box::pin(async {
-                crate::types::ProbeResult {
-                    ok: true,
-                    latency_ms: None,
-                    error: None,
-                    details: None,
-                }
-            })
-        }
-    }
-
     fn fresh_registry() -> koina::metrics::MetricsRegistry {
         koina::metrics::fresh_registry_with(crate::metrics::register)
     }
 
     fn encode_metrics(r: &koina::metrics::MetricsRegistry) -> String {
         koina::metrics::encode_to_string(r)
-    }
-
-    fn counter_value_for(encoded: &str, metric: &str, labels: &str) -> Option<u64> {
-        let needle = format!("{metric}{{{labels}}} ");
-        encoded.lines().find_map(|line| {
-            line.strip_prefix(&needle)
-                .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|v| v.parse::<u64>().ok())
-        })
     }
 
     #[tokio::test]
@@ -788,74 +618,6 @@ mod tests {
         assert!(
             after.contains("aletheia_active_subscriptions 0"),
             "got: {after}"
-        );
-    }
-
-    #[tokio::test]
-    #[expect(
-        clippy::await_holding_lock,
-        reason = "current_thread executor; no deadlock risk — GAUGE_TEST_LOCK is never acquired inside run()"
-    )]
-    async fn provider_task_failure_is_counted() {
-        let _guard = crate::metrics::GAUGE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let provider = PanicProvider;
-        let providers: [&dyn ChannelProvider; 1] = [&provider];
-        let cancel = CancellationToken::new();
-        let listener = ChannelListener::start_many(providers, None, &cancel);
-
-        let r = fresh_registry();
-        listener.run(|_msg| async {}).await;
-
-        let out = encode_metrics(&r);
-        let count = counter_value_for(
-            &out,
-            "aletheia_provider_failures_total",
-            "channel_id=\"panic-provider\"",
-        );
-        assert_eq!(
-            count,
-            Some(1),
-            "provider failure should be counted once; got: {out}"
-        );
-    }
-
-    #[tokio::test]
-    async fn handler_task_failure_is_counted() {
-        let (tx, rx) = mpsc::channel(16);
-        let listener = ChannelListener::from_parts(rx, JoinSet::new());
-
-        tx.send(InboundMessage {
-            channel: "signal".to_owned(),
-            sender: "+1".to_owned(),
-            sender_name: None,
-            group_id: None,
-            message_id: None,
-            text: "boom".to_owned(),
-            timestamp: 1,
-            attachments: vec![],
-            raw: None,
-        })
-        .await
-        .expect("send");
-        drop(tx);
-
-        let r = fresh_registry();
-        listener
-            .run(|_msg| async move { panic!("handler task failed") })
-            .await;
-
-        let out = encode_metrics(&r);
-        let count = counter_value_for(
-            &out,
-            "aletheia_handler_failures_total",
-            "channel_id=\"signal\"",
-        );
-        assert_eq!(
-            count,
-            Some(1),
-            "handler failure should be counted once; got: {out}"
         );
     }
 }
