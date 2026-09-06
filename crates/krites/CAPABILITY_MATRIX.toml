@@ -1126,6 +1126,7 @@ source = "RETIREMENT-PLAN.md Appendix A row 20"
 dest_wave = "wave-4"
 gate = "Sec 6.2 performance floor: search latency at small n must not regress against the recorded baseline, measured separately from recall."
 gate_test = "krites::runtime::hnsw::adaptive::tests::exact_knn_finds_the_true_nearest_neighbour"
+notes = "#6867: unwired on the default build. `runtime/hnsw/adaptive.rs` (the module `runtime::hnsw::adaptive` resolves to with `krites_sovereign_hnsw` off) carries `#![cfg_attr(not(test), expect(dead_code, ...))]` at its top and has zero callers outside its own `#[cfg(test)] mod tests` -- grep for `hnsw::adaptive` / `adaptive::` outside that file returns nothing. The adaptive exact-vs-graph selector this row claims is not reached from any production search path; it is proven only by its own cfg(test)-only unit tests."
 
 [[capability]]
 id = "appendix-a-magic-sets-seminaive"
@@ -1256,7 +1257,7 @@ source = "RETIREMENT-PLAN.md Appendix A row 33 (Sec 8.5)"
 dest_wave = "wave-1"
 dest_module = "episteme startup path, pre-migration snapshot (Sec 8.5)"
 overlaps_with = "api-db-open-fjall"
-gate = "Snapshot opens the copy with flush_workers(0).compaction_workers(0) and never the live source; verified-restorable count comparison per partition."
+gate = "Snapshot opens the copy with worker_threads_unchecked(0) (crates/episteme/src/knowledge_store/snapshot.rs) and never the live source; verified-restorable count comparison per partition."
 gate_test = "none"
 
 [[capability]]
@@ -1524,7 +1525,7 @@ dest_wave = "wave-5"
 dest_module = "fixed_rule/utilities/rrf.rs"
 gate = "Rank-1 contribution and absent-signal-is-zero hold, and ranks are assigned in descending score order."
 gate_test = "none"
-call_sites = 0
+call_sites = 1
 call_sites_method = "grep -rEn '<~\\s*ReciprocalRankFusion\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]

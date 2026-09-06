@@ -1515,6 +1515,17 @@ def _run_grep_pipeline(cmd: str) -> int:
     first grep without a shell, and apply the two admitted exclusions here.
     Exit 1 is grep's honest zero-match result; every other non-zero status is
     a measurement failure, never a fabricated zero.
+
+    #6867: a `<~ Name(` fixed-rule invocation is free-form CozoScript, and a
+    caller may line-wrap between the `<~` operator and the rule name (e.g.
+    episteme's queries.rs:455-456 puts `<~` at the end of one line and
+    `ReciprocalRankFusion(` at the start of the next). Ordinary `grep`
+    presents one line at a time to the regex engine, so no flag combination
+    on a single-line search can ever match across that boundary -- the
+    pattern's own `\\s*` was never the bug. Every recorded fixed_rule
+    `call_sites_method` starts with the literal `<~`, and nothing else in
+    this file's admitted grammar does, so that prefix alone identifies the
+    invocation-grep shape without touching any recorded command text.
     """
     try:
         tokens = shlex.split(cmd)
@@ -1548,14 +1559,33 @@ def _run_grep_pipeline(cmd: str) -> int:
         raise ValueError("call-site measurement has an unsupported trailing filter")
 
     pattern_index = 3 if len(search) == 6 else 2
-    search_argv = [
-        "grep",
-        search[1],
-        "--include=*.rs",
-        "--",
-        search[pattern_index],
-        "crates/",
-    ]
+    pattern = search[pattern_index]
+    invocation_grep = pattern.startswith("<~")
+    if invocation_grep:
+        # #6867: -z makes each whole file one NUL-terminated "line" instead of
+        # splitting on '\n', so \s in the pattern can consume a real line break;
+        # -o prints only the matched text, one per NUL, so a file with several
+        # invocations still yields several records to count.
+        search_argv = [
+            "grep",
+            "-r",
+            "-E",
+            "-z",
+            "-o",
+            "--include=*.rs",
+            "--",
+            pattern,
+            "crates/",
+        ]
+    else:
+        search_argv = [
+            "grep",
+            search[1],
+            "--include=*.rs",
+            "--",
+            pattern,
+            "crates/",
+        ]
     result = subprocess.run(
         search_argv,
         cwd=REPO_ROOT,
@@ -1566,11 +1596,22 @@ def _run_grep_pipeline(cmd: str) -> int:
     if result.returncode not in (0, 1):
         detail = result.stderr.strip() or "grep reported no diagnostic"
         raise ValueError(f"call-site grep exited {result.returncode}: {detail}")
-    lines = [
-        line
-        for line in result.stdout.splitlines()
-        if line and not line.startswith("crates/krites/")
-    ]
+    if invocation_grep:
+        # Each record is "path/to/file.rs:<matched text>" (the matched text may
+        # itself contain an embedded newline); split on the record's own NUL
+        # terminator, never on '\n', and take the path up to the first ':'.
+        records = [record for record in result.stdout.split("\0") if record]
+        lines = [
+            record
+            for record in records
+            if not record.split(":", 1)[0].startswith("crates/krites/")
+        ]
+    else:
+        lines = [
+            line
+            for line in result.stdout.splitlines()
+            if line and not line.startswith("crates/krites/")
+        ]
     if exclude_comments:
         comment_line = re.compile(r"^\S+:[0-9]+:\s*//")
         lines = [line for line in lines if not comment_line.search(line)]
