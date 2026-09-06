@@ -12,7 +12,7 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
         }
         other => {
             app.layout.overlay = Some(match other {
-                OverlayKind::Help => Overlay::Help,
+                OverlayKind::Help => Overlay::Help { scroll: 0 },
                 OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
                 OverlayKind::SessionPicker => Overlay::SessionPicker(SessionPickerOverlay {
                     cursor: 0,
@@ -84,7 +84,7 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
             card.cursor = card.cursor.saturating_sub(1);
         }
         Some(Overlay::DecisionCard(_)) => {}
-        Some(Overlay::NotificationHistory { scroll }) => {
+        Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) => {
             *scroll = scroll.saturating_sub(1);
         }
         _ => {
@@ -126,12 +126,37 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
             card.cursor = (card.cursor + 1).min(max);
         }
         Some(Overlay::DecisionCard(_)) => {}
-        Some(Overlay::NotificationHistory { scroll }) => {
+        Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) => {
             *scroll += 1;
         }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
         }
+    }
+}
+
+/// Page-size step for `OverlayPageUp`/`OverlayPageDown`, matching the diff
+/// viewer's 20-line page (`update/diff.rs::handle_diff_page_up/down`).
+const OVERLAY_PAGE_SCROLL_STEP: usize = 20;
+
+/// Page up in a scroll-offset-carrying overlay (Help, Notification History).
+pub(crate) fn handle_overlay_page_up(app: &mut App) {
+    if let Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) =
+        &mut app.layout.overlay
+    {
+        *scroll = scroll.saturating_sub(OVERLAY_PAGE_SCROLL_STEP);
+    }
+}
+
+/// Page down in a scroll-offset-carrying overlay (Help, Notification
+/// History). Render-time clamping (`view::overlay::render_help`,
+/// `view::notification::render_history`) keeps this from scrolling past the
+/// last line -- the same pattern `DiffViewState` uses.
+pub(crate) fn handle_overlay_page_down(app: &mut App) {
+    if let Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) =
+        &mut app.layout.overlay
+    {
+        *scroll += OVERLAY_PAGE_SCROLL_STEP;
     }
 }
 
@@ -503,7 +528,7 @@ mod tests {
     async fn open_overlay_help() {
         let mut app = test_app();
         handle_open_overlay(&mut app, OverlayKind::Help).await;
-        assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
+        assert!(matches!(app.layout.overlay, Some(Overlay::Help { .. })));
     }
 
     #[tokio::test]
@@ -703,7 +728,7 @@ mod tests {
     #[test]
     fn close_overlay_clears() {
         let mut app = test_app();
-        app.layout.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         handle_close_overlay(&mut app);
         assert!(app.layout.overlay.is_none());
     }

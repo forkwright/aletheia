@@ -6,7 +6,12 @@ use super::settings::SettingsOverlay;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Overlay {
-    Help,
+    /// `scroll` is a raw line offset into the flattened keybinding list;
+    /// clamped against actual content/viewport height at render time
+    /// (`view::overlay::render_help`), mirroring `DiffView`'s pattern (#7221).
+    Help {
+        scroll: usize,
+    },
     AgentPicker {
         cursor: usize,
     },
@@ -265,7 +270,7 @@ mod tests {
 
     #[test]
     fn overlay_help_debug() {
-        let overlay = Overlay::Help;
+        let overlay = Overlay::Help { scroll: 0 };
         let debug = format!("{:?}", overlay);
         assert!(debug.contains("Help"));
     }

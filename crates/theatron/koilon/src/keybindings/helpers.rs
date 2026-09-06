@@ -76,7 +76,7 @@ pub(crate) fn current_contexts(app: &App) -> Vec<KeyContext> {
     }
 
     match &app.layout.overlay {
-        Some(Overlay::Help) | None => {
+        Some(Overlay::Help { .. }) | None => {
             if app.interaction.command_palette.active {
                 contexts.push(KeyContext::CommandPalette);
             } else if app.interaction.filter.active {
@@ -114,7 +114,7 @@ pub(crate) fn current_contexts(app: &App) -> Vec<KeyContext> {
 /// Label for the help overlay title: reflects the source context, not the overlay itself.
 pub(crate) fn context_label(app: &App) -> &'static str {
     match &app.layout.overlay {
-        Some(Overlay::Help) | None => {
+        Some(Overlay::Help { .. }) | None => {
             if app.interaction.command_palette.active {
                 "Command Palette"
             } else if app.interaction.filter.active {

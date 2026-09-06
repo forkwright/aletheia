@@ -204,10 +204,10 @@ fn tool_approval_resolved_closes_overlay() {
 #[test]
 fn tool_approval_resolved_ignores_non_approval_overlay() {
     let mut app = test_app();
-    app.layout.overlay = Some(Overlay::Help);
+    app.layout.overlay = Some(Overlay::Help { scroll: 0 });
 
     handle_stream_tool_approval_resolved(&mut app);
-    assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
+    assert!(matches!(app.layout.overlay, Some(Overlay::Help { .. })));
 }
 
 #[test]

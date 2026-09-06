@@ -422,13 +422,13 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
-            keys: "Ctrl+I",
+            keys: "F4",
             description: "System status",
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,
         },
         Keybinding {
-            keys: "Ctrl+M",
+            keys: "F3",
             description: "Memory inspector",
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,

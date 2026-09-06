@@ -259,9 +259,13 @@ impl crate::app::App {
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
             }
-            (KeyModifiers::CONTROL, KeyCode::Char('i')) => {
-                Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
-            }
+            // WHY(#7220): this table hardcodes Selection mode's Global
+            // bindings rather than falling through to `self.interaction.keymap`
+            // (unlike the Chat-context dispatcher in `map_key`), so it needed
+            // its own copy of the System Status rebind: F4, not the
+            // byte-colliding Ctrl+I this arm used to bind (see `keymap.rs`
+            // for why Ctrl+I can never be distinguished from plain Tab).
+            (_, KeyCode::F(4)) => Some(Msg::OpenOverlay(OverlayKind::SystemStatus)),
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
             (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
@@ -614,7 +618,7 @@ impl crate::app::App {
         }
 
         // WHY: `?` toggles help overlay: pressing it again closes it.
-        if matches!(&self.layout.overlay, Some(Overlay::Help))
+        if matches!(&self.layout.overlay, Some(Overlay::Help { .. }))
             && matches!(
                 (key.modifiers, key.code),
                 (KeyModifiers::NONE, KeyCode::Char('?'))
@@ -627,6 +631,11 @@ impl crate::app::App {
             (_, KeyCode::Esc) => Some(Msg::CloseOverlay),
             (_, KeyCode::Up) => Some(Msg::OverlayUp),
             (_, KeyCode::Down) => Some(Msg::OverlayDown),
+            // WHY(#7221): PageUp/PageDown only move a scroll-offset-carrying
+            // overlay (Help, Notification History) -- `handle_overlay_page_up/down`
+            // no-op harmlessly for cursor-based overlays (AgentPicker, etc.).
+            (_, KeyCode::PageUp) => Some(Msg::OverlayPageUp),
+            (_, KeyCode::PageDown) => Some(Msg::OverlayPageDown),
             (_, KeyCode::Enter) => Some(Msg::OverlaySelect),
 
             (_, KeyCode::Char('j')) if self.is_context_actions_overlay() => Some(Msg::OverlayDown),
