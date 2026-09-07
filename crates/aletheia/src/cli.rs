@@ -32,7 +32,11 @@ use crate::commands::tls;
 #[command(
     name = "aletheia",
     about = "Cognitive agent runtime. Run with no subcommand to start the HTTP server.",
-    version
+    // WHY(#7208): report full build identity (git SHA, dirty flag, build
+    // timestamp) instead of bare `CARGO_PKG_VERSION` — a served binary that
+    // cannot report which commit it was built from forces provenance to
+    // rest on operator memory.
+    version = koina::build_info::version_line()
 )]
 pub(crate) struct Cli {
     /// Path to instance root directory

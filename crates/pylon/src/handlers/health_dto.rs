@@ -22,9 +22,16 @@ pub struct HealthResponse {
     pub status: String,
     /// Crate version from `Cargo.toml`.
     pub version: String,
-    /// Build git SHA when available from the build environment.
+    /// Build git SHA when available from the build environment. The
+    /// literal `"unknown"` when the binary was built outside a git
+    /// checkout — never fabricated (#7208).
     // kanon:ignore RUST/primitive-for-domain-id — wire DTO field; git SHA is sourced from build env, not a first-party domain ID
     pub git_sha: String,
+    /// `true` when the working tree had uncommitted changes at build time
+    /// (#7208).
+    pub git_dirty: bool,
+    /// RFC 3339 UTC timestamp of when the binary was built (#7208).
+    pub build_timestamp: String,
     /// Seconds since server start.
     pub uptime_seconds: u64,
     /// Individual subsystem check results.

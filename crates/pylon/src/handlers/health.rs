@@ -199,8 +199,10 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
         http_status,
         HealthResponse {
             status: status.to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            git_sha: option_env!("GIT_SHA").unwrap_or("unknown").to_owned(),
+            version: koina::build_info::CRATE_VERSION.to_owned(),
+            git_sha: koina::build_info::GIT_SHA.to_owned(),
+            git_dirty: koina::build_info::git_dirty(),
+            build_timestamp: koina::build_info::build_timestamp(),
             uptime_seconds: uptime,
             checks,
             data_dir: state.oikos.data().to_string_lossy().into_owned(),
@@ -2352,6 +2354,8 @@ mod tests {
             status: "healthy".to_owned(),
             version: "1.0.0".to_owned(),
             git_sha: "abc123".to_owned(),
+            git_dirty: true,
+            build_timestamp: "2026-09-06T00:00:00Z".to_owned(),
             uptime_seconds: 300,
             checks: vec![],
             data_dir: "/tmp/instance/data".to_owned(),
@@ -2359,8 +2363,22 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["status"], "healthy");
         assert_eq!(json["version"], "1.0.0");
+        assert_eq!(json["git_sha"], "abc123");
+        assert_eq!(json["git_dirty"], true);
+        assert_eq!(json["build_timestamp"], "2026-09-06T00:00:00Z");
         assert_eq!(json["uptime_seconds"], 300);
         assert!(json["checks"].as_array().unwrap().is_empty());
+    }
+
+    /// #7208: the endpoint must report the real build-embedded identity,
+    /// not an unset/"unknown" placeholder — this repo, building right now,
+    /// is a git checkout, so these must be genuinely resolved.
+    #[test]
+    fn detailed_health_reports_real_build_identity() {
+        assert_eq!(koina::build_info::CRATE_VERSION, env!("CARGO_PKG_VERSION"));
+        assert_ne!(koina::build_info::GIT_SHA, "unknown");
+        assert!(!koina::build_info::GIT_SHA.is_empty());
+        assert_ne!(koina::build_info::build_timestamp(), "unknown");
     }
 
     #[test]
