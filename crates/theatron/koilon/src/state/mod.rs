@@ -27,10 +27,8 @@ pub(crate) use metrics::MetricsState;
 pub use notification::{ErrorBanner, NotificationStore, Toast};
 pub use ops::{FocusedPane, OpsState};
 pub use overlay::{
-    ContextAction, ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay,
-    DecisionField, DecisionOption, Overlay, PlanApprovalOverlay, PlanStepApproval, SearchResult,
-    SearchResultKind, SessionPickerOverlay, SessionSearchOverlay, SubmittedDecision,
-    ToolApprovalOverlay,
+    ContextAction, ContextActionsOverlay, ControlMutationStatus, Overlay, SearchResult,
+    SearchResultKind, SessionPickerOverlay, SessionSearchOverlay, ToolApprovalOverlay,
 };
 pub(crate) use tab::TabBar;
 pub use view_stack::{View, ViewStack};

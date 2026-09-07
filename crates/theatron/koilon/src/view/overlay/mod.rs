@@ -48,7 +48,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             pickers::render_session_picker(app, frame, popup_area, picker, theme)
         }
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
-        Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         Overlay::ContextActions(ctx) => {
             let compact_area =
                 centered_rect(COMPACT_POPUP_WIDTH_PCT, COMPACT_POPUP_HEIGHT_PCT, area);
@@ -66,7 +65,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             frame.render_widget(Clear, diff_area);
             render_diff_view(diff_state, frame, diff_area, theme);
         }
-        Overlay::DecisionCard(card) => render_decision_card(frame, popup_area, card, theme),
         Overlay::NotificationHistory { scroll } => {
             super::notification::render_history(app, frame, area, *scroll, theme);
         }
@@ -300,67 +298,6 @@ fn render_tool_approval(
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
-    frame.render_widget(paragraph, area);
-}
-
-fn render_plan_approval(
-    frame: &mut Frame,
-    area: Rect,
-    plan: &crate::app::PlanApprovalOverlay,
-    theme: &Theme,
-) {
-    let cost = format!("${:.2}", f64::from(plan.total_cost_cents) / 100.0);
-    let title = format!("Plan ({} steps, ~{})", plan.steps.len(), cost);
-
-    let mut lines = vec![Line::raw("")];
-
-    for (i, step) in plan.steps.iter().enumerate() {
-        let selected = i == plan.cursor;
-        let check = if step.checked { "✓" } else { " " };
-        let marker = if selected { "▸" } else { " " };
-
-        let check_style = if step.checked {
-            theme.style_success()
-        } else {
-            theme.style_dim()
-        };
-
-        let style = if selected {
-            Style::default()
-                .fg(theme.colors.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            theme.style_fg()
-        };
-
-        lines.push(Line::from(vec![
-            Span::raw(format!("  {} ", marker)),
-            Span::styled(format!("[{}]", check), check_style),
-            Span::styled(format!(" {}. ", step.id), theme.style_dim()),
-            Span::styled(&step.label, style),
-            Span::styled(format!(" ({})", step.role), theme.style_dim()),
-        ]));
-    }
-
-    lines.push(Line::raw(""));
-    push_mutation_status(&mut lines, &plan.status, theme);
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("[A]", theme.style_success_bold()),
-        Span::styled("pprove all  ", theme.style_muted()),
-        Span::styled(
-            "[Space]",
-            Style::default()
-                .fg(theme.colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" toggle  ", theme.style_muted()),
-        Span::styled("[C]", theme.style_error_bold()),
-        Span::styled("ancel", theme.style_muted()),
-    ]));
-
-    let block = overlay_block_accent(&title, theme.colors.accent, theme);
-    let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
 
@@ -629,110 +566,5 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
     let para = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .style(ratatui::style::Style::default());
-    frame.render_widget(para, inner);
-}
-
-fn render_decision_card(
-    frame: &mut Frame,
-    area: Rect,
-    card: &crate::state::DecisionCardOverlay,
-    theme: &Theme,
-) {
-    let block = overlay_block("decision", theme);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            card.question.clone(),
-            Style::default()
-                .fg(theme.text.fg)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
-    lines.push(Line::raw(""));
-
-    for (i, opt) in card.options.iter().enumerate() {
-        let selected =
-            i == card.cursor && card.focused_field == crate::state::DecisionField::Options;
-        let cursor_str = if selected { "▸" } else { " " };
-        let cursor_style = if selected {
-            Style::default().fg(theme.borders.selected)
-        } else {
-            Style::default()
-        };
-        let mut spans = vec![
-            Span::styled(format!("  {cursor_str} "), cursor_style),
-            Span::styled(
-                opt.label.clone(),
-                if selected {
-                    theme.style_accent_bold()
-                } else {
-                    theme.style_fg()
-                },
-            ),
-        ];
-        if opt.is_recommendation {
-            spans.push(Span::styled(" ★ recommended", theme.style_dim()));
-        }
-        lines.push(Line::from(spans));
-        if let Some(ref desc) = opt.description {
-            lines.push(Line::from(vec![
-                Span::raw("      "),
-                Span::styled(desc.clone(), theme.style_muted()),
-            ]));
-        }
-    }
-    lines.push(Line::raw(""));
-
-    let custom_focused = card.focused_field == crate::state::DecisionField::CustomAnswer;
-    let custom_label_style = if custom_focused {
-        theme.style_accent_bold()
-    } else {
-        theme.style_dim()
-    };
-    let custom_display = if card.custom_answer.is_empty() && !custom_focused {
-        "─".to_string()
-    } else {
-        format!("{}_", card.custom_answer)
-    };
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("custom: ", custom_label_style),
-        Span::styled(custom_display, theme.style_fg()),
-    ]));
-    lines.push(Line::raw(""));
-
-    let notes_focused = card.focused_field == crate::state::DecisionField::Notes;
-    let notes_label_style = if notes_focused {
-        theme.style_accent_bold()
-    } else {
-        theme.style_dim()
-    };
-    let notes_display = if card.notes.is_empty() && !notes_focused {
-        "─".to_string()
-    } else {
-        format!("{}_", card.notes)
-    };
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("notes:  ", notes_label_style),
-        Span::styled(notes_display, theme.style_fg()),
-    ]));
-    lines.push(Line::raw(""));
-
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("[Enter] submit", theme.style_muted()),
-        Span::raw("  "),
-        Span::styled("[Tab] next field", theme.style_muted()),
-        Span::raw("  "),
-        Span::styled("[Esc] skip", theme.style_muted()),
-    ]));
-
-    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
     frame.render_widget(para, inner);
 }

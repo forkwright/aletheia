@@ -52,7 +52,6 @@ mod tests {
             KeyContext::Input,
             KeyContext::Overlay,
             KeyContext::ToolApproval,
-            KeyContext::PlanApproval,
             KeyContext::Settings,
         ];
         for ctx in contexts {

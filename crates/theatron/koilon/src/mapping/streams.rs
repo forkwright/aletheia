@@ -271,25 +271,20 @@ impl App {
             StreamEvent::ToolApprovalResolved { tool_id, decision } => {
                 Msg::StreamToolApprovalResolved { tool_id, decision }
             }
-            StreamEvent::PlanProposed { plan } => Msg::StreamPlanProposed { plan },
-            StreamEvent::PlanStepStart { plan_id, step_id } => {
-                Msg::StreamPlanStepStart { plan_id, step_id }
-            }
-            StreamEvent::PlanStepComplete {
-                plan_id,
-                step_id,
-                status,
-            } => Msg::StreamPlanStepComplete {
-                plan_id,
-                step_id,
-                status,
-            },
-            StreamEvent::PlanComplete { plan_id, status } => {
-                Msg::StreamPlanComplete { plan_id, status }
-            }
             StreamEvent::TurnComplete { outcome } => Msg::StreamTurnComplete { outcome },
             StreamEvent::TurnAbort { reason } => Msg::StreamTurnAbort { reason },
             StreamEvent::Error(msg) => Msg::StreamError(msg),
+            // WHY(#7203): `PlanProposed`/`PlanStepStart`/`PlanStepComplete`/
+            // `PlanComplete` are parsed here because skene's SSE parser
+            // recognizes the wire event names (proskenion's desktop client
+            // still consumes them for its plan-card UI), but pylon's actual
+            // stream emitter (`crates/pylon/src/stream.rs` `TurnStreamEvent`)
+            // has no matching variant -- no code path ever sends a
+            // `plan_proposed`/`plan_step_start`/`plan_complete` SSE event, so
+            // koilon can never receive one. The koilon-side plan-approval
+            // overlay these would have driven was deleted outright as
+            // unreachable; this catch-all is what a real one would still
+            // hit today.
             _ => Msg::Tick,
         }
     }
