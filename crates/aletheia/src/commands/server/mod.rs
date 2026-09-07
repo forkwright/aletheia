@@ -62,7 +62,18 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     )
     .whatever_context("failed to initialise file logging")?;
 
-    info!("aletheia starting");
+    // WHY(#7208): the startup log line is the third of three surfaces
+    // (alongside `aletheia --version` and `/api/v1/system/health`) that
+    // report the same build identity from `koina::build_info`, so "which
+    // commit is serving" is a fact the process states on boot rather than
+    // a guess reconstructed from journal correlation.
+    info!(
+        version = koina::build_info::CRATE_VERSION,
+        git_sha = koina::build_info::GIT_SHA,
+        git_dirty = koina::build_info::git_dirty(),
+        build_timestamp = %koina::build_info::build_timestamp(),
+        "aletheia starting"
+    );
 
     let oikos_arc = Arc::new(oikos);
 

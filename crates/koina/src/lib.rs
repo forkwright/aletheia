@@ -8,6 +8,9 @@
 
 /// RFC 4648 base64 encoding and decoding (standard and URL-safe variants).
 pub mod base64;
+/// Compile-time build identity (git SHA, dirty flag, build timestamp,
+/// crate version) embedded by `build.rs` (#7208).
+pub mod build_info;
 /// Setup-time cleanup registration via [`cleanup::CleanupRegistry`].
 pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.
