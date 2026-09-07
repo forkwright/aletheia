@@ -8,7 +8,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use koina::id::NousId;
-use nous::config::NousConfig;
+use nous::config::{ModelRole, NousConfig};
 use nous::cross::AddressMask;
 use organon::surface::{DenialReason, SurfaceEntry, SurfaceEntryKind, SurfaceInputs};
 use symbolon::types::Role;
@@ -37,7 +37,10 @@ fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a Nous
 fn model_routes_for_config(config: &NousConfig) -> Vec<(String, Option<String>)> {
     let mut routes = Vec::with_capacity(config.generation.fallback_models.len() + 1);
     routes.push((
-        config.generation.model.clone(),
+        config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
         config.generation.provider.clone(),
     ));
     routes.extend(
@@ -251,7 +254,7 @@ pub async fn list(
             id: c.id.to_string(),
             name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
             enabled,
-            model: c.generation.model.clone(),
+            model: c.generation.resolve_model(ModelRole::Generation).to_owned(),
             provider: c.generation.provider.clone(),
             fallback_models: c.generation.fallback_models.clone(),
             fallback_providers: c.generation.fallback_providers.clone(),
@@ -356,7 +359,10 @@ pub async fn get_status(
 
     Ok(Json(NousStatus {
         id: config.id.to_string(),
-        model: config.generation.model.clone(),
+        model: config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
         provider: config.generation.provider.clone(),
         fallback_models: config.generation.fallback_models.clone(),
         fallback_providers: config.generation.fallback_providers.clone(),
@@ -533,7 +539,10 @@ pub async fn update_enabled(
             .clone()
             .unwrap_or_else(|| runtime.id.to_string()),
         enabled,
-        model: runtime.generation.model.clone(),
+        model: runtime
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
         provider: runtime.generation.provider.clone(),
         fallback_models: runtime.generation.fallback_models.clone(),
         fallback_providers: runtime.generation.fallback_providers.clone(),

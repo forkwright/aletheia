@@ -4,7 +4,9 @@ use std::process::Command;
 use tracing::warn;
 
 use mneme::workspace::ProjectId;
-use nous::config::{ClientDisconnectPolicy, HookConfig, NousConfig, NousLimits, PipelineConfig};
+use nous::config::{
+    ClientDisconnectPolicy, HookConfig, ModelRole, NousConfig, NousLimits, PipelineConfig,
+};
 use organon::types::{ToolGroupId, ToolGroupPolicy};
 use taxis::config::{
     AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, ResolvedNousConfig, resolve_nous,
@@ -237,8 +239,8 @@ pub(super) fn build_nous_runtime_config(
             chars_per_token: resolved.limits.chars_per_token,
             prosoche_model: resolved.prosoche_model.to_string(),
             complexity,
-            extraction_model: None,
-            distillation_model: None,
+            extraction_override: None,
+            distillation_override: None,
         },
         limits: build_nous_limits(
             overlay.max_tool_iterations,
@@ -283,10 +285,20 @@ pub(super) fn build_nous_runtime_config(
     nous_config.recall.convergence_weight = config.knowledge.recall_convergence_weight;
     nous_config.recall.serendipity_weight = config.knowledge.recall_serendipity_weight;
 
+    // WHY(#7195/action 7): route through `resolve_model`, not a
+    // `nous_config.generation.extraction_override`-only check -- this is
+    // the same exhaustive "override, else primary" rule every other
+    // extraction/distillation/dream call site uses, so this early
+    // `extraction_cfg.model` seed can never again silently keep
+    // `mneme::extract::ExtractionConfig::default()`'s compiled default
+    // (previously possible whenever no override was set, though
+    // `maybe_spawn_extraction` currently re-resolves and overwrites this
+    // value before use regardless).
     let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
-    if let Some(model) = nous_config.generation.extraction_model.as_deref() {
-        model.clone_into(&mut extraction_cfg.model);
-    }
+    nous_config
+        .generation
+        .resolve_model(ModelRole::Extraction)
+        .clone_into(&mut extraction_cfg.model);
     extraction_cfg.project_id.clone_from(&project_id);
     (
         nous_config,

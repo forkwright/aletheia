@@ -9,6 +9,7 @@ use tracing::warn;
 
 use jiff::ToSpan;
 use mneme::types::{Message, Role, Session, ToolAuditRecord, UsageRecord};
+use nous::config::ModelRole;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
@@ -598,7 +599,7 @@ async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenM
                     .clone()
                     .filter(|n| !n.is_empty())
                     .unwrap_or_else(|| c.id.to_string()),
-                c.generation.model.clone(),
+                c.generation.resolve_model(ModelRole::Generation).to_owned(),
             )
         })
         .collect();

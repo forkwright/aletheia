@@ -28,7 +28,7 @@ use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint};
 use crate::compact::{CompactConfig, CompactReason, map_strategy, select_prompt};
-use crate::config::{NousConfig, PipelineConfig};
+use crate::config::{ModelRole, NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
 use crate::hooks::registry::HookRegistry;
@@ -266,7 +266,7 @@ pub(super) async fn run_recall_stage(
     // WHY(#3404, #3413): resolve deployment target so the sovereignty filter drops facts the provider
     // cannot receive; unregistered models default to Cloud (Public-only) rather than leaking Internal data.
     let deployment_target = providers
-        .find_provider(&config.generation.model)
+        .find_provider(config.generation.resolve_model(ModelRole::Generation))
         .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
             p.deployment_target()
         });
@@ -328,7 +328,10 @@ pub(super) async fn run_recall_stage(
         // whole path onto a blocking thread and release the worker. (#5665)
         let content = content.to_owned();
         let nous_id = config.id.clone();
-        let model = config.generation.model.clone();
+        let model = config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned();
         let recall_config = config.recall.clone();
         let project_scope = project_recall_scope(pipeline_config);
         let surprise_calc = surprise_calc.clone();
@@ -639,27 +642,22 @@ async fn compact_with_llm(
     providers: &ProviderRegistry,
     request_text: String,
 ) -> error::Result<String> {
-    // WHY distillation_model, not generation.model (#4797): full
+    // WHY ModelRole::Distillation, not ModelRole::Generation (#4797): full
     // compaction is exactly the "fast tier" summarization workload
-    // `distillation_model`'s own doc comment names (see
-    // `NousGenerationConfig::distillation_model`) -- falling back to the
-    // turn model when unset preserves existing behaviour for configs that
-    // never opted in.
-    let model = config
-        .generation
-        .distillation_model
-        .as_ref()
-        .unwrap_or(&config.generation.model);
+    // `ModelRole::Distillation`'s own doc comment names -- falling back to
+    // the turn model when unset preserves existing behaviour for configs
+    // that never opted in.
+    let model = config.generation.resolve_model(ModelRole::Distillation);
     let Some(provider) = providers.find_provider(model) else {
         return Err(hermeneus::error::UnsupportedModelSnafu {
-            model: model.clone(),
+            model: model.to_owned(),
         }
         .build())
         .context(error::LlmSnafu);
     };
 
     let request = CompletionRequest {
-        model: model.clone(),
+        model: model.to_owned(),
         system: Some("Summarize this conversation for context compaction. Preserve decisions, open tasks, file paths, and unresolved risks.".to_owned()),
         messages: vec![Message {
             role: Role::User,
@@ -939,7 +937,10 @@ pub(super) async fn run_execute_stage(
             let routed_model = crate::execute::routed_model_for_turn(ctx, config, providers, tools);
             let attempt = crate::degraded_mode::DegradedAttemptContext {
                 attempted_provider: provider_name_for_model(providers, &routed_model),
-                configured_model: config.generation.model.clone(),
+                configured_model: config
+                    .generation
+                    .resolve_model(ModelRole::Generation)
+                    .to_owned(),
                 routed_model,
                 source_id: recent_distillation
                     .as_ref()

@@ -76,12 +76,49 @@ impl ModelProviderRoute {
     }
 }
 
+/// A role a nous resolves a model identifier for.
+///
+/// WHY exhaustive: every background/pipeline stage that needs "which model
+/// should this workload run against" goes through
+/// [`NousGenerationConfig::resolve_model`]'s `match`. The compiler refuses
+/// to build that `match` if a variant is added here without a matching arm
+/// — that exhaustiveness is what prevents the #7195 bug class (a
+/// stage reading `mneme::extract::ExtractionConfig::default()`'s or
+/// `koina::defaults::DEFAULT_MODEL`'s *compiled* default because the
+/// "override, else the nous's own primary" rule was hand-copied per call
+/// site instead of expressed once). #7212's `maybe_run_auto_dream`,
+/// which never had that rule copied to it at all, falls out of the same
+/// `match` for free — see the [`Dream`](ModelRole::Dream) arm.
+///
+/// TODO(#7223): a role currently resolves to a bare model-identifier
+/// `&str`. The kernel/logismos alignment map's typed-contract sketch
+/// (`aletheia-kernel-logismos-alignment-2026-09-06.md` section 7) names a
+/// `ModelRef { served_name, artifact_sha256 }` as the eventual resolved
+/// type once a producer of artifact identity exists on this side; #7223
+/// tracks introducing it end to end rather than as a half-typed field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModelRole {
+    /// The nous's own primary turn model. Never falls back — there is
+    /// nothing to fall back to.
+    Generation,
+    /// Background context distillation and compaction (#3740, #4797).
+    Distillation,
+    /// Background knowledge extraction (#3740).
+    Extraction,
+    /// Autonomous "dream" consolidation runs (#7212). Shares
+    /// [`ModelRole::Distillation`]'s override: no dedicated `dream_model`
+    /// key exists, matching #7212's own fix guidance ("a dedicated
+    /// `dream_model` override if the config already has one" — it does
+    /// not).
+    Dream,
+}
+
 /// LLM generation settings for a nous agent.
 // kanon:ignore RUST/no-debug-derive-on-public-types — NousGenerationConfig contains no secrets (model names, token limits, flags)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NousGenerationConfig {
-    /// Default model for this agent.
+    /// Default model for this agent. The [`ModelRole::Generation`] role.
     pub model: String,
     /// Optional provider instance name for the default model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -114,20 +151,33 @@ pub struct NousGenerationConfig {
     /// (haiku/sonnet/opus). When `false` (the default), `model` is used for
     /// every turn — preserving existing behaviour.
     pub complexity: ComplexityConfig,
-    /// Override for the knowledge extraction model (#3740).
+    /// Override for the [`ModelRole::Extraction`] role (#3740). Resolve
+    /// through [`NousGenerationConfig::resolve_model`], not directly — that
+    /// is the one place the "override, else the primary model" fallback
+    /// rule is expressed (#7195).
     ///
     /// Extraction and distillation are obvious "fast tier" workloads that
     /// should route to a small model (Qwen3-4B class) on local multi-model
     /// deployments regardless of turn routing. When `None`, extraction falls
     /// back to the turn model — preserving existing behaviour.
-    #[serde(default)]
-    pub extraction_model: Option<String>,
-    /// Override for the context distillation model (#3740).
     ///
-    /// See `extraction_model`. Same tier / same fallback shape. When `None`,
-    /// distillation falls back to the turn model.
-    #[serde(default)]
-    pub distillation_model: Option<String>,
+    /// TOML key stays `extraction_model` (`#[serde(rename)]`): the Rust
+    /// field was renamed off the historical `extraction_model` identifier
+    /// so it no longer reads as a second, ungoverned "just a string" model
+    /// field, but no instance config has to change.
+    #[serde(default, rename = "extraction_model")]
+    pub extraction_override: Option<String>,
+    /// Override for the [`ModelRole::Distillation`] role (#3740), and,
+    /// since no dedicated key exists, the [`ModelRole::Dream`] role
+    /// (#7212). Resolve through [`NousGenerationConfig::resolve_model`].
+    ///
+    /// See `extraction_override`. Same tier / same fallback shape. When
+    /// `None`, distillation and dream fall back to the turn model.
+    ///
+    /// TOML key stays `distillation_model` (`#[serde(rename)]`) — see
+    /// `extraction_override`.
+    #[serde(default, rename = "distillation_model")]
+    pub distillation_override: Option<String>,
 }
 
 impl Default for NousGenerationConfig {
@@ -147,8 +197,29 @@ impl Default for NousGenerationConfig {
             chars_per_token: default_chars_per_token(),
             prosoche_model: default_prosoche_model(),
             complexity: ComplexityConfig::default(),
-            extraction_model: None,
-            distillation_model: None,
+            extraction_override: None,
+            distillation_override: None,
+        }
+    }
+}
+
+impl NousGenerationConfig {
+    /// Resolve the model identifier that should serve `role`.
+    ///
+    /// Exhaustive by construction — see [`ModelRole`]'s doc comment. This
+    /// is the *only* sanctioned way to answer "which model should this
+    /// workload run against"; every background/pipeline call site that
+    /// used to hand-roll `xxx_override.as_deref().unwrap_or(&self.model)`
+    /// (or, for `maybe_run_auto_dream`, skip that rule entirely) now calls
+    /// this instead.
+    #[must_use]
+    pub fn resolve_model(&self, role: ModelRole) -> &str {
+        match role {
+            ModelRole::Generation => self.model.as_str(),
+            ModelRole::Extraction => self.extraction_override.as_deref().unwrap_or(&self.model),
+            ModelRole::Distillation | ModelRole::Dream => {
+                self.distillation_override.as_deref().unwrap_or(&self.model)
+            }
         }
     }
 }
@@ -842,8 +913,8 @@ mod tests {
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: ComplexityConfig::default(),
-                extraction_model: None,
-                distillation_model: None,
+                extraction_override: None,
+                distillation_override: None,
             },
             limits: NousLimits {
                 max_tool_iterations: 10,
@@ -887,6 +958,132 @@ mod tests {
             config.generation.prosoche_model,
             koina::models::task_role_default(koina::models::TaskRole::Prosoche)
         );
+    }
+
+    // ── ModelRole::resolve_model (#7195, #7212) ──────────────────────────────
+
+    /// Every [`ModelRole`] variant, resolved against a config with no
+    /// per-role overrides set, must fall back to the primary `model` — the
+    /// #7195/#7212 invariant expressed once as data instead of once per
+    /// call site. A `match` that forgets a variant here is a compile error,
+    /// not a silent test gap: this loop is written against
+    /// `[ModelRole; 4]`, so adding a variant without adding it to the array
+    /// only fails to extend coverage, but `resolve_model`'s own `match`
+    /// (source of the real guarantee) still catches a missing arm at
+    /// compile time.
+    #[test]
+    fn resolve_model_falls_back_to_primary_for_every_role_when_unset() {
+        let config = NousGenerationConfig {
+            model: "primary-model".to_owned(),
+            ..NousGenerationConfig::default()
+        };
+        for role in [
+            ModelRole::Generation,
+            ModelRole::Distillation,
+            ModelRole::Extraction,
+            ModelRole::Dream,
+        ] {
+            assert_eq!(
+                config.resolve_model(role),
+                "primary-model",
+                "{role:?} must fall back to the primary model when no override is set"
+            );
+        }
+    }
+
+    /// Table-driven: for every role that has an override field
+    /// (Distillation/Dream share `distillation_override`; Extraction has
+    /// its own), setting that override changes what the role resolves to
+    /// without disturbing any other role, and `Generation` never observes
+    /// an override at all because it has none to observe.
+    #[test]
+    fn resolve_model_honors_each_role_override_independently() {
+        struct Case {
+            role: ModelRole,
+            expected_with_no_override: &'static str,
+            expected_with_override: &'static str,
+        }
+        let cases = [
+            Case {
+                role: ModelRole::Generation,
+                expected_with_no_override: "primary-model",
+                expected_with_override: "primary-model", // no override exists for Generation
+            },
+            Case {
+                role: ModelRole::Extraction,
+                expected_with_no_override: "primary-model",
+                expected_with_override: "extract-model",
+            },
+            Case {
+                role: ModelRole::Distillation,
+                expected_with_no_override: "primary-model",
+                expected_with_override: "distill-model",
+            },
+            Case {
+                role: ModelRole::Dream,
+                expected_with_no_override: "primary-model",
+                // WHY: Dream has no dedicated override key (#7212) -- it
+                // shares Distillation's, by design (see `ModelRole::Dream`).
+                expected_with_override: "distill-model",
+            },
+        ];
+
+        let bare = NousGenerationConfig {
+            model: "primary-model".to_owned(),
+            ..NousGenerationConfig::default()
+        };
+        let overridden = NousGenerationConfig {
+            model: "primary-model".to_owned(),
+            extraction_override: Some("extract-model".to_owned()),
+            distillation_override: Some("distill-model".to_owned()),
+            ..NousGenerationConfig::default()
+        };
+
+        for case in cases {
+            assert_eq!(
+                bare.resolve_model(case.role),
+                case.expected_with_no_override,
+                "{:?} without overrides",
+                case.role
+            );
+            assert_eq!(
+                overridden.resolve_model(case.role),
+                case.expected_with_override,
+                "{:?} with both overrides set",
+                case.role
+            );
+        }
+    }
+
+    /// TOML compatibility (#7195/#7212 fix, action 7): the historical flat
+    /// keys `extraction_model` / `distillation_model` must still
+    /// deserialize into the renamed `extraction_override` /
+    /// `distillation_override` fields — no existing instance config has to
+    /// change for this PR to land.
+    #[test]
+    fn generation_config_deserializes_legacy_toml_keys() {
+        // WHY minimal: `NousGenerationConfig` is `#[serde(default)]` at the
+        // container level, so every field not named here fills from
+        // `NousGenerationConfig::default()` -- only the fields this test
+        // cares about need to be present.
+        let toml_src = r#"
+            model = "turn-model"
+            extraction_model = "extract-model"
+            distillation_model = "distill-model"
+        "#;
+        let config: NousGenerationConfig =
+            toml::from_str(toml_src).expect("legacy flat keys must still parse");
+        assert_eq!(config.extraction_override.as_deref(), Some("extract-model"));
+        assert_eq!(
+            config.distillation_override.as_deref(),
+            Some("distill-model")
+        );
+        assert_eq!(config.resolve_model(ModelRole::Extraction), "extract-model");
+        assert_eq!(
+            config.resolve_model(ModelRole::Distillation),
+            "distill-model"
+        );
+        assert_eq!(config.resolve_model(ModelRole::Dream), "distill-model");
     }
 
     #[test]

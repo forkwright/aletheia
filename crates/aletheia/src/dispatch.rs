@@ -17,6 +17,7 @@ use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
 use koina::redact::{opaque_channel_id, redact_channel_id};
+use nous::config::ModelRole;
 use nous::manager::NousManager;
 use organon::types::BlackboardViewer;
 
@@ -262,7 +263,7 @@ async fn handle_command_dispatch(dispatch: CommandDispatch<'_>) {
         dispatch
             .nous_manager
             .get_config(dispatch.nous_id)
-            .map(|config| config.generation.model.as_str()),
+            .map(|config| config.generation.resolve_model(ModelRole::Generation)),
     )
     .await
     {
@@ -682,7 +683,9 @@ async fn execute_command(
             Ok(st) => {
                 let model = nous_manager
                     .get_config(nous_id)
-                    .map_or_else(String::new, |c| c.generation.model.clone());
+                    .map_or_else(String::new, |c| {
+                        c.generation.resolve_model(ModelRole::Generation).to_owned()
+                    });
                 let thinking_enabled = nous_manager
                     .get_config(nous_id)
                     .is_some_and(|c| c.generation.thinking_enabled);
@@ -718,7 +721,9 @@ async fn execute_command(
             .map(|st| {
                 let model = nous_manager
                     .get_config(&st.id)
-                    .map_or_else(String::new, |c| c.generation.model.clone());
+                    .map_or_else(String::new, |c| {
+                        c.generation.resolve_model(ModelRole::Generation).to_owned()
+                    });
                 let thinking_enabled = nous_manager
                     .get_config(&st.id)
                     .is_some_and(|c| c.generation.thinking_enabled);
