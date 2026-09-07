@@ -45,6 +45,14 @@ static BACKUP_LAST_SUCCESS_UNIXTIME_SECONDS: LazyLock<Gauge> = LazyLock::new(Gau
 static BACKUP_ENABLED: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 static BACKUP_INTERVAL_SECONDS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 
+// WHY(#7217): a `tool_audit` row's key is a store-assigned chronological id,
+// not a bounded label domain, so corrupt rows are counted in aggregate here
+// rather than as a `Family` keyed by row -- that would be unbounded
+// cardinality. The per-key detail (which row, what decode error) is
+// disclosed by the read paths themselves (`/ops/tools`, `/tool-stats`,
+// `aletheia session-store tool-audit-check`), not by this metric.
+static TOOL_AUDIT_CORRUPT_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
+
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
     registry.register(
@@ -72,6 +80,11 @@ pub fn register(registry: &mut Registry) {
         "Configured interval between automatic whole-instance backups in seconds",
         BACKUP_INTERVAL_SECONDS.clone(),
     );
+    registry.register(
+        "aletheia_tool_audit_corrupt_total",
+        "Total tool_audit rows that failed to decode and were skipped (aletheia#7217)",
+        TOOL_AUDIT_CORRUPT_TOTAL.clone(),
+    );
 }
 
 /// Record a session creation.
@@ -85,6 +98,17 @@ pub(crate) fn record_session_created(_nous_id: &str, session_type: &str) {
             session_type: session_type.to_owned(),
         })
         .inc();
+}
+
+/// Record one `tool_audit` row that failed to decode (aletheia#7217).
+///
+/// Called once per decode failure from [`crate::store::fjall_store`]'s
+/// tolerant decode path, which is the sole entry point every reader of the
+/// `tool_audit` partition goes through — this total therefore reflects every
+/// corrupt-row encounter across the recent-N scan, the per-session scan, and
+/// the session-delete key scan, not just the first time a given row is seen.
+pub(crate) fn record_tool_audit_corrupt() {
+    TOOL_AUDIT_CORRUPT_TOTAL.inc();
 }
 
 /// Record a backup operation duration.

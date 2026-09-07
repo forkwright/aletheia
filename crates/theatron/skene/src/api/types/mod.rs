@@ -281,6 +281,10 @@ pub struct SessionReplayResponse {
     pub usage_records: Vec<ReplayUsageRecord>,
     /// Structured tool audit rows keyed by turn sequence.
     pub tool_audit_records: Vec<ReplayToolAuditRecord>,
+    /// Count of `tool_audit` rows that failed to decode and were omitted
+    /// from `tool_audit_records` (aletheia#7217). `0` when none were
+    /// corrupt.
+    pub tool_audit_corrupt_count: usize,
     /// Durable turn lifecycle records parsed from the session note log.
     pub turn_attempts: Vec<ReplayTurnAttempt>,
 }

@@ -495,7 +495,7 @@ pub async fn replay(
 
     let state_clone = state.clone();
     let id_clone = id.clone();
-    let (messages, usage_records, tool_audit_records, notes) =
+    let (messages, usage_records, tool_audit_scan, notes) =
         tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
             let store = state_clone.session_store.blocking_lock();
             let messages = store
@@ -504,11 +504,14 @@ pub async fn replay(
             let usage_records = store
                 .get_usage_for_session(&id_clone)
                 .map_err(ApiError::from)?;
-            let tool_audit_records = store
+            // WHY(#7217): never `?` a single malformed `tool_audit` row into
+            // a 500 for a whole session's replay -- `.corrupt.len()` is
+            // disclosed on the response instead of hidden.
+            let tool_audit_scan = store
                 .tool_audit_records_for_session(&id_clone)
                 .map_err(ApiError::from)?;
             let notes = store.get_notes(&id_clone).map_err(ApiError::from)?;
-            Ok((messages, usage_records, tool_audit_records, notes))
+            Ok((messages, usage_records, tool_audit_scan, notes))
         })
         .await??;
 
@@ -525,10 +528,12 @@ pub async fn replay(
             .into_iter()
             .map(replay_usage_from_mneme)
             .collect(),
-        tool_audit_records: tool_audit_records
+        tool_audit_records: tool_audit_scan
+            .records
             .into_iter()
             .map(replay_tool_audit_from_mneme)
             .collect(),
+        tool_audit_corrupt_count: tool_audit_scan.corrupt.len(),
         turn_attempts: replay_turn_attempts_from_notes(notes),
     }))
 }

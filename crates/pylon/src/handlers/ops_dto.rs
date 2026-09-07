@@ -87,6 +87,11 @@ pub struct OpsToolsResponse {
     pub total_errors: u64,
     /// Whether chronological tool-call history is unavailable.
     ///
-    /// `true` only when the history store cannot be read.
+    /// `true` only when the history store cannot be read at all.
     pub history_unavailable: bool,
+    /// Count of `tool_audit` rows encountered in this read that failed to
+    /// decode and were omitted from `history` (aletheia#7217). `0` when
+    /// none were corrupt. Independent of `history_unavailable`, which is
+    /// reserved for the read itself failing outright.
+    pub tool_audit_corrupt_count: usize,
 }

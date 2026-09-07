@@ -235,10 +235,16 @@ fn tool_audit_by_call_id(
         return Ok(std::collections::HashMap::new());
     }
 
-    let records = store
+    // WHY(#7217): `.records` only -- a row that failed to decode is already
+    // counted and WARN-logged once by the store's tolerant decode path.
+    // Dropping it here means the reinjected history message simply lacks
+    // the audit augmentation (is_error/duration_ms/approval/receipt) for
+    // that one tool call, instead of failing the entire turn.
+    let scan = store
         .tool_audit_records_for_session(session_id)
         .context(error::StoreSnafu)?;
-    Ok(records
+    Ok(scan
+        .records
         .into_iter()
         .map(|record| (record.tool_call_id.clone(), record))
         .collect())
@@ -547,6 +553,79 @@ mod tests {
         assert!(
             !messages.iter().any(|m| m.content == "tool output"),
             "policy disabled tool-result messages"
+        );
+    }
+
+    #[test]
+    fn corrupt_tool_audit_row_degrades_history_instead_of_failing_the_turn() {
+        // WHY(#7217): `tool_audit_by_call_id` used to `?` a single decode
+        // failure anywhere in the shared `tool_audit` partition straight
+        // into `error::Result`, which failed `load_history`, which failed
+        // every subsequent turn of EVERY session once any message with a
+        // `tool_call_id` was in the loaded window -- reproduced here
+        // without HTTP or a running server. The corrupt row deliberately
+        // does not belong to this session, matching the issue's own
+        // repro: a brand-new session with no tool history of its own was
+        // still broken by unrelated corruption sharing the partition.
+        //
+        // `open_in_memory` (used by `setup_store` elsewhere in this file)
+        // has no on-disk path to reopen for raw injection, so this test
+        // uses a temp-dir-backed store instead.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sessions");
+        {
+            let store = SessionStore::open(&path).expect("open store");
+            store
+                .create_session("ses-1", "test-agent", "main", None, Some("test-model"))
+                .expect("create session");
+            store
+                .append_message(
+                    "ses-1",
+                    Role::Assistant,
+                    r#"{"path":"README.md"}"#,
+                    Some("tc-1"),
+                    Some("read_file"),
+                    10,
+                )
+                .expect("append tool call message");
+            store
+                .append_message(
+                    "ses-1",
+                    Role::ToolResult,
+                    "tool output",
+                    Some("tc-1"),
+                    Some("read_file"),
+                    10,
+                )
+                .expect("append tool result message");
+            // `store` drops here, releasing the fjall lock, before the raw
+            // injection below opens its own handle on the same path.
+        }
+        mneme::store::test_support::inject_raw_tool_audit_row(
+            &path,
+            "00000000000000099999",
+            br#"{"id":99999,"session_id":"ses-other","nous_id":"test-agent","turn_seq":1,
+                 "tool_call_id":"tc-unrelated","tool_name":null,"duration_ms":1,
+                 "is_error":false,"outcome":"error","result":null,"approval":null,
+                 "receipt":"","created_at":"2026-09-06T00:00:00.000Z"}"#,
+        )
+        .expect("inject corrupt tool_audit row");
+
+        let store = SessionStore::open(&path).expect("reopen store");
+        let config = HistoryConfig::default();
+        let result = load_history(&store, "ses-1", 100_000, &config, "next turn");
+        assert!(
+            result.is_ok(),
+            "a corrupt tool_audit row elsewhere in the partition must not fail this \
+             session's turn: {:?}",
+            result.err()
+        );
+        let (messages, _) = result.expect("checked above");
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.tool_call_id.as_deref() == Some("tc-1")),
+            "ses-1's own tool-call message must still load"
         );
     }
 }

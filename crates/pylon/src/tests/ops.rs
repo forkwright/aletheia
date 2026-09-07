@@ -7,7 +7,8 @@ use std::{collections::HashSet, path::PathBuf};
 
 use axum::http::StatusCode;
 use koina::id::{NousId, SessionId, ToolName};
-use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest};
+use mneme::store::test_support::inject_raw_tool_audit_row;
+use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore};
 use mneme::types::{Role as MnemeRole, UsageRecord};
 use organon::error::Result;
 use organon::registry::ToolExecutor;
@@ -228,5 +229,57 @@ async fn get_ops_tools_returns_registry_and_metrics() {
                 && entry["receipt_state"] == "present"
                 && entry["receipt"] == "receipt-token"),
         "ops history should include receipt-bearing tool calls; body={body}"
+    );
+}
+
+#[tokio::test]
+async fn get_ops_tools_survives_a_corrupt_tool_audit_row() {
+    // WHY(#7217): `/ops/tools` used to WARN-log and discard the WHOLE
+    // history the moment ANY row in the shared `tool_audit` partition
+    // failed to decode -- the issue's own first-request repro, logged
+    // before any session existed at all. It must now disclose the corrupt
+    // count instead of silently returning an empty history with no signal
+    // that anything is wrong.
+    let session_dir = tempfile::TempDir::new().expect("session store tempdir");
+    let store_path = session_dir.path().join("sessions");
+    inject_raw_tool_audit_row(
+        &store_path,
+        "00000000000000000001",
+        br#"{"id":1,"session_id":"ses-x","nous_id":"alice","turn_seq":1,
+             "tool_call_id":"tc-corrupt","tool_name":null,"duration_ms":1,
+             "is_error":false,"outcome":"error","result":null,"approval":null,
+             "receipt":"","created_at":"2026-09-06T00:00:00.000Z"}"#,
+    )
+    .expect("raw corrupt tool_audit row injected");
+    // WHY: the store above was never opened via `SessionStore::open`, so it
+    // has no schema manifest yet; stamp one so the reopen below does not
+    // refuse before the corrupt row is ever reached.
+    SessionStore::stamp_legacy_schema_manifest(&store_path)
+        .expect("legacy schema manifest stamped over injected row");
+    let corrupt_store = SessionStore::open(&store_path).expect("corrupt session store opens");
+
+    let (state, _dir) = test_state().await;
+    {
+        let mut store = state.session_store.lock().await;
+        *store = corrupt_store;
+    }
+    let app = build_router(state, &test_security_config());
+
+    let resp = app.oneshot(authed_get("/api/v1/ops/tools")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(
+        !body["history_unavailable"]
+            .as_bool()
+            .expect("history_unavailable bool"),
+        "a single corrupt row is a partial read, not a read failure"
+    );
+    assert_eq!(body["tool_audit_corrupt_count"], 1);
+    assert!(
+        body["history"]
+            .as_array()
+            .expect("history array")
+            .is_empty(),
+        "the only row in the store is the corrupt one"
     );
 }

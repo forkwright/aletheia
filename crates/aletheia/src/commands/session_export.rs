@@ -233,6 +233,7 @@ mod tests {
                 receipt: Some("receipt-1".to_owned()),
                 created_at: "2026-06-28T00:00:31Z".to_owned(),
             }],
+            tool_audit_corrupt_count: 0,
             turn_attempts: vec![ReplayTurnAttempt {
                 version: 1,
                 turn_id: "01JTESTTURN000000000000001".to_owned(),
