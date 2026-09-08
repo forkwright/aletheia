@@ -692,10 +692,19 @@ jobs:
   gate-coverage-sovereign-hnsw:
     name: gate-coverage-sovereign-hnsw
     runs-on: ubuntu-latest
-    # WHY 60m: 45m canceled on a cold cache with the sovereign build still
-    # running. Ceiling for runaway jobs, not a target — same raise as the
-    # full-gate-build budget (#6896).
-    timeout-minutes: 60
+    # WHY 90m (2026-09-08, raised from 60m): the 60m ceiling had become a
+    # standing deadlock, not headroom. Swatinem/rust-cache only saves on a
+    # completed run, so a run that is cancelled for exceeding the timeout
+    # never populates the cache -- and three consecutive runs (main PRs
+    # #7130, #7249) each hit "No cache found", then were still mid-compile
+    # (never reaching the sovereign-hnsw test run itself) when cancelled at
+    # 1h00m17s-19s. A cold-cache compile alone had grown past the ceiling
+    # meant to cover compile-plus-test, so no run could ever finish, and no
+    # run finishing was the only way the cache would ever warm. 90m gives a
+    # cold-cache run enough room to actually complete once, after which the
+    # cache should make every subsequent run fast. Ceiling for runaway jobs,
+    # not a target — same raise as the full-gate-build budget (#6896).
+    timeout-minutes: 90
     # WHY: retirement PLAN.md Sec.2 land-dark/soak/delete needs every consumer
     # reachable through mneme/episteme (aletheia, nous, pylon, ...) testable
     # against the sovereign HNSW tree (runtime/hnsw_sovereign/) before the
