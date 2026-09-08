@@ -99,11 +99,13 @@ missing a requirement, only the maintainer's own extended style rationale.
 ## Generated kanon context
 
 - Registry name: `aletheia`
-- Forge repo: `forkwright/aletheia`
+- Repository identity: `forkwright/aletheia`
+- Hosting: `forge`
+- Push authority: Forge-primary - push and PR through the kanon forge (ratified at forkwright/kanon#3844)
 - Kanon prefix: `al`
 - Config source: `workflow/kanon.toml [projects.aletheia]`
 - Standards source: `crates/basanos/standards/STANDARDS.md`
-- MCP routing catalog: `workflow/AGENTS-mcp-tools.md`
+- MCP routing catalog: not vendored in this repo (see the kanon toolkit's `workflow/AGENTS-mcp-tools.md`)
 
 Run `kanon docs sync --check --repo aletheia` to verify this generated
 section and `kanon docs sync --apply --repo aletheia` to refresh it.
