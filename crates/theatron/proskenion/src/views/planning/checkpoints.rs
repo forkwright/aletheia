@@ -57,11 +57,8 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Pending gates appear at the top of the list once checkpoint routes land.
 #[component]
 pub(crate) fn CheckpointsView(project_id: String) -> Element {
+    let _ = &project_id;
     let fetch_state = use_signal(|| FetchState::NotAvailable);
-    // WHY: incrementing this signal causes the fetch effect to re-run.
-    let mut fetch_trigger = use_signal(|| 0u32);
-
-    let project_id_card = project_id.clone();
 
     rsx! {
         div {
@@ -99,7 +96,6 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
                     let pending = store.pending_count();
                     let sorted_owned: Vec<Checkpoint> =
                         store.sorted().into_iter().cloned().collect();
-                    let pid = project_id_card.clone();
 
                     rsx! {
                         div {
@@ -126,16 +122,10 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
                                 for checkpoint in sorted_owned {
                                     {
                                         let key = checkpoint.id.clone();
-                                        let project_id_inner = pid.clone();
                                         rsx! {
                                             CheckpointCard {
                                                 key: "{key}",
                                                 checkpoint,
-                                                project_id: project_id_inner,
-                                                on_action_complete: move |_| {
-                                                    let next = *fetch_trigger.peek() + 1;
-                                                    fetch_trigger.set(next);
-                                                },
                                             }
                                         }
                                     }

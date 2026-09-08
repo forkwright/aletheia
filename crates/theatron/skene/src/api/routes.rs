@@ -818,6 +818,18 @@ pub mod config {
 pub mod planning {
     use super::encoding;
 
+    // WHY(#7224): the requirement/checkpoint/proposal/discussion route-builder
+    // families (and the proskenion UI actions that called them) were deleted
+    // rather than backed with real pylon handlers. Neither dianoia nor pylon's
+    // workspace store has a persisted, individually-addressable requirement,
+    // checkpoint, proposal, or discussion entity to mutate -- only generic
+    // `ProjectState`/`Transition` phase-gate verification machinery -- so
+    // implementing the routes would have meant inventing a domain model this
+    // repo has not decided to build. Consistent with #4482's hide/disable
+    // precedent for the tab shell, taken to completion for the sub-actions:
+    // only the two verification routes below remain, since those are the only
+    // ones pylon actually serves.
+
     /// Template for `GET` project verification.
     ///
     /// `{project_id}` is a placeholder — do not interpolate directly.
@@ -831,46 +843,6 @@ pub mod planning {
     /// Use [`project_verification_refresh_path`] to build an encoded path.
     pub const PROJECT_VERIFICATION_REFRESH_TEMPLATE: &str =
         "/api/v1/planning/projects/{project_id}/verification/refresh";
-
-    /// Template for updating one requirement.
-    ///
-    /// `{project_id}` and `{requirement_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_requirement_path`] to build an
-    /// encoded path.
-    pub const PROJECT_REQUIREMENT_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/requirements/{requirement_id}";
-
-    /// Template for checkpoint actions.
-    ///
-    /// `{project_id}` and `{checkpoint_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_checkpoint_action_path`] to build
-    /// an encoded path.
-    pub const PROJECT_CHECKPOINT_ACTION_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/checkpoints/{checkpoint_id}/action";
-
-    /// Template for category proposal actions.
-    ///
-    /// `{project_id}` and `{proposal_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_proposal_path`] to build an encoded
-    /// path.
-    pub const PROJECT_PROPOSAL_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/proposals/{proposal_id}";
-
-    /// Template for answering a planning discussion.
-    ///
-    /// `{project_id}` and `{discussion_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_discussion_answer_path`] to build
-    /// an encoded path.
-    pub const PROJECT_DISCUSSION_ANSWER_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/discussions/{discussion_id}/answer";
-
-    /// Template for reopening a planning discussion.
-    ///
-    /// `{project_id}` and `{discussion_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_discussion_reopen_path`] to build
-    /// an encoded path.
-    pub const PROJECT_DISCUSSION_REOPEN_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/discussions/{discussion_id}/reopen";
 
     /// Build the path for `GET` project verification.
     ///
@@ -904,104 +876,6 @@ pub mod planning {
     #[must_use]
     pub fn project_verification_refresh_url(base_url: &str, project_id: &str) -> String {
         keryx::url::join_base_path(base_url, &project_verification_refresh_path(project_id))
-    }
-
-    /// Build the path for updating one requirement.
-    #[must_use]
-    pub fn project_requirement_path(project_id: &str, requirement_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let requirement = encoding::path_segment(requirement_id);
-        format!("/api/v1/planning/projects/{project}/requirements/{requirement}")
-    }
-
-    /// Build the absolute URL for updating one requirement.
-    #[must_use]
-    pub fn project_requirement_url(
-        base_url: &str,
-        project_id: &str,
-        requirement_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_requirement_path(project_id, requirement_id),
-        )
-    }
-
-    /// Build the path for a checkpoint action.
-    #[must_use]
-    pub fn project_checkpoint_action_path(project_id: &str, checkpoint_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let checkpoint = encoding::path_segment(checkpoint_id);
-        format!("/api/v1/planning/projects/{project}/checkpoints/{checkpoint}/action")
-    }
-
-    /// Build the absolute URL for a checkpoint action.
-    #[must_use]
-    pub fn project_checkpoint_action_url(
-        base_url: &str,
-        project_id: &str,
-        checkpoint_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_checkpoint_action_path(project_id, checkpoint_id),
-        )
-    }
-
-    /// Build the path for a category proposal action.
-    #[must_use]
-    pub fn project_proposal_path(project_id: &str, proposal_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let proposal = encoding::path_segment(proposal_id);
-        format!("/api/v1/planning/projects/{project}/proposals/{proposal}")
-    }
-
-    /// Build the absolute URL for a category proposal action.
-    #[must_use]
-    pub fn project_proposal_url(base_url: &str, project_id: &str, proposal_id: &str) -> String {
-        keryx::url::join_base_path(base_url, &project_proposal_path(project_id, proposal_id))
-    }
-
-    /// Build the path for answering a planning discussion.
-    #[must_use]
-    pub fn project_discussion_answer_path(project_id: &str, discussion_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let discussion = encoding::path_segment(discussion_id);
-        format!("/api/v1/planning/projects/{project}/discussions/{discussion}/answer")
-    }
-
-    /// Build the absolute URL for answering a planning discussion.
-    #[must_use]
-    pub fn project_discussion_answer_url(
-        base_url: &str,
-        project_id: &str,
-        discussion_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_discussion_answer_path(project_id, discussion_id),
-        )
-    }
-
-    /// Build the path for reopening a planning discussion.
-    #[must_use]
-    pub fn project_discussion_reopen_path(project_id: &str, discussion_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let discussion = encoding::path_segment(discussion_id);
-        format!("/api/v1/planning/projects/{project}/discussions/{discussion}/reopen")
-    }
-
-    /// Build the absolute URL for reopening a planning discussion.
-    #[must_use]
-    pub fn project_discussion_reopen_url(
-        base_url: &str,
-        project_id: &str,
-        discussion_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_discussion_reopen_path(project_id, discussion_id),
-        )
     }
 }
 
@@ -1219,30 +1093,6 @@ mod tests {
         assert_eq!(
             config::section_path("feature/flags"),
             "/api/v1/config/feature%2Fflags"
-        );
-    }
-
-    #[test]
-    fn planning_action_routes_encode_each_identifier_segment() {
-        assert_eq!(
-            project_requirement_path("proj/a?b", "req#one two"),
-            "/api/v1/planning/projects/proj%2Fa%3Fb/requirements/req%23one%20two"
-        );
-        assert_eq!(
-            project_checkpoint_action_path("proj:1", "check%2Fpoint"),
-            "/api/v1/planning/projects/proj%3A1/checkpoints/check%252Fpoint/action"
-        );
-        assert_eq!(
-            project_proposal_path("プロジェクト", "proposal/1"),
-            "/api/v1/planning/projects/%E3%83%97%E3%83%AD%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88/proposals/proposal%2F1"
-        );
-        assert_eq!(
-            project_discussion_answer_path("project", "discussion?1"),
-            "/api/v1/planning/projects/project/discussions/discussion%3F1/answer"
-        );
-        assert_eq!(
-            project_discussion_reopen_path("project", "discussion#1"),
-            "/api/v1/planning/projects/project/discussions/discussion%231/reopen"
         );
     }
 

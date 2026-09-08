@@ -19,7 +19,6 @@ pub(crate) mod help_overlay;
 pub(crate) mod input_bar;
 pub(crate) mod markdown;
 pub(crate) mod message;
-pub(crate) mod option_card;
 pub(crate) mod plan_card;
 pub(crate) mod planning_card;
 /// Quick input overlay for in-window message submission.
