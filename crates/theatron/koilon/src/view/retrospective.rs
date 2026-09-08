@@ -202,31 +202,6 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
         }
     }
 
-    if !app.dashboard.submitted_decisions.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "Decision History",
-                theme.style_fg().add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::raw(""));
-
-        for decision in &app.dashboard.submitted_decisions {
-            lines.push(Line::from(vec![
-                Span::raw("    "),
-                Span::styled("\u{25b8} ", theme.style_accent()),
-                Span::styled(decision.question.clone(), theme.style_fg()),
-            ]));
-            lines.push(Line::from(vec![
-                Span::raw("      "),
-                Span::styled("Answer: ", theme.style_dim()),
-                Span::styled(decision.chosen_label.clone(), theme.style_accent()),
-            ]));
-            lines.push(Line::raw(""));
-        }
-    }
-
     let block = Block::default().borders(Borders::NONE);
     let scroll = if app.viewport.render.auto_scroll {
         0
