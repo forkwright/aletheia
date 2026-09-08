@@ -1006,6 +1006,7 @@ pub async fn send_message(
                         provider: None,
                         request_id: Some(request_id_str.clone()),
                         error: Some(err_message.clone()),
+                        degraded_reason: None,
                     };
                     if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
                         let _ = tx.send(recorded).await;
@@ -1630,6 +1631,10 @@ pub async fn stream_turn(
                             cache_write_tokens: result.usage.cache_write_tokens,
                             stop_reason: result.stop_reason.clone(),
                             error: None,
+                            degraded_reason: result
+                                .degraded
+                                .as_ref()
+                                .map(|mode| mode.status_banner().to_owned()),
                         },
                     };
                     if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
@@ -1727,6 +1732,7 @@ pub async fn stream_turn(
                             cache_write_tokens: observed.usage.cache_write_tokens,
                             stop_reason: "error".to_owned(),
                             error: Some(err_message.clone()),
+                            degraded_reason: None,
                         },
                     };
                     if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
@@ -2334,6 +2340,13 @@ async fn emit_turn_result_events_buffered(
         provider: result.provider_used.clone(),
         request_id: request_id.map(ToOwned::to_owned),
         error: None,
+        // WHY(#7218): surface degraded mode (e.g. a timed-out recall stage
+        // skipped for this turn) on the response the client actually sees,
+        // not only in server-side traces.
+        degraded_reason: result
+            .degraded
+            .as_ref()
+            .map(|mode| mode.status_banner().to_owned()),
     };
     if let Some(recorded) = record_sse_event(buf, &event).await {
         let _ = tx.send(recorded).await;

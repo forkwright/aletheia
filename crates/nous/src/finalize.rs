@@ -260,7 +260,11 @@ fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {
     match result.degraded {
         Some(
             crate::pipeline::DegradedMode::DistillationCache { .. }
-            | crate::pipeline::DegradedMode::Unavailable { .. },
+            | crate::pipeline::DegradedMode::Unavailable { .. }
+            // WHY(#7218): recall timing out is a completed turn missing best-effort
+            // context, not a stopped-early turn — it belongs with the other
+            // Degraded variants, not with TurnBudgetExceeded's Timeout mapping.
+            | crate::pipeline::DegradedMode::RecallTimedOut { .. },
         ) => TurnAttemptStatus::Degraded,
         // WHY(#4854): a turn budget exceeded is a timeout, not an ordinary
         // completion — the prior mapping to `Completed` lost that distinction.
@@ -1021,6 +1025,32 @@ mod tests {
                 .expect("turn records");
         assert_eq!(records.len(), 2);
         assert_eq!(records[1].status, TurnAttemptStatus::Timeout);
+    }
+
+    #[test]
+    fn finalize_records_degraded_status_on_recall_timeout() {
+        // WHY(#7218): unlike a turn-budget timeout, a recall-stage timeout is
+        // a completed turn missing best-effort context, not a stopped-early
+        // turn — it must record Degraded, not Timeout.
+        let (store, session) = make_store_and_session();
+        let mut result = simple_result();
+        result.degraded = Some(crate::degraded_mode::DegradedMode::RecallTimedOut {
+            timeout_secs: 15,
+            status_banner: "recall timed out after 15s".to_owned(),
+        });
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].status, TurnAttemptStatus::Degraded);
+        // WHY: `RecallTimedOut` carries no provider-failure provenance (there
+        // was no failed provider attempt to describe) — same as
+        // `TurnBudgetExceeded`.
+        assert!(records[1].degraded_provenance.is_none());
     }
 
     #[test]

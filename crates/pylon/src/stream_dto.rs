@@ -96,6 +96,13 @@ pub(crate) enum SseEvent {
         /// Failure message when this turn ended in error. `None` on success.
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        /// Human-readable reason the turn completed in some degraded mode
+        /// (aletheia#7218), e.g. a best-effort pipeline stage like recall
+        /// timing out and being skipped. `None` on an ordinary turn.
+        /// Additive/backward-compatible: absent on legacy senders, so
+        /// clients must treat it as optional.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        degraded_reason: Option<String>,
     },
 
     /// An error occurred during the turn.
@@ -326,4 +333,10 @@ pub(crate) struct TurnOutcome {
     pub stop_reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Human-readable reason the turn completed in some degraded mode
+    /// (aletheia#7218). `None` on an ordinary turn.
+    /// Additive/backward-compatible: absent on legacy senders, so clients
+    /// must treat it as optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
 }

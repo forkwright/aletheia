@@ -779,10 +779,12 @@ pub struct TurnResult {
     pub signals: Vec<InteractionSignal>,
     /// Stop reason.
     pub stop_reason: String,
-    /// Set when the pipeline is operating in degraded mode (LLM unavailable).
+    /// Set when the pipeline served this turn in some degraded mode.
     ///
-    /// `None` on all normal turns. `Some` only when the execute stage fell back
-    /// to a cached distillation or an honest "unavailable" message.
+    /// `None` on all normal turns. `Some` when the execute stage fell back to
+    /// a cached distillation or an honest "unavailable" message, the turn's
+    /// wall-clock budget was exhausted, or (aletheia#7218) an upstream
+    /// best-effort stage such as recall timed out and was skipped.
     /// The TUI and API use this to render a warning banner instead of a normal
     /// response bubble.
     pub degraded: Option<crate::degraded_mode::DegradedMode>,
@@ -1429,30 +1431,32 @@ pub(crate) async fn run_pipeline(
         time_budget.end_stage(crate::budget::StageTimingStatus::Completed);
         stages_completed += 1;
 
-        run_stage_with_timeout(
-            config,
-            "recall",
-            &mut time_budget,
-            emitter,
-            run_recall_stage(
+        let recall_timeout_secs = recall_timeout_or_propagate(
+            run_stage_with_timeout(
                 config,
-                pipeline_config,
-                &mut ctx,
-                &input.content,
-                embedding_provider,
-                vector_search,
-                text_search,
-                Arc::clone(&providers),
+                "recall",
+                &mut time_budget,
                 emitter,
-                // WHY: pass the session surprise prior (already advanced by this
-                // turn, actor-side) for read-only per-candidate scoring. None
-                // when surprise scoring is inert, so no clone cost in the common
-                // case.
-                (config.recall.surprise_weight > f64::EPSILON)
-                    .then(|| input.session.surprise_calculator.clone()),
-            ),
-        )
-        .await?;
+                run_recall_stage(
+                    config,
+                    pipeline_config,
+                    &mut ctx,
+                    &input.content,
+                    embedding_provider,
+                    vector_search,
+                    text_search,
+                    Arc::clone(&providers),
+                    emitter,
+                    // WHY: pass the session surprise prior (already advanced by
+                    // this turn, actor-side) for read-only per-candidate
+                    // scoring. None when surprise scoring is inert, so no
+                    // clone cost in the common case.
+                    (config.recall.surprise_weight > f64::EPSILON)
+                        .then(|| input.session.surprise_calculator.clone()),
+                ),
+            )
+            .await,
+        )?;
         stages_completed += 1;
 
         run_stage_with_timeout(
@@ -1562,7 +1566,7 @@ pub(crate) async fn run_pipeline(
             }
         }
 
-        let result = run_execute_stage(
+        let mut result = run_execute_stage(
             config,
             pipeline_config,
             &ctx,
@@ -1580,6 +1584,23 @@ pub(crate) async fn run_pipeline(
         )
         .await?;
         stages_completed += 1;
+
+        // WHY(#7218): surface the recall-stage timeout on the response the caller
+        // actually sees, rather than only in server-side traces — a turn missing
+        // best-effort recall context should say so. Execute's own degraded state
+        // (e.g. `TurnBudgetExceeded`) takes precedence: recall timing out is the
+        // less severe condition and must not overwrite a more specific one.
+        if let Some(timeout_secs) = recall_timeout_secs
+            && result.degraded.is_none()
+        {
+            result.degraded = Some(crate::degraded_mode::DegradedMode::RecallTimedOut {
+                timeout_secs,
+                status_banner: format!(
+                    "Recall (semantic memory search) timed out after {timeout_secs}s and was \
+                     skipped for this turn; the response was generated without recalled context."
+                ),
+            });
+        }
 
         let finalize_outcome = run_stage_with_timeout(
             config,
@@ -2133,6 +2154,31 @@ where
     };
     time_budget.end_stage(status);
     result
+}
+
+/// Categorize the outcome of running the recall stage under
+/// [`run_stage_with_timeout`].
+///
+/// Recall is best-effort context enrichment — an *internal* recall error
+/// already degrades gracefully (`stages::apply_recall_result` logs a warning
+/// and continues with `ctx.recall_result` left `None`). A stage-level timeout
+/// used to be treated as a different, fatal case solely because
+/// `tokio::time::timeout` reports it as `Err` rather than the recall future
+/// itself returning one — that inconsistency aborted turns the model was
+/// otherwise able to answer (aletheia#7218). This downgrades only a timeout
+/// on the recall stage itself: any other error (a different stage's timeout,
+/// or some other error type escaping `run_recall_stage` unexpectedly) still
+/// propagates so the turn fails normally.
+fn recall_timeout_or_propagate(result: error::Result<()>) -> error::Result<Option<u32>> {
+    match result {
+        Ok(()) => Ok(None),
+        Err(error::Error::PipelineTimeout {
+            stage,
+            timeout_secs,
+            ..
+        }) if stage == "recall" => Ok(Some(timeout_secs)),
+        Err(e) => Err(e),
+    }
 }
 
 /// Typed pipeline events for the internal event system.

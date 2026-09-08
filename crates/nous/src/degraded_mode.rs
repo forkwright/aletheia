@@ -60,6 +60,22 @@ pub enum DegradedMode {
         /// Human-readable status shown alongside the response.
         status_banner: String,
     },
+    /// The recall pipeline stage (semantic memory search) exceeded its time
+    /// budget (aletheia#7218).
+    ///
+    /// Recall is best-effort context enrichment: an internal recall error
+    /// already degrades gracefully by skipping recalled knowledge and
+    /// continuing the turn (see `nous::pipeline::stages::apply_recall_result`).
+    /// A stage-level timeout — the recall future not returning in time,
+    /// rather than returning an error — used to be treated differently and
+    /// aborted the whole turn; this variant makes the two paths agree so a
+    /// slow recall never fails a turn the model was otherwise able to answer.
+    RecallTimedOut {
+        /// Configured recall-stage budget, in seconds, that was exceeded.
+        timeout_secs: u32,
+        /// Human-readable status shown alongside the response.
+        status_banner: String,
+    },
 }
 
 impl DegradedMode {
@@ -69,7 +85,8 @@ impl DegradedMode {
         match self {
             Self::DistillationCache { status_banner, .. }
             | Self::Unavailable { status_banner, .. }
-            | Self::TurnBudgetExceeded { status_banner } => status_banner,
+            | Self::TurnBudgetExceeded { status_banner }
+            | Self::RecallTimedOut { status_banner, .. } => status_banner,
         }
     }
 
@@ -80,7 +97,7 @@ impl DegradedMode {
             Self::DistillationCache { provenance, .. } | Self::Unavailable { provenance, .. } => {
                 Some(provenance)
             }
-            Self::TurnBudgetExceeded { .. } => None,
+            Self::TurnBudgetExceeded { .. } | Self::RecallTimedOut { .. } => None,
         }
     }
 }
@@ -572,5 +589,15 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<DegradedMode>();
         assert_send_sync::<DegradedProvenance>();
+    }
+
+    #[test]
+    fn recall_timed_out_exposes_banner_and_no_provenance() {
+        let mode = DegradedMode::RecallTimedOut {
+            timeout_secs: 15,
+            status_banner: "recall timed out after 15s".to_owned(),
+        };
+        assert_eq!(mode.status_banner(), "recall timed out after 15s");
+        assert!(mode.provenance().is_none());
     }
 }
