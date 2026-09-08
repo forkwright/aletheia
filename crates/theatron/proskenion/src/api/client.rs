@@ -11,7 +11,8 @@ use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use crate::state::commands::ServerCommandDescriptor;
 use crate::state::connection::ConnectionConfig;
 
-use skene::api::types::{Agent, AgentsResponse};
+use skene::api::error::ApiError;
+use skene::api::types::Agent;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const REST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -57,17 +58,6 @@ impl AuthenticatedClientError {
     pub(crate) fn is_invalid_token(&self) -> bool {
         matches!(self, Self::InvalidToken)
     }
-
-    /// User-facing connection remediation for malformed local configuration.
-    #[must_use]
-    pub(crate) fn connection_failure_reason(&self) -> &'static str {
-        match self {
-            Self::InvalidToken => {
-                "Invalid auth token. Update or clear the token in Connect or Settings > Servers."
-            }
-            Self::ClientBuild { .. } => "Failed to build the authenticated HTTP client.",
-        }
-    }
 }
 
 /// Log a shared-client construction failure without exposing credential text.
@@ -75,42 +65,30 @@ pub(crate) fn log_authenticated_client_error(err: &AuthenticatedClientError) {
     tracing::warn!(error = %err, "failed to build authenticated HTTP client");
 }
 
-/// Errors from the startup agent-roster fetch.
-#[derive(Debug, Snafu)]
-pub(crate) enum AgentRosterFetchError {
-    /// The local HTTP client could not be built from the configured connection.
-    #[snafu(display("failed to build authenticated client: {source}"))]
-    Client {
-        /// Underlying client construction error.
-        source: AuthenticatedClientError,
-    },
+/// Errors from the startup agent-roster fetch, wrapping the underlying
+/// [`skene::api::client::ApiClient`] failure directly (#7198): both call
+/// sites below hit the same `GET /api/v1/nous` route the client already
+/// wraps, so there is nothing proskenion-specific left to classify beyond
+/// "was this a rejected credential".
+#[derive(Debug)]
+pub(crate) struct AgentRosterFetchError(ApiError);
 
-    /// The server rejected the configured credentials.
-    #[snafu(display("authentication failed while loading the agent roster"))]
-    Auth,
+impl std::fmt::Display for AgentRosterFetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
 
-    /// The request failed before a response was received.
-    #[snafu(display("failed to request agent roster: {source}"))]
-    Request {
-        /// Underlying HTTP error.
-        source: reqwest::Error,
-    },
+impl std::error::Error for AgentRosterFetchError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
 
-    /// The server returned a non-success response other than auth failure.
-    #[snafu(display("agent roster request returned {status}: {message}"))]
-    Server {
-        /// HTTP status code.
-        status: u16,
-        /// Human-readable server response.
-        message: String,
-    },
-
-    /// The server returned success with an unparseable response body.
-    #[snafu(display("failed to decode agent roster response: {source}"))]
-    Decode {
-        /// Underlying decode error.
-        source: reqwest::Error,
-    },
+impl From<ApiError> for AgentRosterFetchError {
+    fn from(source: ApiError) -> Self {
+        Self(source)
+    }
 }
 
 impl AgentRosterFetchError {
@@ -118,31 +96,27 @@ impl AgentRosterFetchError {
     /// instead of an empty roster.
     #[must_use]
     pub(crate) fn is_auth_failure(&self) -> bool {
-        match self {
-            Self::Auth => true,
-            Self::Client { source } => source.is_invalid_token(),
-            Self::Request { .. } | Self::Server { .. } | Self::Decode { .. } => false,
-        }
+        matches!(self.0, ApiError::Auth | ApiError::InvalidToken)
     }
 
     /// User-facing reason to place in connection state for auth failures.
     #[must_use]
     pub(crate) fn connection_failure_reason(&self) -> String {
-        match self {
-            Self::Auth => {
+        match self.0 {
+            ApiError::Auth => {
                 "Authentication failed while loading the agent roster. Check the server auth token."
                     .to_string()
             }
-            Self::Client { source } => source.connection_failure_reason().to_string(),
-            Self::Request { .. } | Self::Server { .. } | Self::Decode { .. } => {
-                "Failed to load the agent roster.".to_string()
+            ApiError::InvalidToken => {
+                "Invalid auth token. Update or clear the token in Connect or Settings > Servers."
+                    .to_string()
             }
+            _ => "Failed to load the agent roster.".to_string(),
         }
     }
 }
 
-/// Fetch the initial sidebar agent roster using the shared authenticated
-/// request builder.
+/// Fetch the initial sidebar agent roster via [`skene::api::client::ApiClient::agents`].
 ///
 /// WHY(#4827): startup roster loading runs before most routed views render, but
 /// it must still use the same bearer-token-bearing connection context as those
@@ -151,43 +125,8 @@ impl AgentRosterFetchError {
 pub(crate) async fn fetch_agent_roster(
     config: &ConnectionConfig,
 ) -> Result<Vec<Agent>, AgentRosterFetchError> {
-    let client = authenticated_client(config).context(ClientSnafu)?;
-    let base = config.server_url.trim_end_matches('/');
-    let url = format!("{base}/api/v1/nous");
-
-    let resp = client.get(&url).send().await.context(RequestSnafu)?;
-    let status = resp.status();
-
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return AuthSnafu.fail();
-    }
-
-    if !status.is_success() {
-        let status_code = status.as_u16();
-        let detail = match resp.text().await {
-            Ok(text) => text,
-            Err(err) => err.to_string(),
-        };
-        let message = skene::api::error::parse_pylon_error_body(&detail).map_or_else(
-            || {
-                let trimmed = detail.trim();
-                if trimmed.is_empty() {
-                    status.to_string()
-                } else {
-                    trimmed.to_string()
-                }
-            },
-            |detail| detail.message,
-        );
-        return ServerSnafu {
-            status: status_code,
-            message,
-        }
-        .fail();
-    }
-
-    let wrapper: AgentsResponse = resp.json().await.context(DecodeSnafu)?;
-    Ok(wrapper.nous)
+    let client = skene::api::client::ApiClient::new(&config.server_url, config.auth_token.clone())?;
+    Ok(client.agents().await?)
 }
 
 /// Fetch server-discovered command descriptors from the agent capability
@@ -197,145 +136,77 @@ pub(crate) async fn fetch_agent_roster(
 /// server discovery contract. Pylon already publishes per-agent tool
 /// capabilities on `/api/v1/nous`; this function maps that wire contract into
 /// command descriptors instead of inventing unsupported slash commands.
+///
+/// WHY(#7198): reuses [`skene::api::types::Agent::tools`] — already the full
+/// `NousTool` shape (name/enabled/description) this mapping needs — instead
+/// of a second hand-rolled `CommandDiscoveryResponse` mirror deserialized
+/// from a second direct fetch of the same route.
 pub(crate) async fn fetch_server_command_descriptors(
     config: &ConnectionConfig,
 ) -> Result<Vec<ServerCommandDescriptor>, AgentRosterFetchError> {
-    let client = authenticated_client(config).context(ClientSnafu)?;
-    let base = config.server_url.trim_end_matches('/');
-    let url = format!("{base}/api/v1/nous");
+    let client = skene::api::client::ApiClient::new(&config.server_url, config.auth_token.clone())?;
+    let agents = client.agents().await?;
 
-    let resp = client.get(&url).send().await.context(RequestSnafu)?;
-    let status = resp.status();
-
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return AuthSnafu.fail();
-    }
-
-    if !status.is_success() {
-        let status_code = status.as_u16();
-        let detail = match resp.text().await {
-            Ok(text) => text,
-            Err(err) => err.to_string(),
-        };
-        let message = skene::api::error::parse_pylon_error_body(&detail).map_or_else(
-            || {
-                let trimmed = detail.trim();
-                if trimmed.is_empty() {
-                    status.to_string()
-                } else {
-                    trimmed.to_string()
+    Ok(agents
+        .into_iter()
+        .filter(|agent| !agent.id.as_str().trim().is_empty())
+        .flat_map(|agent| {
+            let agent_id = agent.id.clone();
+            let agent_name = agent
+                .name
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| agent.id.as_str().to_string());
+            agent.tools.into_iter().filter_map(move |tool| {
+                let tool_name = tool.name.trim().to_string();
+                if tool_name.is_empty() {
+                    return None;
                 }
-            },
-            |detail| detail.message,
-        );
-        return ServerSnafu {
-            status: status_code,
-            message,
-        }
-        .fail();
-    }
-
-    let wrapper: CommandDiscoveryResponse = resp.json().await.context(DecodeSnafu)?;
-    Ok(wrapper.into_descriptors())
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct CommandDiscoveryResponse {
-    #[serde(default, alias = "agents")]
-    nous: Vec<CommandDiscoveryAgent>,
-}
-
-impl CommandDiscoveryResponse {
-    fn into_descriptors(self) -> Vec<ServerCommandDescriptor> {
-        self.nous
-            .into_iter()
-            .filter(|agent| !agent.id.trim().is_empty())
-            .flat_map(|agent| {
-                let agent_id: skene::id::ApiNousId = agent.id.as_str().into();
-                let agent_name = agent
-                    .name
-                    .filter(|name| !name.trim().is_empty())
-                    .unwrap_or(agent.id);
-                agent.tools.into_iter().filter_map(move |tool| {
-                    let tool_name = tool.name.trim().to_string();
-                    if tool_name.is_empty() {
-                        return None;
-                    }
-                    let description = tool
-                        .description
-                        .filter(|desc| !desc.trim().is_empty())
-                        .unwrap_or_else(|| format!("{tool_name} server tool"));
-                    Some(ServerCommandDescriptor {
-                        agent_id: agent_id.clone(),
-                        agent_name: agent_name.clone(),
-                        tool_name,
-                        description,
-                        enabled: tool.enabled,
-                    })
+                let description = tool
+                    .description
+                    .filter(|desc| !desc.trim().is_empty())
+                    .unwrap_or_else(|| format!("{tool_name} server tool"));
+                Some(ServerCommandDescriptor {
+                    agent_id: agent_id.clone(),
+                    agent_name: agent_name.clone(),
+                    tool_name,
+                    description,
+                    enabled: tool.enabled,
                 })
             })
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct CommandDiscoveryAgent {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    tools: Vec<CommandDiscoveryTool>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct CommandDiscoveryTool {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    enabled: bool,
-    #[serde(default)]
-    description: Option<String>,
+        })
+        .collect())
 }
 
 /// Persist `content` to the workspace file at `path` (relative to the vault
-/// root) via the workspace content write endpoint.
+/// root) via [`skene::api::client::ApiClient::workspace_write_file`].
 ///
 /// The server resolves `path` through its path-escape guard; the client only
 /// ever holds workspace-relative paths. Returns a [`SaveOutcome`] mapping the
-/// HTTP result to the UX-relevant cases.
+/// HTTP result to the UX-relevant cases. `if_match_mtime_ms` is not threaded
+/// through from the viewer today (#7198 carried this call site behind skene
+/// without changing behavior); `SaveOutcome::Conflict` stays reachable only
+/// if the server independently returns 409 without a client-supplied guard.
 pub(crate) async fn save_workspace_file(
     config: &ConnectionConfig,
     path: &str,
     content: &str,
 ) -> SaveOutcome {
-    let client = match authenticated_client(config) {
-        Ok(client) => client,
-        Err(err) => return SaveOutcome::Failed(err.to_string()),
-    };
-    let base = config.server_url.trim_end_matches('/');
-    let url = format!("{base}/api/v1/workspace/files/content");
-    let body = serde_json::json!({ "path": path, "content": content });
+    let client =
+        match skene::api::client::ApiClient::new(&config.server_url, config.auth_token.clone()) {
+            Ok(client) => client,
+            Err(err) => return SaveOutcome::Failed(err.to_string()),
+        };
 
-    match client.put(&url).json(&body).send().await {
-        Ok(resp) if resp.status().is_success() => SaveOutcome::Saved,
-        Ok(resp) if resp.status().as_u16() == 413 => SaveOutcome::TooLarge,
-        Ok(resp) if resp.status().as_u16() == 409 => SaveOutcome::Conflict,
-        Ok(resp) => {
-            let status = resp.status();
-            let detail = resp.text().await.unwrap_or_default();
-            if detail.is_empty() {
-                SaveOutcome::Failed(format!("server returned {status}"))
-            } else {
-                SaveOutcome::Failed(format!("server returned {status}: {}", detail.trim()))
-            }
-        }
-        Err(e) => SaveOutcome::Failed(format!("connection error: {e}")),
+    match client.workspace_write_file(path, content, None).await {
+        Ok(_response) => SaveOutcome::Saved,
+        Err(ApiError::Server { status: 413, .. }) => SaveOutcome::TooLarge,
+        Err(ApiError::Server { status: 409, .. }) => SaveOutcome::Conflict,
+        Err(err) => SaveOutcome::Failed(err.to_string()),
     }
 }
 
 /// Ask the server to open the workspace file at `path` in the operator's
-/// default application via `POST /api/v1/workspace/open`.
+/// default application via [`skene::api::client::ApiClient::workspace_open_file`].
 ///
 /// WHY: the client never learns the absolute vault root, so opening with the
 /// host's default app is a server-side action over the relative path (the
@@ -345,24 +216,13 @@ pub(crate) async fn open_workspace_file(
     config: &ConnectionConfig,
     path: &str,
 ) -> Result<(), String> {
-    let client = authenticated_client(config).map_err(|err| err.to_string())?;
-    let base = config.server_url.trim_end_matches('/');
-    let url = format!("{base}/api/v1/workspace/open");
-    let body = serde_json::json!({ "path": path });
-
-    match client.post(&url).json(&body).send().await {
-        Ok(resp) if resp.status().is_success() => Ok(()),
-        Ok(resp) => {
-            let status = resp.status();
-            let detail = resp.text().await.unwrap_or_default();
-            if detail.is_empty() {
-                Err(format!("server returned {status}"))
-            } else {
-                Err(format!("server returned {status}: {}", detail.trim()))
-            }
-        }
-        Err(e) => Err(format!("connection error: {e}")),
-    }
+    let client = skene::api::client::ApiClient::new(&config.server_url, config.auth_token.clone())
+        .map_err(|err| err.to_string())?;
+    client
+        .workspace_open_file(path)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 /// Build a `reqwest::Client` with the Bearer token from `config` attached
@@ -632,9 +492,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(AgentRosterFetchError::Client {
-                source: AuthenticatedClientError::InvalidToken
-            })
+            Err(AgentRosterFetchError(ApiError::InvalidToken))
         ));
         let accepted = tokio::time::timeout(Duration::from_millis(100), listener.accept()).await;
         assert!(accepted.is_err(), "invalid token must not reach the server");

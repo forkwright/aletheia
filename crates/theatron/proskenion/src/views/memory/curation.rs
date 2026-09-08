@@ -3,7 +3,6 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::memory::FactSensitivity;
 use crate::state::toasts::{ToastSeverity, ToastStore};
@@ -174,7 +173,10 @@ pub(crate) fn ForgetFactDialog(
                                 let cfg = config.read().clone();
                                 let id = id.clone();
                                 spawn(async move {
-                                    let client = match authenticated_client(&cfg) {
+                                    let client = match skene::api::client::ApiClient::new(
+                                        &cfg.server_url,
+                                        cfg.auth_token.clone(),
+                                    ) {
                                         Ok(client) => client,
                                         Err(err) => {
                                             push_error_toast(format!("Forget error: {err}"));
@@ -182,44 +184,18 @@ pub(crate) fn ForgetFactDialog(
                                             return;
                                         }
                                     };
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        keryx::url::encode_path_segment(&id);
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/forget");
-                                    match client
-                                        .post(&url)
-                                        .json(&serde_json::json!({ "reason": "user_requested" }))
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    match client.knowledge_forget(&id).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, "fact forgotten");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 ts.write().push(ToastSeverity::Info, "Fact forgotten");
                                             }
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_else(|e| {
-                                                tracing::warn!("failed to read forget error body: {e}");
-                                                String::new()
-                                            });
-                                            tracing::warn!(status = %status, "forget failed");
+                                        Err(err) => {
+                                            tracing::warn!("forget failed: {err}");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                let message = if detail.is_empty() {
-                                                    format!("Forget failed: {status}")
-                                                } else {
-                                                    format!("Forget failed: {status} — {detail}")
-                                                };
-                                                ts.write().push(ToastSeverity::Error, message);
-                                            }
-                                            is_submitting.set(false);
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("forget error: {e}");
-                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                ts.write().push(ToastSeverity::Error, format!("Forget error: {e}"));
+                                                ts.write().push(ToastSeverity::Error, format!("Forget failed: {err}"));
                                             }
                                             is_submitting.set(false);
                                         }
@@ -281,7 +257,10 @@ pub(crate) fn RestoreFactDialog(
                                 let cfg = config.read().clone();
                                 let id = id.clone();
                                 spawn(async move {
-                                    let client = match authenticated_client(&cfg) {
+                                    let client = match skene::api::client::ApiClient::new(
+                                        &cfg.server_url,
+                                        cfg.auth_token.clone(),
+                                    ) {
                                         Ok(client) => client,
                                         Err(err) => {
                                             push_error_toast(format!("Restore error: {err}"));
@@ -289,39 +268,18 @@ pub(crate) fn RestoreFactDialog(
                                             return;
                                         }
                                     };
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        keryx::url::encode_path_segment(&id);
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/restore");
-                                    match client.post(&url).send().await {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    match client.knowledge_restore(&id).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, "fact restored");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 ts.write().push(ToastSeverity::Info, "Fact restored");
                                             }
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_else(|e| {
-                                                tracing::warn!("failed to read restore error body: {e}");
-                                                String::new()
-                                            });
-                                            tracing::warn!(status = %status, "restore failed");
+                                        Err(err) => {
+                                            tracing::warn!("restore failed: {err}");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                let message = if detail.is_empty() {
-                                                    format!("Restore failed: {status}")
-                                                } else {
-                                                    format!("Restore failed: {status} — {detail}")
-                                                };
-                                                ts.write().push(ToastSeverity::Error, message);
-                                            }
-                                            is_submitting.set(false);
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("restore error: {e}");
-                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                ts.write().push(ToastSeverity::Error, format!("Restore error: {e}"));
+                                                ts.write().push(ToastSeverity::Error, format!("Restore failed: {err}"));
                                             }
                                             is_submitting.set(false);
                                         }
@@ -414,7 +372,10 @@ pub(crate) fn AdjustConfidenceDialog(
                                 let id = id.clone();
                                 let conf = *value.read();
                                 spawn(async move {
-                                    let client = match authenticated_client(&cfg) {
+                                    let client = match skene::api::client::ApiClient::new(
+                                        &cfg.server_url,
+                                        cfg.auth_token.clone(),
+                                    ) {
                                         Ok(client) => client,
                                         Err(err) => {
                                             push_error_toast(format!("Update error: {err}"));
@@ -422,44 +383,18 @@ pub(crate) fn AdjustConfidenceDialog(
                                             return;
                                         }
                                     };
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        keryx::url::encode_path_segment(&id);
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/confidence");
-                                    match client
-                                        .put(&url)
-                                        .json(&serde_json::json!({ "confidence": conf }))
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    match client.knowledge_update_confidence(&id, conf).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, confidence = conf, "confidence updated");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 ts.write().push(ToastSeverity::Info, "Confidence updated");
                                             }
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_else(|e| {
-                                                tracing::warn!("failed to read confidence error body: {e}");
-                                                String::new()
-                                            });
-                                            tracing::warn!(status = %status, "confidence update failed");
+                                        Err(err) => {
+                                            tracing::warn!("confidence update failed: {err}");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                let message = if detail.is_empty() {
-                                                    format!("Confidence update failed: {status}")
-                                                } else {
-                                                    format!("Confidence update failed: {status} — {detail}")
-                                                };
-                                                ts.write().push(ToastSeverity::Error, message);
-                                            }
-                                            is_submitting.set(false);
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("confidence update error: {e}");
-                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                ts.write().push(ToastSeverity::Error, format!("Confidence update error: {e}"));
+                                                ts.write().push(ToastSeverity::Error, format!("Confidence update failed: {err}"));
                                             }
                                             is_submitting.set(false);
                                         }
@@ -540,7 +475,10 @@ pub(crate) fn ChangeSensitivityDialog(
                                 let id = id.clone();
                                 let sens = *selected.read();
                                 spawn(async move {
-                                    let client = match authenticated_client(&cfg) {
+                                    let client = match skene::api::client::ApiClient::new(
+                                        &cfg.server_url,
+                                        cfg.auth_token.clone(),
+                                    ) {
                                         Ok(client) => client,
                                         Err(err) => {
                                             push_error_toast(format!("Update error: {err}"));
@@ -548,44 +486,21 @@ pub(crate) fn ChangeSensitivityDialog(
                                             return;
                                         }
                                     };
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        keryx::url::encode_path_segment(&id);
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/sensitivity");
                                     match client
-                                        .put(&url)
-                                        .json(&serde_json::json!({ "sensitivity": sens.wire() }))
-                                        .send()
+                                        .knowledge_update_sensitivity(&id, sens.wire())
                                         .await
                                     {
-                                        Ok(resp) if resp.status().is_success() => {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, sensitivity = sens.wire(), "sensitivity updated");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 ts.write().push(ToastSeverity::Info, "Sensitivity updated");
                                             }
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_else(|e| {
-                                                tracing::warn!("failed to read sensitivity error body: {e}");
-                                                String::new()
-                                            });
-                                            tracing::warn!(status = %status, "sensitivity update failed");
+                                        Err(err) => {
+                                            tracing::warn!("sensitivity update failed: {err}");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                let message = if detail.is_empty() {
-                                                    format!("Sensitivity update failed: {status}")
-                                                } else {
-                                                    format!("Sensitivity update failed: {status} — {detail}")
-                                                };
-                                                ts.write().push(ToastSeverity::Error, message);
-                                            }
-                                            is_submitting.set(false);
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!("sensitivity update error: {e}");
-                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                                                ts.write().push(ToastSeverity::Error, format!("Sensitivity update error: {e}"));
+                                                ts.write().push(ToastSeverity::Error, format!("Sensitivity update failed: {err}"));
                                             }
                                             is_submitting.set(false);
                                         }

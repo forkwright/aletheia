@@ -45,7 +45,7 @@ use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservat
 use crate::views::chat_helpers::{format_tool_call, render_approval};
 use crate::views::chat_selection::{
     activate_chat_selection, history_messages_to_legacy, oldest_history_seq,
-    parse_history_messages, resolve_chat_session_key,
+    resolve_chat_session_key,
 };
 
 /// Estimated message height in pixels for virtual scroll calculations.
@@ -162,22 +162,6 @@ fn history_total_count(selection: &ChatSelection) -> Option<usize> {
 fn active_session_matches(state: &ChatState, selection: &ChatSelection) -> bool {
     state.agent_id.as_ref() == Some(&selection.agent_id)
         && state.session_key.as_deref() == Some(selection.session_key.as_str())
-}
-
-fn chat_history_url(
-    base_url: &str,
-    session_id: &skene::id::ApiSessionId,
-    before: Option<i64>,
-) -> String {
-    let base = base_url.trim_end_matches('/');
-    let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
-    let mut url =
-        format!("{base}/api/v1/sessions/{encoded}/history?limit={HISTORY_PAGE_SIZE_QUERY}");
-    if let Some(before_seq) = before {
-        url.push_str("&before=");
-        url.push_str(&before_seq.to_string());
-    }
-    url
 }
 
 fn route_for_command_destination(destination: CommandDestination) -> Route {
@@ -380,27 +364,23 @@ fn fetch_chat_history_page(
     }
 
     spawn(async move {
-        let client = match crate::api::client::authenticated_client(&cfg) {
-            Ok(client) => client,
-            Err(err) => {
-                history_state.set(ChatHistoryState::failed(
-                    err.to_string(),
-                    total_count,
-                    before,
-                ));
-                return;
-            }
-        };
-        let url = chat_history_url(&cfg.server_url, &session_id, before);
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    history_state.set(ChatHistoryState::failed(
+                        err.to_string(),
+                        total_count,
+                        before,
+                    ));
+                    return;
+                }
+            };
 
-        let result = match client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => match resp.text().await {
-                Ok(text) => parse_history_messages(&text),
-                Err(e) => Err(format!("read history: {e}")),
-            },
-            Ok(resp) => Err(format!("history request failed: {}", resp.status())),
-            Err(e) => Err(format!("history connection error: {e}")),
-        };
+        let result = client
+            .history(session_id.as_ref(), Some(HISTORY_PAGE_SIZE_QUERY), before)
+            .await
+            .map_err(|err| err.to_string());
 
         if !active_session_matches(&legacy_state.read(), &selection) {
             return;

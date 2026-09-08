@@ -1,6 +1,6 @@
 //! Shared chat activation helpers for cross-view navigation.
 
-use skene::api::types::{HistoryMessage, HistoryResponse};
+use skene::api::types::HistoryMessage;
 use skene::id::ApiNousId;
 
 use crate::components::chat::ChatState;
@@ -85,18 +85,6 @@ pub(crate) fn activate_chat_selection(
     ChatActivation { session_changed }
 }
 
-pub(crate) fn parse_history_messages(text: &str) -> Result<Vec<HistoryMessage>, String> {
-    match serde_json::from_str::<HistoryResponse>(text) {
-        Ok(wrapper) => Ok(wrapper.messages),
-        Err(wrapper_err) => match serde_json::from_str::<Vec<HistoryMessage>>(text) {
-            Ok(messages) => Ok(messages),
-            Err(list_err) => Err(format!(
-                "parse history response: wrapper error: {wrapper_err}; list error: {list_err}"
-            )),
-        },
-    }
-}
-
 pub(crate) fn history_messages_to_legacy(messages: &[HistoryMessage]) -> Vec<LegacyChatMessage> {
     messages
         .iter()
@@ -157,7 +145,7 @@ fn history_content_to_string(content: Option<&serde_json::Value>) -> String {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
-    use skene::api::types::Agent;
+    use skene::api::types::{Agent, HistoryResponse};
     use skene::id::{ApiNousId, ApiSessionId};
 
     use super::*;
@@ -169,6 +157,8 @@ mod tests {
             model: None,
             emoji: None,
             status: None,
+            tools: Vec::new(),
+            enabled: None,
         }
     }
 
@@ -349,7 +339,9 @@ mod tests {
             &mut tab_bar,
             &mut window_state,
         );
-        let messages = parse_history_messages(json).unwrap();
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
         chat_state.messages = history_messages_to_legacy(&messages);
 
         assert_eq!(oldest_history_seq(&messages), Some(1));

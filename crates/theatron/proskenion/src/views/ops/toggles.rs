@@ -1,10 +1,8 @@
 //! Toggle controls panel: agent enable/disable, tool toggles, feature flags.
 
 use dioxus::prelude::*;
-use skene::api::routes::nous::{agent_tools_url, agent_url};
 use skeue::EmptyState;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::ops::{
     FeatureFlagConfigEntry, RecoverOutcome, ReloadOutcome, ToggleActionResult, ToggleApplyState,
@@ -713,78 +711,37 @@ fn request_confirm(mut sig: Signal<Option<skene::id::ApiNousId>>, id: skene::id:
     sig.set(Some(id));
 }
 
-fn default_true() -> bool {
-    true
-}
-
-/// Server response shape for `PATCH /api/v1/nous/{id}`.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct AgentToggleUpdateResponse {
-    #[serde(default)]
-    enabled: Option<bool>,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default = "default_true")]
-    config_applied: bool,
-    #[serde(default = "default_true")]
-    live_applied: bool,
-    #[serde(default)]
-    reload_required: bool,
-    #[serde(default)]
-    restart_required: bool,
-}
-
-impl AgentToggleUpdateResponse {
-    fn action_result(&self) -> ToggleActionResult {
-        ToggleActionResult {
-            config_applied: self.config_applied,
-            live_applied: self.live_applied,
-            reload_required: self.reload_required,
-            restart_required: self.restart_required,
-        }
+// WHY(#4565): `PATCH /api/v1/nous/{id}` and `PATCH /api/v1/nous/{id}/tools`
+// now go through skene's typed `ApiClient` (`update_agent_enabled`,
+// `update_agent_tool`) instead of a hand-built request on the raw client.
+// skene's `NousSummary`/`NousToolsResponse` carry the `*_applied`/
+// `*_required` fields as `Option<bool>` (a server old enough to omit them
+// deserializes to `None`); the `unwrap_or` defaults here reproduce the
+// exact `#[serde(default = "default_true")]`/`#[serde(default)]` behavior
+// the pre-migration local response types applied to the same fields.
+fn agent_toggle_action_result(body: &skene::api::types::NousSummary) -> ToggleActionResult {
+    ToggleActionResult {
+        config_applied: body.config_applied.unwrap_or(true),
+        live_applied: body.live_applied.unwrap_or(true),
+        reload_required: body.reload_required.unwrap_or(false),
+        restart_required: body.restart_required.unwrap_or(false),
     }
 }
 
-/// Tool entry returned by `PATCH /api/v1/nous/{id}/tools`.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct ToolToggleUpdateEntry {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    enabled: bool,
+fn tool_toggle_action_result(body: &skene::api::types::NousToolsResponse) -> ToggleActionResult {
+    ToggleActionResult {
+        config_applied: body.config_applied.unwrap_or(true),
+        live_applied: body.live_applied.unwrap_or(true),
+        reload_required: body.reload_required.unwrap_or(false),
+        restart_required: body.restart_required.unwrap_or(false),
+    }
 }
 
-/// Server response shape for `PATCH /api/v1/nous/{id}/tools`.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct ToolToggleUpdateResponse {
-    #[serde(default)]
-    tools: Vec<ToolToggleUpdateEntry>,
-    #[serde(default = "default_true")]
-    config_applied: bool,
-    #[serde(default = "default_true")]
-    live_applied: bool,
-    #[serde(default)]
-    reload_required: bool,
-    #[serde(default)]
-    restart_required: bool,
-}
-
-impl ToolToggleUpdateResponse {
-    fn action_result(&self) -> ToggleActionResult {
-        ToggleActionResult {
-            config_applied: self.config_applied,
-            live_applied: self.live_applied,
-            reload_required: self.reload_required,
-            restart_required: self.restart_required,
-        }
-    }
-
-    fn enabled_for(&self, tool_name: &str) -> Option<bool> {
-        self.tools
-            .iter()
-            .find(|tool| tool.name == tool_name)
-            .map(|tool| tool.enabled)
-    }
+fn tool_enabled_for(body: &skene::api::types::NousToolsResponse, tool_name: &str) -> Option<bool> {
+    body.tools
+        .iter()
+        .find(|tool| tool.name == tool_name)
+        .map(|tool| tool.enabled)
 }
 
 fn fire_agent_toggle(
@@ -799,76 +756,42 @@ fn fire_agent_toggle(
     let agent_id = id.clone();
 
     spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    store
+                        .write()
+                        .resolve_agent(&id, false, prev_val, Some(err.to_string()));
+                    return;
+                }
+            };
+        let new_enabled = !prev_val;
+
+        // WHY(#4565): `update_agent_enabled`'s response already carries a
+        // freshly computed live `status` (pylon's handler always fills it
+        // in, never leaves it absent), so the second best-effort
+        // `agent_status` fetch the pre-migration raw-client version needed
+        // to backfill a sometimes-missing status is no longer necessary.
+        match client
+            .update_agent_enabled(agent_id.as_ref(), new_enabled)
+            .await
+        {
+            Ok(body) => {
+                let action_result = agent_toggle_action_result(&body);
+                store.write().resolve_agent_result(
+                    &id,
+                    prev_val,
+                    Some(body.enabled),
+                    Some(body.status),
+                    action_result,
+                    None,
+                );
+            }
             Err(err) => {
                 store
                     .write()
                     .resolve_agent(&id, false, prev_val, Some(err.to_string()));
-                return;
-            }
-        };
-        let new_enabled = !prev_val;
-        let url = agent_url(&cfg.server_url, agent_id.as_ref());
-
-        let result = client
-            .patch(&url)
-            .json(&serde_json::json!({ "enabled": new_enabled }))
-            .send()
-            .await;
-
-        match result {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.json::<AgentToggleUpdateResponse>().await {
-                    Ok(mut body) => {
-                        // WHY(#4565): nous get-one now goes through skene's
-                        // typed `ApiClient` rather than a second hand-built
-                        // `/api/v1/nous/{id}` request on the same raw
-                        // client -- best-effort as before: any failure here
-                        // just leaves `body.status` at the toggle
-                        // response's own value.
-                        if let Ok(status_client) = skene::api::client::ApiClient::new(
-                            &cfg.server_url,
-                            cfg.auth_token.clone(),
-                        ) && let Ok(status_body) =
-                            status_client.agent_status(agent_id.as_ref()).await
-                        {
-                            body.status = Some(status_body.status);
-                        }
-                        let action_result = body.action_result();
-                        store.write().resolve_agent_result(
-                            &id,
-                            prev_val,
-                            body.enabled,
-                            body.status,
-                            action_result,
-                            None,
-                        );
-                    }
-                    Err(err) => {
-                        store.write().resolve_agent(
-                            &id,
-                            false,
-                            prev_val,
-                            Some(format!("failed to parse agent response: {err}")),
-                        );
-                    }
-                }
-            }
-            Ok(resp) => {
-                let status = resp.status();
-                let message = status_failure_message(status, resp).await;
-                store
-                    .write()
-                    .resolve_agent(&id, false, prev_val, Some(message));
-            }
-            Err(e) => {
-                store.write().resolve_agent(
-                    &id,
-                    false,
-                    prev_val,
-                    Some(format!("connection error: {e}")),
-                );
             }
         }
     });
@@ -888,8 +811,36 @@ fn fire_tool_toggle(
     let tname = tool_name.clone();
 
     spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    store.write().resolve_tool(
+                        &agent_id,
+                        &tool_name,
+                        false,
+                        prev_val,
+                        Some(err.to_string()),
+                    );
+                    return;
+                }
+            };
+        let new_enabled = !prev_val;
+
+        match client
+            .update_agent_tool(aid.as_ref(), &tname, new_enabled)
+            .await
+        {
+            Ok(body) => {
+                store.write().resolve_tool_result(
+                    &agent_id,
+                    &tool_name,
+                    prev_val,
+                    tool_enabled_for(&body, &tool_name),
+                    tool_toggle_action_result(&body),
+                    None,
+                );
+            }
             Err(err) => {
                 store.write().resolve_tool(
                     &agent_id,
@@ -897,57 +848,6 @@ fn fire_tool_toggle(
                     false,
                     prev_val,
                     Some(err.to_string()),
-                );
-                return;
-            }
-        };
-        let new_enabled = !prev_val;
-        let url = agent_tools_url(&cfg.server_url, aid.as_ref());
-
-        let result = client
-            .patch(&url)
-            .json(&serde_json::json!({ "tool": tname, "enabled": new_enabled }))
-            .send()
-            .await;
-
-        match result {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.json::<ToolToggleUpdateResponse>().await {
-                    Ok(body) => {
-                        store.write().resolve_tool_result(
-                            &agent_id,
-                            &tool_name,
-                            prev_val,
-                            body.enabled_for(&tool_name),
-                            body.action_result(),
-                            None,
-                        );
-                    }
-                    Err(err) => {
-                        store.write().resolve_tool(
-                            &agent_id,
-                            &tool_name,
-                            false,
-                            prev_val,
-                            Some(format!("failed to parse tool response: {err}")),
-                        );
-                    }
-                }
-            }
-            Ok(resp) => {
-                let status = resp.status();
-                let message = status_failure_message(status, resp).await;
-                store
-                    .write()
-                    .resolve_tool(&agent_id, &tool_name, false, prev_val, Some(message));
-            }
-            Err(e) => {
-                store.write().resolve_tool(
-                    &agent_id,
-                    &tool_name,
-                    false,
-                    prev_val,
-                    Some(format!("connection error: {e}")),
                 );
             }
         }
@@ -1078,22 +978,6 @@ fn fire_config_reload(mut store: Signal<ToggleStore>, config: Signal<ConnectionC
             }
         }
     });
-}
-
-/// Render a non-success response as an operator-facing message.
-///
-/// WHY the three arms are distinct: an unreadable body and an empty body are
-/// different facts, and collapsing the read error into `unwrap_or_default`
-/// reports "no detail" for a response whose detail simply could not be read.
-/// The status is the actionable part in every case, so it is always present.
-async fn status_failure_message(status: reqwest::StatusCode, resp: reqwest::Response) -> String {
-    match resp.text().await {
-        Ok(detail) if !detail.trim().is_empty() => {
-            format!("server returned {status}: {}", detail.trim())
-        }
-        Ok(_) => format!("server returned {status}"),
-        Err(err) => format!("server returned {status} (body unreadable: {err})"),
-    }
 }
 
 /// Summarize a recovery outcome as `(text, is_error)`.

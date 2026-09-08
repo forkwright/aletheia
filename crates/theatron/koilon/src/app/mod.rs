@@ -732,7 +732,7 @@ impl App {
                 .saved_sessions
                 .insert(agent_id.clone(), session_id.clone());
 
-            match self.client.history(&session_id).await {
+            match self.client.history(&session_id, None, None).await {
                 Ok(history) => {
                     // Epoch check: a stream event arrived while we awaited the history fetch.
                     if self.connection.state_epoch != epoch_before {

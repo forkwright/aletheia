@@ -233,14 +233,14 @@ fn session_list_status_view(
             is_error: false,
             can_retry: false,
         }),
-        SessionLoadState::TransportError(failure)
-        | SessionLoadState::HttpError(failure)
-        | SessionLoadState::ContractError(failure) => Some(SessionListStatusView {
-            title: "Session list failed".to_string(),
-            detail: Some(failure.display_message()),
-            is_error: true,
-            can_retry: true,
-        }),
+        SessionLoadState::TransportError(failure) | SessionLoadState::HttpError(failure) => {
+            Some(SessionListStatusView {
+                title: "Session list failed".to_string(),
+                detail: Some(failure.display_message()),
+                is_error: true,
+                can_retry: true,
+            })
+        }
         SessionLoadState::Loaded(()) | SessionLoadState::Empty(()) => {
             if visible_count > 0 {
                 return None;
