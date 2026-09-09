@@ -920,7 +920,7 @@ mod tests {
 
     use super::planning::*;
     use super::{ClientRouteContract, SKENE_CLIENT_ROUTE_CONTRACTS};
-    use super::{config, encoding, nous, sessions, system};
+    use super::{config, encoding, metrics, nous, providers, sessions, system, workspace};
 
     fn quoted_strings(source: &str) -> Vec<String> {
         let mut strings = Vec::new();
@@ -987,6 +987,229 @@ mod tests {
             assert!(
                 contracts.contains(&route),
                 "ApiClient route literal has no route contract: {route}"
+            );
+        }
+    }
+
+    // ── #7198: every contract must be reachable from the client, not just
+    // declared and left for a builder to accumulate with no wrapper ────────
+
+    /// Strip the trailing `#[cfg(test)] mod tests { ... }` block so a route
+    /// builder or literal exercised only by that file's own unit tests
+    /// doesn't count as a real client call site.
+    fn strip_trailing_test_module(source: &str) -> &str {
+        source
+            .split("\n#[cfg(test)]\nmod tests")
+            .next()
+            .unwrap_or(source)
+    }
+
+    /// Every `pub fn` name ending in `_path` declared in this file's
+    /// route-builder modules (i.e. before this file's own trailing test
+    /// module). Cross-checked against `builder_route_templates` by
+    /// `builder_enumeration_matches_source` below, so a builder added or
+    /// removed here can't silently drop out of the reachability check.
+    fn builder_fn_names(source: &str) -> BTreeSet<String> {
+        let production = strip_trailing_test_module(source);
+        let mut names = BTreeSet::new();
+        let mut rest = production;
+        while let Some((_, after_marker)) = rest.split_once("pub fn ") {
+            let Some((candidate, after_paren)) = after_marker.split_once('(') else {
+                break;
+            };
+            if let Some(name) = candidate.split_whitespace().next()
+                && name.ends_with("_path")
+            {
+                names.insert(name.to_owned());
+            }
+            rest = after_paren;
+        }
+        names
+    }
+
+    /// Every `_path` route builder in this file, paired with the template
+    /// constant its `format!` body targets. Every route module declares its
+    /// `_TEMPLATE`/`_PATH` constant in the same `{placeholder}` shape as
+    /// `ClientRouteContract::path_template`, so comparing against the
+    /// constant directly needs no invocation and no reverse-engineering of
+    /// a dummy placeholder value back out of a resolved path. Kept honest
+    /// by `builder_enumeration_matches_source`: add or remove a `_path`
+    /// builder above and that test fails until this list is updated too.
+    fn builder_route_templates() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("sessions_path", sessions::SESSIONS_TEMPLATE),
+            ("sessions_for_agent_path", sessions::SESSIONS_TEMPLATE),
+            ("session_history_path", sessions::SESSION_HISTORY_TEMPLATE),
+            ("session_archive_path", sessions::SESSION_ARCHIVE_TEMPLATE),
+            (
+                "session_unarchive_path",
+                sessions::SESSION_UNARCHIVE_TEMPLATE,
+            ),
+            ("session_name_path", sessions::SESSION_NAME_TEMPLATE),
+            ("session_replay_path", sessions::SESSION_REPLAY_TEMPLATE),
+            (
+                "session_approvals_path",
+                sessions::SESSION_APPROVALS_TEMPLATE,
+            ),
+            ("credentials_path", system::CREDENTIALS_TEMPLATE),
+            ("credential_path", system::CREDENTIAL_TEMPLATE),
+            (
+                "credential_validate_path",
+                system::CREDENTIAL_VALIDATE_TEMPLATE,
+            ),
+            ("credential_rotate_path", system::CREDENTIAL_ROTATE_TEMPLATE),
+            ("daemon_tasks_path", system::DAEMON_TASKS_TEMPLATE),
+            (
+                "daemon_task_enable_path",
+                system::DAEMON_TASK_ENABLE_TEMPLATE,
+            ),
+            (
+                "daemon_task_disable_path",
+                system::DAEMON_TASK_DISABLE_TEMPLATE,
+            ),
+            ("daemon_task_retry_path", system::DAEMON_TASK_RETRY_TEMPLATE),
+            ("files_path", workspace::FILES_TEMPLATE),
+            ("git_status_path", workspace::GIT_STATUS_TEMPLATE),
+            ("content_path", workspace::CONTENT_TEMPLATE),
+            ("content_write_path", workspace::CONTENT_TEMPLATE),
+            ("open_path", workspace::OPEN_TEMPLATE),
+            ("diff_path", workspace::DIFF_TEMPLATE),
+            ("search_path", workspace::SEARCH_TEMPLATE),
+            ("agents_path", metrics::AGENTS_TEMPLATE),
+            ("agent_performance_path", metrics::AGENT_TEMPLATE),
+            ("quality_path", metrics::QUALITY_TEMPLATE),
+            ("journal_path", metrics::JOURNAL_TEMPLATE),
+            ("agent_path", nous::AGENT_TEMPLATE),
+            ("agent_tools_path", nous::AGENT_TOOLS_TEMPLATE),
+            ("agent_recover_path", nous::AGENT_RECOVER_TEMPLATE),
+            ("section_path", config::SECTION_TEMPLATE),
+            // WHY: instantiates SECTION_TEMPLATE with a fixed section name
+            // rather than backing a distinct contract of its own.
+            ("feature_flags_path", config::SECTION_TEMPLATE),
+            ("reload_path", config::RELOAD_PATH),
+            ("project_verification_path", PROJECT_VERIFICATION_TEMPLATE),
+            (
+                "project_verification_refresh_path",
+                PROJECT_VERIFICATION_REFRESH_TEMPLATE,
+            ),
+            ("providers_path", providers::PROVIDERS_TEMPLATE),
+            ("providers_route_path", providers::PROVIDERS_ROUTE_TEMPLATE),
+        ]
+    }
+
+    /// `name` appears as a call, not merely as a substring of a longer
+    /// identifier (e.g. `agent_path` must not match inside
+    /// `agent_tools_path`) or inside a comment/string quoting it by name.
+    fn calls_function(source: &str, name: &str) -> bool {
+        let mut remaining = source;
+        while let Some((before, after)) = remaining.split_once(name) {
+            let before_is_boundary = before
+                .chars()
+                .next_back()
+                .is_none_or(|ch| !(ch.is_alphanumeric() || ch == '_'));
+            let after_is_call = after.trim_start().starts_with('(');
+            if before_is_boundary && after_is_call {
+                return true;
+            }
+            remaining = after;
+        }
+        false
+    }
+
+    /// Contracts whose route is real and pylon-backed but not yet reachable
+    /// from `skene::api`'s client surface (`client.rs`/`streaming.rs`/
+    /// `sse.rs`) -- tracked individually, rather than silently passed, so a
+    /// new orphan can't hide behind a growing exception list. Verified by
+    /// `known_unreachable_exceptions_are_still_declared_contracts` below to
+    /// never itself go stale the way `scripts/stub-baseline.toml` can.
+    const KNOWN_UNREACHABLE_FROM_API_CLIENT: &[(&str, &str)] = &[
+        // WHY(#7209): still called directly by proskenion's own
+        // pre-migration HTTP client
+        // (`crates/theatron/proskenion/src/api/client.rs`), not through
+        // `skene::api`'s `ApiClient`/`streaming`/`sse` surface -- tracked by
+        // the client-boundary ratchet's proskenion ceiling
+        // (`scripts/client-boundary-baseline.toml`), not a dead route.
+        // Remove this entry once that call site migrates to `skene::api` or
+        // the route gains a real `ApiClient` wrapper.
+        ("GET", "/api/v1/events"),
+    ];
+
+    #[test]
+    fn builder_enumeration_matches_source() {
+        let discovered = builder_fn_names(include_str!("routes.rs"));
+        let enumerated: BTreeSet<String> = builder_route_templates()
+            .into_iter()
+            .map(|(name, _)| name.to_owned())
+            .collect();
+        assert_eq!(
+            discovered, enumerated,
+            "a `_path` route builder was added or removed in this file \
+             without updating `builder_route_templates` -- the reachability \
+             check below only covers what's enumerated there (#7198)"
+        );
+    }
+
+    #[test]
+    fn known_unreachable_exceptions_are_still_declared_contracts() {
+        for (method, path) in KNOWN_UNREACHABLE_FROM_API_CLIENT {
+            assert!(
+                SKENE_CLIENT_ROUTE_CONTRACTS
+                    .iter()
+                    .any(|contract| contract.method == *method && contract.path_template == *path),
+                "KNOWN_UNREACHABLE_FROM_API_CLIENT lists {method} {path}, \
+                 which is no longer a declared contract -- remove the stale \
+                 exception"
+            );
+        }
+    }
+
+    #[test]
+    fn client_route_contracts_are_reachable_from_api_client() {
+        let client_source = strip_trailing_test_module(include_str!("client.rs"));
+        let streaming_source = strip_trailing_test_module(include_str!("streaming.rs"));
+        let sse_source = strip_trailing_test_module(include_str!("sse.rs"));
+        let client_surface = [client_source, streaming_source, sse_source];
+
+        // Every `_path` builder must have a real call site somewhere in the
+        // client surface -- otherwise it, and any contract it backs, can
+        // accumulate with no wrapper ever reaching it.
+        for (name, _) in builder_route_templates() {
+            assert!(
+                client_surface.iter().any(|src| calls_function(src, name)),
+                "route builder `{name}` has no call site in client.rs, \
+                 streaming.rs, or sse.rs"
+            );
+        }
+
+        // Everything the client surface can actually construct: direct
+        // `/api/...` literals plus every builder's produced shape.
+        let mut reachable: BTreeSet<String> = BTreeSet::new();
+        for source in client_surface {
+            reachable.extend(
+                quoted_strings(source)
+                    .into_iter()
+                    .filter(|literal| literal.starts_with("/api/"))
+                    .map(|literal| normalize_route(&literal)),
+            );
+        }
+        reachable.extend(
+            builder_route_templates()
+                .into_iter()
+                .map(|(_, path)| normalize_route(path)),
+        );
+
+        for contract in SKENE_CLIENT_ROUTE_CONTRACTS {
+            if KNOWN_UNREACHABLE_FROM_API_CLIENT
+                .contains(&(contract.method, contract.path_template))
+            {
+                continue;
+            }
+            let normalized = normalize_route(contract.path_template);
+            assert!(
+                reachable.contains(&normalized),
+                "contract has no reachable ApiClient call site: {} {}",
+                contract.method,
+                contract.path_template
             );
         }
     }
