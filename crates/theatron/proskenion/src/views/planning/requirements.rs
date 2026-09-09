@@ -1,15 +1,17 @@
-//! Requirements table: v1/v2/out-of-scope categorization with inline editing.
+//! Requirements table: read-only v1/v2/out-of-scope categorization.
 
 use dioxus::prelude::*;
-use skene::api::routes::planning::project_requirement_url;
 
-use crate::api::client::authenticated_client;
-use crate::state::connection::ConnectionConfig;
 use crate::state::planning::{
-    CategoryProposal, Requirement, RequirementCategory, RequirementPriority, RequirementStatus,
-    RequirementStore, RequirementUpdateRequest,
+    Requirement, RequirementCategory, RequirementPriority, RequirementStatus, RequirementStore,
 };
-use crate::views::planning::category_proposal::CategoryProposalCard;
+
+// WHY(#7224): requirement edits and category-proposal review used to POST to
+// pylon via `project_requirement_url`/`project_proposal_url`, but neither
+// route has ever had a pylon handler and dianoia has no persisted, mutable
+// requirement/proposal entity to back one -- see the same-numbered note on
+// `skene::api::routes::planning`. The edit actions and `CategoryProposalCard`
+// were deleted; this view is now a read-only requirements table.
 
 #[derive(Debug, Clone)]
 #[expect(dead_code, reason = "requirements routes are pending B23 backend work")]
@@ -19,9 +21,6 @@ enum FetchState {
     NotAvailable,
     Error(String),
 }
-
-/// Which field is being edited: `(requirement_id, field_name)`.
-type EditingField = Option<(String, &'static str)>;
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -123,25 +122,6 @@ const TD_STYLE: &str = "\
     vertical-align: top;\
 ";
 
-const EDIT_INPUT: &str = "\
-    background: var(--bg-surface-dim); \
-    border: 1px solid var(--accent); \
-    border-radius: var(--radius-sm); \
-    padding: var(--space-1) 6px; \
-    color: var(--text-primary); \
-    font-size: var(--text-sm); \
-    width: 100%;\
-";
-
-const CATEGORY_SELECT: &str = "\
-    background: var(--bg-surface); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-sm); \
-    padding: var(--space-1) var(--space-2); \
-    color: var(--text-primary); \
-    font-size: var(--text-xs);\
-";
-
 const REFRESH_BTN: &str = "\
     background: var(--border); \
     color: var(--text-primary); \
@@ -168,18 +148,16 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Requirements table view for a planning project.
 ///
 /// Shows requirements when the pylon requirements API exists.
-/// Provides category tabs, inline editing, search, and filter controls.
+/// Provides category tabs, search, and filter controls. Read-only: editing
+/// a requirement's title, description, or category has no pylon backend
+/// (see the `WHY(#7224)` note above).
 #[component]
 pub(crate) fn RequirementsView(project_id: String) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
     let mut fetch_state = use_signal(|| FetchState::NotAvailable);
-    let mut fetch_trigger = use_signal(|| 0u32);
     let mut active_category = use_signal(|| RequirementCategory::V1);
     let mut search_query = use_signal(String::new);
     let mut status_filter = use_signal(|| None::<RequirementStatus>);
     let mut priority_filter = use_signal(|| None::<RequirementPriority>);
-    let mut editing: Signal<EditingField> = use_signal(|| None);
-    let mut edit_value = use_signal(String::new);
 
     rsx! {
         div {
@@ -223,11 +201,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                     }
                 },
                 FetchState::Loaded(store) => {
-                    let pending_proposals: Vec<CategoryProposal> = store
-                        .pending_proposals()
-                        .into_iter()
-                        .cloned()
-                        .collect();
                     let v1_count = store.by_category(RequirementCategory::V1).len();
                     let v2_count = store.by_category(RequirementCategory::V2).len();
                     let oos_count = store.by_category(RequirementCategory::OutOfScope).len();
@@ -248,23 +221,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                     filtered.sort_by_key(|r| r.priority);
 
                     rsx! {
-                        if !pending_proposals.is_empty() {
-                            div {
-                                style: "margin-bottom: var(--space-3);",
-                                for proposal in &pending_proposals {
-                                    CategoryProposalCard {
-                                        key: "{proposal.id}",
-                                        proposal: proposal.clone(),
-                                        project_id: project_id.clone(),
-                                        on_action_complete: move |_| {
-                                            let next = *fetch_trigger.peek() + 1;
-                                            fetch_trigger.set(next);
-                                        },
-                                    }
-                                }
-                            }
-                        }
-
                         div {
                             style: "{TAB_BAR}",
                             role: "tablist",
@@ -363,24 +319,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                     tbody {
                                         for req in &filtered {
                                             {
-                                                let editing_snapshot = editing.read().clone();
-                                                let is_editing_title = editing_snapshot
-                                                    .as_ref()
-                                                    .is_some_and(|(id, f)| id == &req.id && *f == "title");
-                                                let is_editing_desc = editing_snapshot
-                                                    .as_ref()
-                                                    .is_some_and(|(id, f)| id == &req.id && *f == "description");
-                                                let req_id = req.id.clone();
-                                                let req_id2 = req.id.clone();
-                                                let req_id3 = req.id.clone();
-                                                let req_id4 = req.id.clone();
-                                                let req_title = req.title.clone();
-                                                let req_desc = req.description.clone();
-                                                let pid1 = project_id.clone();
-                                                let pid2 = project_id.clone();
-                                                let pid3 = project_id.clone();
-                                                let pid4 = project_id.clone();
-                                                let pid5 = project_id.clone();
                                                 let priority_color = req.priority.color();
                                                 let status_color = req.status.color();
                                                 let status_label = req.status.label();
@@ -391,95 +329,13 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                 } else {
                                                     req.description.clone()
                                                 };
-                                                let cat_value = match req.category {
-                                                    RequirementCategory::V1 => "v1",
-                                                    RequirementCategory::V2 => "v2",
-                                                    RequirementCategory::OutOfScope => "out_of_scope",
-                                                };
+                                                let category_label = req.category.label();
 
                                                 rsx! {
                                                     tr {
                                                         key: "{req.id}",
-
-                                                        td {
-                                                            style: "{TD_STYLE} color: var(--text-primary);",
-                                                            if is_editing_title {
-                                                                input {
-                                                                    style: "{EDIT_INPUT}",
-                                                                    r#type: "text",
-                                                                    value: "{edit_value}",
-                                                                    "aria-label": "Edit title",
-                                                                    oninput: move |evt| edit_value.set(evt.value()),
-                                                                    onkeydown: move |evt| {
-                                                                        if evt.key() == Key::Enter {
-                                                                            send_edit(config, &pid1, &req_id, "title", &edit_value.read(), editing, fetch_trigger);
-                                                                        } else if evt.key() == Key::Escape {
-                                                                            editing.set(None);
-                                                                        }
-                                                                    },
-                                                                    onfocusout: move |_| {
-                                                                        send_edit(config, &pid2, &req_id2, "title", &edit_value.read(), editing, fetch_trigger);
-                                                                    },
-                                                                }
-                                                            } else {
-                                                                span {
-                                                                    style: "cursor: text;",
-                                                                    role: "button",
-                                                                    tabindex: "0",
-                                                                    "aria-label": "Edit title: {req.title}",
-                                                                    onclick: move |_| {
-                                                                        edit_value.set(req_title.clone());
-                                                                        editing.set(Some((req_id3.clone(), "title")));
-                                                                    },
-                                                                    "{req.title}"
-                                                                }
-                                                            }
-                                                        }
-
-                                                        td {
-                                                            style: "{TD_STYLE} color: var(--text-secondary);",
-                                                            if is_editing_desc {
-                                                                input {
-                                                                    style: "{EDIT_INPUT}",
-                                                                    r#type: "text",
-                                                                    value: "{edit_value}",
-                                                                    "aria-label": "Edit description",
-                                                                    oninput: move |evt| edit_value.set(evt.value()),
-                                                                    onkeydown: {
-                                                                        let rid = req_id4.clone();
-                                                                        move |evt| {
-                                                                            if evt.key() == Key::Enter {
-                                                                                send_edit(config, &pid3, &rid, "description", &edit_value.read(), editing, fetch_trigger);
-                                                                            } else if evt.key() == Key::Escape {
-                                                                                editing.set(None);
-                                                                            }
-                                                                        }
-                                                                    },
-                                                                    onfocusout: {
-                                                                        let rid = req_id4.clone();
-                                                                        move |_| {
-                                                                            send_edit(config, &pid4, &rid, "description", &edit_value.read(), editing, fetch_trigger);
-                                                                        }
-                                                                    },
-                                                                }
-                                                            } else {
-                                                                span {
-                                                                    style: "cursor: text;",
-                                                                    role: "button",
-                                                                    tabindex: "0",
-                                                                    "aria-label": "Edit description: {desc_display}",
-                                                                    onclick: {
-                                                                        let rid = req_id4.clone();
-                                                                        move |_| {
-                                                                            edit_value.set(req_desc.clone());
-                                                                            editing.set(Some((rid.clone(), "description")));
-                                                                        }
-                                                                    },
-                                                                    "{desc_display}"
-                                                                }
-                                                            }
-                                                        }
-
+                                                        td { style: "{TD_STYLE} color: var(--text-primary);", "{req.title}" }
+                                                        td { style: "{TD_STYLE} color: var(--text-secondary);", "{desc_display}" }
                                                         td {
                                                             style: "{TD_STYLE} color: {status_color}; font-weight: var(--weight-semibold);",
                                                             "{status_label}"
@@ -492,29 +348,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                             }
                                                         }
                                                         td { style: "{TD_STYLE} color: var(--text-secondary);", "{agent}" }
-
-                                                        td {
-                                                            style: "{TD_STYLE}",
-                                                            select {
-                                                                style: "{CATEGORY_SELECT}",
-                                                                value: "{cat_value}",
-                                                                "aria-label": "Category for {req.title}",
-                                                                onchange: {
-                                                                    let rid = req.id.clone();
-                                                                    move |evt| {
-                                                                        let new_cat = match evt.value().as_str() {
-                                                                            "v1" => RequirementCategory::V1,
-                                                                            "v2" => RequirementCategory::V2,
-                                                                            _ => RequirementCategory::OutOfScope,
-                                                                        };
-                                                                        send_category_change(config, &pid5, &rid, new_cat, fetch_trigger);
-                                                                    }
-                                                                },
-                                                                option { value: "v1", "v1" }
-                                                                option { value: "v2", "v2" }
-                                                                option { value: "out_of_scope", "Out of Scope" }
-                                                            }
-                                                        }
+                                                        td { style: "{TD_STYLE} color: var(--text-secondary);", "{category_label}" }
                                                     }
                                                 }
                                             }
@@ -528,96 +362,4 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
             }
         }
     }
-}
-
-/// Send a requirement field edit to the API.
-fn send_edit(
-    config: Signal<ConnectionConfig>,
-    project_id: &str,
-    req_id: &str,
-    field: &'static str,
-    value: &str,
-    mut editing: Signal<EditingField>,
-    mut fetch_trigger: Signal<u32>,
-) {
-    let cfg = config.read().clone();
-    let pid = project_id.to_string();
-    let rid = req_id.to_string();
-
-    let update = match field {
-        "title" => RequirementUpdateRequest {
-            title: Some(value.to_string()),
-            description: None,
-            category: None,
-        },
-        "description" => RequirementUpdateRequest {
-            title: None,
-            description: Some(value.to_string()),
-            category: None,
-        },
-        _ => return,
-    };
-
-    spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
-            Err(err) => {
-                tracing::warn!("requirement update client error: {err}");
-                editing.set(None);
-                return;
-            }
-        };
-        let url = project_requirement_url(&cfg.server_url, &pid, &rid);
-
-        match client.put(&url).json(&update).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                editing.set(None);
-                let next = *fetch_trigger.peek() + 1;
-                fetch_trigger.set(next);
-            }
-            Ok(resp) => {
-                tracing::warn!("requirement update returned {}", resp.status());
-                editing.set(None);
-            }
-            Err(e) => {
-                tracing::warn!("requirement update error: {e}");
-                editing.set(None);
-            }
-        }
-    });
-}
-
-/// Send a requirement category change to the API.
-fn send_category_change(
-    config: Signal<ConnectionConfig>,
-    project_id: &str,
-    req_id: &str,
-    new_category: RequirementCategory,
-    mut fetch_trigger: Signal<u32>,
-) {
-    let cfg = config.read().clone();
-    let pid = project_id.to_string();
-    let rid = req_id.to_string();
-
-    let update = RequirementUpdateRequest {
-        title: None,
-        description: None,
-        category: Some(new_category),
-    };
-
-    spawn(async move {
-        let Ok(client) = authenticated_client(&cfg)
-            .inspect_err(crate::api::client::log_authenticated_client_error)
-        else {
-            return;
-        };
-        let url = project_requirement_url(&cfg.server_url, &pid, &rid);
-
-        if let Ok(resp) = client.put(&url).json(&update).send().await
-            && resp.status().is_success()
-        {
-            let next = *fetch_trigger.peek() + 1;
-            fetch_trigger.set(next);
-        }
-    });
 }

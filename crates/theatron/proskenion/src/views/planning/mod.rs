@@ -1,6 +1,5 @@
 //! Planning views: project dashboard, requirements, roadmap, checkpoints, and verification.
 
-pub(crate) mod category_proposal;
 pub(crate) mod checkpoints;
 pub(crate) mod dashboard;
 pub(crate) mod discussion;

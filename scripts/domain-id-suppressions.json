@@ -78,7 +78,7 @@
     "crates/theatron/proskenion/src/state/memory.rs": 5,
     "crates/theatron/proskenion/src/state/meta/mod.rs": 1,
     "crates/theatron/proskenion/src/state/metrics.rs": 2,
-    "crates/theatron/proskenion/src/state/planning.rs": 7,
+    "crates/theatron/proskenion/src/state/planning.rs": 5,
     "crates/theatron/proskenion/src/state/settings.rs": 1,
     "crates/theatron/proskenion/src/state/tool_metrics.rs": 1,
     "crates/theatron/skene/src/api/types/verification.rs": 2,

@@ -1,14 +1,19 @@
-//! Discussion panel: gray-area questions, option cards, and answer flow.
+//! Discussion panel: gray-area questions and read-only option review.
 
 use dioxus::prelude::*;
-use skene::api::routes::planning::{project_discussion_answer_url, project_discussion_reopen_url};
 
-use crate::api::client::authenticated_client;
-use crate::components::option_card::OptionCard;
-use crate::state::connection::ConnectionConfig;
 use crate::state::discussion::{
-    Discussion, DiscussionAnswerRequest, DiscussionPriority, DiscussionStatus, DiscussionStore,
+    Discussion, DiscussionOption, DiscussionPriority, DiscussionStatus, DiscussionStore,
 };
+
+// WHY(#7224): answering and reopening a discussion used to POST to pylon via
+// `project_discussion_answer_url`/`project_discussion_reopen_url`, but
+// neither route has ever had a pylon handler and dianoia has no persisted,
+// mutable discussion entity to back one -- see the same-numbered note on
+// `skene::api::routes::planning`. The answer/reopen actions (option
+// selection, free-text entry, submit, undo) were deleted; this panel is now
+// a read-only view of each discussion's question, options, and any recorded
+// answer.
 
 /// Fetch state for discussions, with a 404 variant for unavailable endpoints.
 #[derive(Debug, Clone)]
@@ -75,57 +80,67 @@ const OPTIONS_GRID: &str = "\
     margin-top: var(--space-2);\
 ";
 
-const FREE_TEXT_INPUT: &str = "\
-    width: 100%; \
-    background: var(--bg-surface-dim); \
+const OPTION_CARD: &str = "\
+    background: var(--bg-surface); \
     border: 1px solid var(--border); \
-    border-radius: var(--radius-sm); \
-    padding: var(--space-2) 10px; \
-    color: var(--text-primary); \
-    font-size: var(--text-sm); \
-    font-family: inherit; \
-    resize: vertical; \
-    min-height: 50px; \
-    box-sizing: border-box;\
+    border-radius: var(--radius-md); \
+    padding: var(--space-4) var(--space-4);\
 ";
 
-const SUBMIT_BTN: &str = "\
-    background: var(--accent); \
-    color: white; \
-    border: none; \
+const OPTION_CARD_RECOMMENDED: &str = "\
+    background: var(--bg-surface); \
+    border: 2px solid var(--status-info); \
     border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
+    padding: var(--space-4) var(--space-4);\
+";
+
+const OPTION_HEADER_ROW: &str = "\
+    display: flex; \
+    align-items: center; \
+    gap: var(--space-2); \
+    margin-bottom: var(--space-2);\
+";
+
+const OPTION_TITLE_STYLE: &str = "\
+    font-size: var(--text-base); \
     font-weight: var(--weight-semibold); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    color: var(--text-primary);\
 ";
 
-const SUBMIT_BTN_DISABLED: &str = "\
-    background: var(--border); \
-    color: var(--text-muted); \
-    border: none; \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: not-allowed;\
-";
-
-const UNDO_BTN: &str = "\
-    background: transparent; \
-    color: var(--accent); \
-    border: 1px solid var(--accent); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-1) var(--space-3); \
+const OPTION_BADGE_RECOMMENDED: &str = "\
+    display: inline-block; \
     font-size: var(--text-xs); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    font-weight: var(--weight-semibold); \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-md); \
+    background: var(--status-info-bg); \
+    color: var(--status-info); \
+    text-transform: uppercase; \
+    letter-spacing: 0.3px;\
 ";
+
+const OPTION_DESCRIPTION_STYLE: &str = "\
+    font-size: var(--text-sm); \
+    color: var(--text-secondary); \
+    margin-bottom: var(--space-2);\
+";
+
+const OPTION_RATIONALE_STYLE: &str = "\
+    font-size: var(--text-xs); \
+    color: var(--text-secondary); \
+    font-style: italic; \
+    margin-bottom: var(--space-2);\
+";
+
+const OPTION_TRADE_OFF_SECTION: &str = "\
+    display: flex; \
+    gap: var(--space-4); \
+    font-size: var(--text-xs);\
+";
+
+const OPTION_PRO_ITEM: &str = "color: var(--status-success); padding: var(--space-1) 0;";
+
+const OPTION_CON_ITEM: &str = "color: var(--status-error); padding: var(--space-1) 0;";
 
 const ANSWER_SUMMARY: &str = "\
     font-size: var(--text-sm); \
@@ -147,14 +162,11 @@ const PLACEHOLDER_STYLE: &str = "\
     color: var(--text-muted);\
 ";
 
-const ERROR_STYLE: &str =
-    "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
-
 /// Discussion panel listing all discussions for a project.
 #[component]
 pub(crate) fn DiscussionView(project_id: String) -> Element {
+    let _ = &project_id;
     let fetch_state = use_signal(|| DiscussionFetchState::NotAvailable);
-    let mut fetch_trigger = use_signal(|| 0u32);
 
     rsx! {
         div {
@@ -208,8 +220,6 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
                                 DiscussionCard {
                                     key: "{disc.id}",
                                     discussion: disc.clone(),
-                                    project_id: project_id.clone(),
-                                    on_change: move |_| fetch_trigger.set(fetch_trigger() + 1),
                                 }
                             }
                         }
@@ -220,117 +230,17 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
     }
 }
 
-/// A single discussion card with question, options, and answer flow.
+/// A single, read-only discussion card: question, options, and any recorded answer.
+///
+/// No answer/reopen actions -- pylon has never implemented the discussion
+/// answer/reopen endpoints.
 #[component]
-fn DiscussionCard(
-    discussion: Discussion,
-    project_id: String,
-    on_change: EventHandler<()>,
-) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut selected_option_id: Signal<Option<String>> = use_signal(|| None);
-    let mut free_text = use_signal(String::new);
-    let mut show_free_text = use_signal(|| false);
-    let mut submitting = use_signal(|| false);
-    let mut error_msg: Signal<Option<String>> = use_signal(|| None);
-
+fn DiscussionCard(discussion: Discussion) -> Element {
     let is_open = discussion.status == DiscussionStatus::Open;
     let is_answered = discussion.status == DiscussionStatus::Answered;
 
     let (card_bg, card_border) = discussion_card_colors(discussion.priority, discussion.status);
     let card_style = format!("{CARD_BASE} background: {card_bg}; border-color: {card_border};");
-
-    let can_submit = selected_option_id.read().is_some() || !free_text.read().is_empty();
-
-    // Clone ids for closures.
-    let disc_id_submit = discussion.id.clone();
-    let project_id_submit = project_id.clone();
-
-    let disc_id_undo = discussion.id.clone();
-    let project_id_undo = project_id.clone();
-
-    let do_submit = move |_| {
-        if !can_submit || *submitting.read() {
-            return;
-        }
-        let cfg = config.read().clone();
-        let did = disc_id_submit.clone();
-        let pid = project_id_submit.clone();
-        let opt_id = selected_option_id.read().clone();
-        let ft = if free_text.read().is_empty() {
-            None
-        } else {
-            Some(free_text.read().clone())
-        };
-
-        submitting.set(true);
-        error_msg.set(None);
-
-        spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    error_msg.set(Some(err.to_string()));
-                    submitting.set(false);
-                    return;
-                }
-            };
-            let url = project_discussion_answer_url(&cfg.server_url, &pid, &did);
-            let req = DiscussionAnswerRequest {
-                option_id: opt_id,
-                free_text: ft,
-            };
-            match client.post(&url).json(&req).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    on_change.call(());
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    error_msg.set(Some(format!("server error: {status}")));
-                    submitting.set(false);
-                }
-                Err(e) => {
-                    error_msg.set(Some(format!("connection error: {e}")));
-                    submitting.set(false);
-                }
-            }
-        });
-    };
-
-    let do_undo = move |_| {
-        let cfg = config.read().clone();
-        let did = disc_id_undo.clone();
-        let pid = project_id_undo.clone();
-
-        submitting.set(true);
-        error_msg.set(None);
-
-        spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    error_msg.set(Some(err.to_string()));
-                    submitting.set(false);
-                    return;
-                }
-            };
-            let url = project_discussion_reopen_url(&cfg.server_url, &pid, &did);
-            match client.post(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    on_change.call(());
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    error_msg.set(Some(format!("server error: {status}")));
-                    submitting.set(false);
-                }
-                Err(e) => {
-                    error_msg.set(Some(format!("connection error: {e}")));
-                    submitting.set(false);
-                }
-            }
-        });
-    };
 
     rsx! {
         div {
@@ -356,75 +266,79 @@ fn DiscussionCard(
                 if let Some(summary) = DiscussionStore::answer_summary(&discussion) {
                     div { style: "{ANSWER_SUMMARY}", "Answer: {summary}" }
                 }
-                button {
-                    style: "{UNDO_BTN}",
-                    disabled: *submitting.read(),
-                    onclick: do_undo,
-                    if *submitting.read() { "Reopening..." } else { "Reopen" }
-                }
             }
 
-            if is_open {
+            if is_open && !discussion.options.is_empty() {
                 div {
                     style: "{OPTIONS_GRID}",
-                    role: "radiogroup",
-                    "aria-label": "Answer options",
+                    "aria-label": "Proposed options",
                     for opt in &discussion.options {
-                        OptionCard {
+                        ReadOnlyOptionCard {
                             key: "{opt.id}",
                             option: opt.clone(),
-                            selected: *selected_option_id.read() == Some(opt.id.clone()),
-                            on_select: move |id: String| {
-                                selected_option_id.set(Some(id));
-                                show_free_text.set(false);
-                                free_text.set(String::new());
-                            },
                         }
-                    }
-                }
-
-                div {
-                    style: "margin-top: var(--space-3);",
-                    button {
-                        style: "background: transparent; border: none; color: var(--accent); font-size: var(--text-xs); cursor: pointer; padding: 0; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
-                        "aria-expanded": if *show_free_text.read() { "true" } else { "false" },
-                        onclick: move |_| {
-                            let current = *show_free_text.read();
-                            show_free_text.set(!current);
-                            if current {
-                                free_text.set(String::new());
-                            } else {
-                                selected_option_id.set(None);
-                            }
-                        },
-                        if *show_free_text.read() { "Cancel free-text" } else { "Provide custom answer" }
-                    }
-
-                    if *show_free_text.read() {
-                        textarea {
-                            style: "{FREE_TEXT_INPUT}",
-                            placeholder: "Type your custom answer...",
-                            rows: "3",
-                            value: "{free_text.read()}",
-                            "aria-label": "Custom answer",
-                            oninput: move |evt: Event<FormData>| free_text.set(evt.value().clone()),
-                        }
-                    }
-                }
-
-                div {
-                    style: "display: flex; gap: var(--space-2); margin-top: var(--space-3);",
-                    button {
-                        style: if can_submit { "{SUBMIT_BTN}" } else { "{SUBMIT_BTN_DISABLED}" },
-                        disabled: !can_submit || *submitting.read(),
-                        onclick: do_submit,
-                        if *submitting.read() { "Submitting..." } else { "Submit Answer" }
                     }
                 }
             }
+        }
+    }
+}
 
-            if let Some(ref err) = *error_msg.read() {
-                div { style: "{ERROR_STYLE}", "{err}" }
+/// Read-only rendering of a discussion option: title, description,
+/// rationale, and trade-offs, with a "recommended" badge when applicable.
+#[component]
+fn ReadOnlyOptionCard(option: DiscussionOption) -> Element {
+    let card_style = if option.recommended {
+        OPTION_CARD_RECOMMENDED
+    } else {
+        OPTION_CARD
+    };
+
+    rsx! {
+        div {
+            style: "{card_style}",
+            "aria-label": "{option.title}",
+
+            div {
+                style: "{OPTION_HEADER_ROW}",
+                span { style: "{OPTION_TITLE_STYLE}", "{option.title}" }
+                if option.recommended {
+                    span { style: "{OPTION_BADGE_RECOMMENDED}", "recommended" }
+                }
+            }
+
+            if !option.description.is_empty() {
+                div { style: "{OPTION_DESCRIPTION_STYLE}", "{option.description}" }
+            }
+
+            if !option.rationale.is_empty() {
+                div { style: "{OPTION_RATIONALE_STYLE}", "{option.rationale}" }
+            }
+
+            if !option.pros.is_empty() || !option.cons.is_empty() {
+                div {
+                    style: "{OPTION_TRADE_OFF_SECTION}",
+
+                    if !option.pros.is_empty() {
+                        div {
+                            style: "flex: 1;",
+                            div { style: "color: var(--status-success); font-weight: var(--weight-semibold); margin-bottom: var(--space-1);", "Pros" }
+                            for (i, pro) in option.pros.iter().enumerate() {
+                                div { key: "{i}", style: "{OPTION_PRO_ITEM}", "+ {pro}" }
+                            }
+                        }
+                    }
+
+                    if !option.cons.is_empty() {
+                        div {
+                            style: "flex: 1;",
+                            div { style: "color: var(--status-error); font-weight: var(--weight-semibold); margin-bottom: var(--space-1);", "Cons" }
+                            for (i, con) in option.cons.iter().enumerate() {
+                                div { key: "{i}", style: "{OPTION_CON_ITEM}", "- {con}" }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -1,14 +1,17 @@
-//! Checkpoint approval card with approve, skip, and override actions.
+//! Read-only checkpoint gate card: status, context, requirements, and artifacts.
 
 use dioxus::prelude::*;
-use skene::api::routes::planning::project_checkpoint_action_url;
 
-use crate::api::client::authenticated_client;
 use crate::components::badge::status_badge_style as badge_style;
-use crate::state::checkpoints::{
-    Checkpoint, CheckpointAction, CheckpointActionRequest, CheckpointStatus,
-};
-use crate::state::connection::ConnectionConfig;
+use crate::state::checkpoints::{Checkpoint, CheckpointAction, CheckpointStatus};
+
+// WHY(#7224): approve/skip/override used to POST to pylon via
+// `project_checkpoint_action_url`, but that route has never had a pylon
+// handler and dianoia has no persisted, mutable checkpoint entity to back
+// one -- see the same-numbered note on `skene::api::routes::planning`. The
+// action buttons were deleted; this card is now a read-only checkpoint
+// display. `CheckpointAction` itself is kept: `CheckpointDecision::action`
+// still deserializes a checkpoint's historical decision for display.
 
 const CARD_BASE: &str = "\
     border-radius: var(--radius-md); \
@@ -79,217 +82,11 @@ const DECISION_BOX: &str = "\
     border: 1px solid var(--border);\
 ";
 
-const BTN_ROW: &str = "\
-    display: flex; \
-    gap: var(--space-2); \
-    margin-top: var(--space-4);\
-";
-
-const APPROVE_BTN: &str = "\
-    background: var(--status-success-bg); \
-    color: var(--status-success); \
-    border: 1px solid var(--status-success); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const SKIP_BTN: &str = "\
-    background: var(--status-warning-bg); \
-    color: var(--status-warning); \
-    border: 1px solid var(--status-warning); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const OVERRIDE_BTN: &str = "\
-    background: var(--status-error-bg); \
-    color: var(--status-error); \
-    border: 1px solid var(--status-error); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const SUBMIT_BTN_ACTIVE: &str = "\
-    background: var(--accent); \
-    color: var(--text-inverse); \
-    border: none; \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const SUBMIT_BTN_DISABLED: &str = "\
-    background: var(--border); \
-    color: var(--text-muted); \
-    border: none; \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: not-allowed;\
-";
-
-const CANCEL_BTN: &str = "\
-    background: transparent; \
-    color: var(--text-secondary); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-3); \
-    font-size: var(--text-sm); \
-    cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const NOTES_TEXTAREA: &str = "\
-    width: 100%; \
-    background: var(--bg-surface-dim); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-sm); \
-    padding: var(--space-2) var(--space-3); \
-    color: var(--text-primary); \
-    font-size: var(--text-sm); \
-    font-family: inherit; \
-    resize: vertical; \
-    min-height: 70px; \
-    box-sizing: border-box;\
-";
-
-const ERROR_STYLE: &str =
-    "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
-
-/// Checkpoint approval card with gate context, requirements, artifacts, and actions.
-///
-/// Approve, Skip, and Override are gated on the API response -- no optimistic update.
-/// Skip and Override require a notes entry of at least 10 characters before submit.
+/// Read-only checkpoint card: gate context, requirements, artifacts, and
+/// the recorded decision (if any). No approve/skip/override actions --
+/// pylon has never implemented the checkpoint-action endpoint.
 #[component]
-pub(crate) fn CheckpointCard(
-    checkpoint: Checkpoint,
-    project_id: String,
-    on_action_complete: EventHandler<()>,
-) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut selected_action: Signal<Option<CheckpointAction>> = use_signal(|| None);
-    let mut notes = use_signal(String::new);
-    let mut submitting = use_signal(|| false);
-    let mut error_msg: Signal<Option<String>> = use_signal(|| None);
-
-    let is_pending = checkpoint.status == CheckpointStatus::Pending;
-    let notes_valid = notes.read().len() >= 10;
-
-    // Clones captured by the approve closure.
-    let checkpoint_id_approve = checkpoint.id.clone();
-    let project_id_approve = project_id.clone();
-
-    // Clones captured by the submit-with-notes closure.
-    let checkpoint_id_submit = checkpoint.id.clone();
-    let project_id_submit = project_id.clone();
-
-    let do_approve = move |_| {
-        let cfg = config.read().clone();
-        let cid = checkpoint_id_approve.clone();
-        let pid = project_id_approve.clone();
-        submitting.set(true);
-        error_msg.set(None);
-        spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    error_msg.set(Some(err.to_string()));
-                    submitting.set(false);
-                    return;
-                }
-            };
-            let url = project_checkpoint_action_url(&cfg.server_url, &pid, &cid);
-            let req = CheckpointActionRequest {
-                action: CheckpointAction::Approve,
-                notes: None,
-            };
-            match client.post(&url).json(&req).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    on_action_complete.call(());
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    error_msg.set(Some(format!("server error: {status}")));
-                    submitting.set(false);
-                }
-                Err(e) => {
-                    error_msg.set(Some(format!("connection error: {e}")));
-                    submitting.set(false);
-                }
-            }
-        });
-    };
-
-    let do_submit_notes = move |_| {
-        let Some(action) = *selected_action.read() else {
-            return;
-        };
-        if notes.read().len() < 10 {
-            return;
-        }
-        let cfg = config.read().clone();
-        let cid = checkpoint_id_submit.clone();
-        let pid = project_id_submit.clone();
-        let notes_val = notes.read().clone();
-        submitting.set(true);
-        error_msg.set(None);
-        spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    error_msg.set(Some(err.to_string()));
-                    submitting.set(false);
-                    return;
-                }
-            };
-            let url = project_checkpoint_action_url(&cfg.server_url, &pid, &cid);
-            let req = CheckpointActionRequest {
-                action,
-                notes: Some(notes_val),
-            };
-            match client.post(&url).json(&req).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    on_action_complete.call(());
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    error_msg.set(Some(format!("server error: {status}")));
-                    submitting.set(false);
-                }
-                Err(e) => {
-                    error_msg.set(Some(format!("connection error: {e}")));
-                    submitting.set(false);
-                }
-            }
-        });
-    };
-
+pub(crate) fn CheckpointCard(checkpoint: Checkpoint) -> Element {
     let card_style = card_container_style(checkpoint.status);
     let badge_style = checkpoint_badge_style(checkpoint.status);
     let badge_label = status_label(checkpoint.status);
@@ -355,73 +152,6 @@ pub(crate) fn CheckpointCard(
                     }
                 }
             }
-
-            if let Some(ref err) = *error_msg.read() {
-                div { style: "{ERROR_STYLE}", "{err}" }
-            }
-
-            if is_pending {
-                match *selected_action.read() {
-                    None => rsx! {
-                        div {
-                            style: "{BTN_ROW}",
-                            button {
-                                style: "{APPROVE_BTN}",
-                                disabled: *submitting.read(),
-                                "aria-label": "Approve {checkpoint.title}",
-                                onclick: do_approve,
-                                "Approve"
-                            }
-                            button {
-                                style: "{SKIP_BTN}",
-                                disabled: *submitting.read(),
-                                "aria-label": "Skip {checkpoint.title}",
-                                onclick: move |_| selected_action.set(Some(CheckpointAction::Skip)),
-                                "Skip"
-                            }
-                            button {
-                                style: "{OVERRIDE_BTN}",
-                                disabled: *submitting.read(),
-                                "aria-label": "Override {checkpoint.title}",
-                                onclick: move |_| selected_action.set(Some(CheckpointAction::Override)),
-                                "Override"
-                            }
-                        }
-                    },
-                    Some(action) => rsx! {
-                        div {
-                            style: "margin-top: var(--space-3);",
-                            div { style: "{SECTION_LABEL}", "{notes_action_label(action)} — reason required (min 10 chars):" }
-                            textarea {
-                                style: "{NOTES_TEXTAREA}",
-                                placeholder: "Explain your decision...",
-                                rows: "3",
-                                value: "{notes.read()}",
-                                "aria-label": "{notes_action_label(action)} reason",
-                                oninput: move |evt: Event<FormData>| notes.set(evt.value().clone()),
-                            }
-                            div {
-                                style: "{BTN_ROW}",
-                                button {
-                                    style: if notes_valid { "{SUBMIT_BTN_ACTIVE}" } else { "{SUBMIT_BTN_DISABLED}" },
-                                    disabled: !notes_valid || *submitting.read(),
-                                    onclick: do_submit_notes,
-                                    if *submitting.read() { "Submitting..." } else { "Submit" }
-                                }
-                                button {
-                                    style: "{CANCEL_BTN}",
-                                    disabled: *submitting.read(),
-                                    onclick: move |_| {
-                                        selected_action.set(None);
-                                        notes.set(String::new());
-                                    },
-                                    "Back"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -463,14 +193,6 @@ fn action_label(action: CheckpointAction) -> &'static str {
     }
 }
 
-fn notes_action_label(action: CheckpointAction) -> &'static str {
-    match action {
-        CheckpointAction::Skip => "Skip",
-        CheckpointAction::Override => "Override",
-        CheckpointAction::Approve => "Approve",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,13 +228,5 @@ mod tests {
         .collect();
         let unique: std::collections::HashSet<_> = labels.iter().collect();
         assert_eq!(unique.len(), labels.len(), "all labels must be distinct");
-    }
-
-    #[test]
-    fn notes_action_label_skip_and_override_distinct() {
-        assert_ne!(
-            notes_action_label(CheckpointAction::Skip),
-            notes_action_label(CheckpointAction::Override)
-        );
     }
 }
