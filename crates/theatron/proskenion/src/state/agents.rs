@@ -145,6 +145,8 @@ mod tests {
             model: None,
             emoji: None,
             status: None,
+            tools: Vec::new(),
+            enabled: None,
         }
     }
 

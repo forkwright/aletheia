@@ -4,7 +4,8 @@ use std::collections::HashMap;
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
+use skene::api::types::FileEntry;
+
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::files::{
@@ -33,26 +34,6 @@ const TREE_NODE_STYLE: &str = "\
 
 const INDENT_WIDTH_PX: u32 = 16;
 
-/// API response shape for directory listing.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct FileEntry {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    path: String,
-    #[serde(default)]
-    is_dir: bool,
-    #[serde(default)]
-    size: u64,
-}
-
-/// API response shape for git status.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct GitStatusEntry {
-    path: String,
-    status: String,
-}
-
 #[component]
 pub(crate) fn FileTree(
     selected_path: Signal<Option<String>>,
@@ -70,30 +51,21 @@ pub(crate) fn FileTree(
         root_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    root_state.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let base = cfg.server_url.trim_end_matches('/');
-            let url = format!("{base}/api/v1/workspace/files");
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<Vec<FileEntry>>().await {
-                        Ok(entries) => {
-                            let nodes = entries_to_nodes(entries);
-                            root_state.set(FetchState::Loaded(nodes));
-                        }
-                        Err(e) => root_state.set(FetchState::Error(format!("parse: {e}"))),
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        root_state.set(FetchState::Error(err.to_string()));
+                        return;
                     }
+                };
+
+            match client.workspace_files(None).await {
+                Ok(entries) => {
+                    let nodes = entries_to_nodes(entries);
+                    root_state.set(FetchState::Loaded(nodes));
                 }
-                Ok(resp) => {
-                    root_state.set(FetchState::Error(format!("status: {}", resp.status())));
-                }
-                Err(e) => root_state.set(FetchState::Error(format!("connection: {e}"))),
+                Err(err) => root_state.set(FetchState::Error(err.to_string())),
             }
         });
     };
@@ -102,18 +74,13 @@ pub(crate) fn FileTree(
     let fetch_git_status = move || {
         let cfg = config.read().clone();
         spawn(async move {
-            let Ok(client) = authenticated_client(&cfg)
-                .inspect_err(crate::api::client::log_authenticated_client_error)
+            let Ok(client) =
+                skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone())
             else {
                 return;
             };
-            let base = cfg.server_url.trim_end_matches('/');
-            let url = format!("{base}/api/v1/workspace/git-status");
 
-            if let Ok(resp) = client.get(&url).send().await
-                && resp.status().is_success()
-                && let Ok(entries) = resp.json::<Vec<GitStatusEntry>>().await
-            {
+            if let Ok(entries) = client.workspace_git_status().await {
                 let mut map = GitStatusMap::new();
                 for entry in entries {
                     map.insert(entry.path, parse_git_status(&entry.status));
@@ -302,19 +269,13 @@ fn toggle_directory(
     let mut children_cache = children_cache;
 
     spawn(async move {
-        let Ok(client) = authenticated_client(&cfg)
-            .inspect_err(crate::api::client::log_authenticated_client_error)
+        let Ok(client) =
+            skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone())
         else {
             return;
         };
-        let base = cfg.server_url.trim_end_matches('/');
-        let encoded: String = keryx::url::encode_path_segment(&path_owned);
-        let url = format!("{base}/api/v1/workspace/files?path={encoded}");
 
-        if let Ok(resp) = client.get(&url).send().await
-            && resp.status().is_success()
-            && let Ok(entries) = resp.json::<Vec<FileEntry>>().await
-        {
+        if let Ok(entries) = client.workspace_files(Some(&path_owned)).await {
             let nodes = entries_to_nodes(entries);
             children_cache.write().insert(path_owned, nodes);
         }

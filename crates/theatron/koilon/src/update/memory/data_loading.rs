@@ -43,8 +43,15 @@ pub(super) fn spawn_load_facts(app: &mut App) {
         "desc"
     };
 
+    let params = skene::api::types::KnowledgeFactsRequest {
+        sort: Some(sort.to_owned()),
+        order: Some(order.to_owned()),
+        limit: Some(500),
+        ..Default::default()
+    };
+
     app.background_tasks.spawn(async move {
-        match client.knowledge_facts(sort, order, 500).await {
+        match client.knowledge_facts(&params).await {
             Ok(resp) => Msg::MemoryFactsLoaded {
                 facts: resp.facts.into_iter().map(MemoryFact::from).collect(),
                 total: resp.total,
@@ -140,7 +147,10 @@ pub(super) fn spawn_load_graph_data(app: &mut App) {
         let mut entities: Vec<MemoryEntity> = Vec::new();
         let mut relationships: Vec<MemoryRelationship> = Vec::new();
 
-        match client.knowledge_entities().await {
+        match client
+            .knowledge_entities(&skene::api::types::KnowledgeEntitiesRequest::default())
+            .await
+        {
             Ok(resp) => {
                 entities = resp.entities.into_iter().map(MemoryEntity::from).collect();
             }

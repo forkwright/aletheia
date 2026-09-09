@@ -34,7 +34,7 @@ pub struct GitStatusEntry {
 /// WHY: named `WorkspaceSearchResult` rather than `SearchResult` to stay
 /// distinct from the knowledge-domain search result row of the same shape
 /// name.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[expect(
     missing_docs,
     reason = "fields mirror pylon's SearchResult; self-documenting by name"

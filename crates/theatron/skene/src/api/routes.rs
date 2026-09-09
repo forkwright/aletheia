@@ -192,6 +192,18 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "GET",
+        path_template: "/api/v1/knowledge/entities/{id}/memories",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/check",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/health",
+    },
+    ClientRouteContract {
+        method: "GET",
         path_template: "/api/v1/knowledge/timeline",
     },
     ClientRouteContract {
@@ -281,6 +293,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     ClientRouteContract {
         method: "DELETE",
         path_template: "/api/v1/knowledge/entities/{id}",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/ops/tools",
     },
 ];
 

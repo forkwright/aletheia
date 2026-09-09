@@ -98,7 +98,7 @@ pub(crate) async fn handle_select(app: &mut App) {
     // WHY(#4911): the wire history format carries no per-message model;
     // resolve it from the session (already loaded above) instead.
     let session_model = crate::update::session_model_for(app, &session_id);
-    match app.client.history(&session_id).await {
+    match app.client.history(&session_id, None, None).await {
         Ok(history) => {
             app.dashboard.messages =
                 crate::update::history_to_chat_messages(history, session_model.as_deref()).into();

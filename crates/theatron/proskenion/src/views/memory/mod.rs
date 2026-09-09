@@ -8,12 +8,10 @@ pub(crate) mod fact_filters;
 pub(crate) mod fact_list;
 pub(crate) mod health_strip;
 pub(crate) mod list;
-mod responses;
 pub(crate) mod search;
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::memory::{
@@ -244,49 +242,33 @@ pub(crate) fn Memory() -> Element {
         drop(store);
 
         spawn(async move {
-            let Ok(client) = authenticated_client(&cfg)
-                .inspect_err(crate::api::client::log_authenticated_client_error)
+            let Ok(client) =
+                skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone())
             else {
                 return;
             };
-            let base = cfg.server_url.trim_end_matches('/');
 
             let store = fact_store.read();
             let include_forgotten = store.include_forgotten();
             drop(store);
 
-            let mut url = format!(
-                "{base}/api/v1/knowledge/facts?limit={}&sort={}&order=desc&include_forgotten={include_forgotten}",
-                FactListStore::FETCH_LIMIT,
-                sort.wire()
-            );
-
-            if !search.is_empty() {
-                let encoded: String = keryx::url::encode_path_segment(&search);
-                url.push_str(&format!("&filter={encoded}"));
-            }
-
             // NOTE: the route accepts a single fact_type / tier; when the
             // operator multi-selects, send the first as a server hint and the
             // store still narrows the rest client-side via the visible() set.
-            if let Some(ft) = type_filter.first() {
-                let encoded: String = keryx::url::encode_path_segment(ft.wire());
-                url.push_str(&format!("&fact_type={encoded}"));
-            }
-            if let Some(tier) = tier_filter.first() {
-                url.push_str(&format!("&tier={}", tier.wire()));
-            }
+            let params = skene::api::types::KnowledgeFactsRequest {
+                sort: Some(sort.wire().to_owned()),
+                order: Some("desc".to_owned()),
+                limit: Some(FactListStore::FETCH_LIMIT),
+                include_forgotten,
+                filter: (!search.is_empty()).then(|| search.clone()),
+                fact_type: type_filter.first().map(|ft| ft.wire().to_owned()),
+                tier: tier_filter.first().map(|tier| tier.wire().to_owned()),
+                ..Default::default()
+            };
 
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    let text = match resp.text().await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!("failed to read facts response: {e}");
-                            return;
-                        }
-                    };
-                    let (facts, total) = responses::parse_facts_response(&text);
+            match client.knowledge_facts(&params).await {
+                Ok(resp) => {
+                    let facts: Vec<Fact> = resp.facts.into_iter().map(Into::into).collect();
                     // WHY: apply any additional client-side type/tier narrowing
                     // beyond the single server hint so multi-select reads true.
                     let filtered: Vec<Fact> = facts
@@ -295,13 +277,10 @@ pub(crate) fn Memory() -> Element {
                         .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
                         .collect();
                     let active_count = filtered.iter().filter(|f| !f.is_forgotten).count();
-                    fact_store.write().load(filtered, active_count, total);
+                    fact_store.write().load(filtered, active_count, resp.total);
                 }
-                Ok(resp) => {
-                    tracing::warn!(status = %resp.status(), "facts request failed");
-                }
-                Err(e) => {
-                    tracing::warn!("facts connection error: {e}");
+                Err(err) => {
+                    tracing::warn!("facts request failed: {err}");
                 }
             }
         });
@@ -312,32 +291,18 @@ pub(crate) fn Memory() -> Element {
         graph_check.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    graph_check.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let url = format!(
-                "{}/api/v1/knowledge/check",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<GraphCheckReport>().await {
-                        Ok(report) => graph_check.set(FetchState::Loaded(report)),
-                        Err(e) => graph_check.set(FetchState::Error(format!("parse error: {e}"))),
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        graph_check.set(FetchState::Error(err.to_string()));
+                        return;
                     }
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    graph_check.set(FetchState::Error(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    graph_check.set(FetchState::Error(format!("connection error: {e}")));
-                }
+                };
+
+            match client.knowledge_check().await {
+                Ok(report) => graph_check.set(FetchState::Loaded(report.into())),
+                Err(err) => graph_check.set(FetchState::Error(err.to_string())),
             }
         });
     };
@@ -354,27 +319,13 @@ pub(crate) fn Memory() -> Element {
         drop(store);
 
         spawn(async move {
-            let Ok(client) = authenticated_client(&cfg)
-                .inspect_err(crate::api::client::log_authenticated_client_error)
+            let Ok(client) =
+                skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone())
             else {
                 return;
             };
-            let base = cfg.server_url.trim_end_matches('/');
 
-            let mut url = format!(
-                "{base}/api/v1/knowledge/entities?limit={}",
-                EntityListStore::PAGE_SIZE
-            );
-
-            if page > 0 {
-                url.push_str(&format!("&offset={}", page * EntityListStore::PAGE_SIZE));
-            }
-
-            if !search.is_empty() {
-                let encoded: String = keryx::url::encode_path_segment(&search);
-                url.push_str(&format!("&q={encoded}"));
-            }
-
+            let page_size = u32::try_from(EntityListStore::PAGE_SIZE).unwrap_or(u32::MAX);
             let sort_param = match sort {
                 EntitySort::PageRank => "page_rank",
                 EntitySort::Confidence => "confidence",
@@ -382,49 +333,30 @@ pub(crate) fn Memory() -> Element {
                 EntitySort::LastUpdated => "updated_at",
                 EntitySort::Alphabetical => "name",
             };
-            url.push_str(&format!("&sort={sort_param}&order=desc"));
+            let order = if sort == EntitySort::Alphabetical {
+                "asc"
+            } else {
+                "desc"
+            };
 
-            if sort == EntitySort::Alphabetical {
-                url.truncate(url.len() - 4);
-                url.push_str("asc");
-            }
+            let params = skene::api::types::KnowledgeEntitiesRequest {
+                limit: Some(page_size),
+                offset: (page > 0).then(|| {
+                    u32::try_from(page)
+                        .unwrap_or(u32::MAX)
+                        .saturating_mul(page_size)
+                }),
+                q: (!search.is_empty()).then(|| search.clone()),
+                sort: Some(sort_param.to_owned()),
+                order: Some(order.to_owned()),
+                entity_type: type_filter.iter().map(|et| et.label().to_owned()).collect(),
+                min_confidence: (min_confidence > 0.0).then_some(min_confidence),
+                agent: agent_filter.clone(),
+            };
 
-            for et in &type_filter {
-                let encoded: String = keryx::url::encode_path_segment(et.label());
-                url.push_str(&format!("&entity_type={encoded}"));
-            }
-
-            if min_confidence > 0.0 {
-                url.push_str(&format!("&min_confidence={min_confidence}"));
-            }
-
-            for agent in &agent_filter {
-                let encoded: String = keryx::url::encode_path_segment(agent);
-                url.push_str(&format!("&agent={encoded}"));
-            }
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    let text = match resp.text().await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!("failed to read entities response: {e}");
-                            return;
-                        }
-                    };
-
-                    let entities: Vec<Entity> =
-                        if let Ok(list) = serde_json::from_str::<Vec<Entity>>(&text) {
-                            list
-                        } else if let Ok(wrapper) =
-                            serde_json::from_str::<responses::EntitiesResponse>(&text)
-                        {
-                            wrapper.entities
-                        } else {
-                            tracing::warn!("failed to parse entities response");
-                            return;
-                        };
-
+            match client.knowledge_entities(&params).await {
+                Ok(resp) => {
+                    let entities: Vec<Entity> = resp.entities.into_iter().map(Into::into).collect();
                     let has_more = entities.len() >= EntityListStore::PAGE_SIZE;
 
                     let mut store = list_store.write();
@@ -435,11 +367,8 @@ pub(crate) fn Memory() -> Element {
                     }
                     store.sort_entities();
                 }
-                Ok(resp) => {
-                    tracing::warn!(status = %resp.status(), "entities request failed");
-                }
-                Err(e) => {
-                    tracing::warn!("entities connection error: {e}");
+                Err(err) => {
+                    tracing::warn!("entities request failed: {err}");
                 }
             }
         });
@@ -467,57 +396,43 @@ pub(crate) fn Memory() -> Element {
         detail_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    detail_state.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = keryx::url::encode_path_segment(&id);
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        detail_state.set(FetchState::Error(err.to_string()));
+                        return;
+                    }
+                };
 
-            let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
-            let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");
-            let mems_url = format!("{base}/api/v1/knowledge/entities/{encoded}/memories");
-
-            let entity_fut = client.get(&entity_url).send();
-            let rels_fut = client.get(&rels_url).send();
-            let mems_fut = client.get(&mems_url).send();
-
-            let (entity_res, rels_res, mems_res) = tokio::join!(entity_fut, rels_fut, mems_fut);
+            let (entity_res, rels_res, mems_res) = tokio::join!(
+                client.knowledge_entity(&id),
+                client.knowledge_entity_relationships(&id),
+                client.knowledge_entity_memories(&id),
+            );
 
             let entity: Option<Entity> = match entity_res {
-                Ok(resp) if resp.status().is_success() => match resp.json::<Entity>().await {
-                    Ok(e) => Some(e),
-                    Err(e) => {
-                        tracing::warn!("failed to parse entity: {e}");
-                        None
-                    }
-                },
-                _ => None,
+                Ok(e) => Some(e.into()),
+                Err(err) => {
+                    tracing::warn!("failed to load entity: {err}");
+                    None
+                }
             };
 
             let relationships: Vec<Relationship> = match rels_res {
-                Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => responses::parse_relationships_response(&text),
-                    Err(e) => {
-                        tracing::warn!("failed to read relationships response: {e}");
-                        Vec::new()
-                    }
-                },
-                _ => Vec::new(),
+                Ok(resp) => resp.relationships.into_iter().map(Into::into).collect(),
+                Err(err) => {
+                    tracing::warn!("failed to load relationships: {err}");
+                    Vec::new()
+                }
             };
 
             let memories: Vec<EntityMemory> = match mems_res {
-                Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => responses::parse_entity_memories_response(&text),
-                    Err(e) => {
-                        tracing::warn!("failed to read entity memories response: {e}");
-                        Vec::new()
-                    }
-                },
-                _ => Vec::new(),
+                Ok(mems) => mems.into_iter().map(Into::into).collect(),
+                Err(err) => {
+                    tracing::warn!("failed to load entity memories: {err}");
+                    Vec::new()
+                }
             };
 
             let detail = EntityDetailStore {

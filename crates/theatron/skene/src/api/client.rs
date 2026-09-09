@@ -17,9 +17,11 @@ use super::types::{
     AddCredentialRequest, Agent, AgentPerformance, AgentPerformanceListResponse, AgentsResponse,
     ConfigReloadResponse, ConfigUpdateResponse, CostMetricsResponse, CredentialRemoveResponse,
     CredentialResponse, CredentialsListResponse, DaemonTask, DaemonTaskListResponse,
-    EntitiesResponse, ExplainResponse, FactDetailResponse, FactsResponse, FileEntry, FlagRequest,
-    FlagSeverity, GitStatusEntry, HealthResponse, HistoryMessage, HistoryResponse, JournalResponse,
-    ListSessionsRequest, MergeRequest, NousStatus, NousTool, NousToolsResponse, OpenFileResponse,
+    EntitiesResponse, Entity, EntityMemory, ExplainResponse, FactDetailResponse, FactsResponse,
+    FileEntry, FlagRequest, FlagSeverity, GitStatusEntry, GraphCheckReport, HealthResponse,
+    HistoryMessage, HistoryResponse, JournalResponse, KnowledgeEntitiesRequest,
+    KnowledgeFactsRequest, ListSessionsRequest, MemoryHealthResponse, MergeRequest, NousStatus,
+    NousSummary, NousTool, NousToolsResponse, OpenFileResponse, OpsToolsResponse,
     PaginatedSessionsResponse, PendingApprovalsResponse, ProjectVerificationResult,
     ProviderListResponse, ProviderRouteResponse, QualityMetricsResponse, RecoverResponse,
     RelationshipsResponse, SearchResponse, Session, SessionReplayResponse, SessionsResponse,
@@ -83,6 +85,39 @@ pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
         .context(HttpSnafu {
             operation: "build streaming HTTP client",
         })
+}
+
+/// Build a metrics-endpoint path with pylon's shared `MetricsQuery` params
+/// (`granularity`/`from`/`to`) appended when present.
+///
+/// WHY: [`ApiClient::token_metrics`] and [`ApiClient::cost_metrics`] both
+/// query the same `MetricsQuery` shape server-side; a shared builder keeps
+/// the query-string assembly defined once.
+fn metrics_query_path(
+    base_path: &str,
+    granularity: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> String {
+    let mut path = base_path.to_owned();
+    let mut sep = '?';
+    let mut push_param = |name: &str, value: &str| {
+        path.push(sep);
+        sep = '&';
+        path.push_str(name);
+        path.push('=');
+        path.push_str(&super::routes::encoding::query_value(value));
+    };
+    if let Some(granularity) = granularity {
+        push_param("granularity", granularity);
+    }
+    if let Some(from) = from {
+        push_param("from", from);
+    }
+    if let Some(to) = to {
+        push_param("to", to);
+    }
+    path
 }
 
 /// HTTP client for the Aletheia gateway REST API.
@@ -443,12 +478,28 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
+    pub async fn history(
+        &self,
+        session_id: &str,
+        limit: Option<u32>,
+        before: Option<i64>,
+    ) -> Result<Vec<HistoryMessage>> {
+        let mut path = super::routes::sessions::session_history_path(session_id);
+        let mut sep = '?';
+        if let Some(limit) = limit {
+            path.push(sep);
+            sep = '&';
+            path.push_str("limit=");
+            path.push_str(&limit.to_string());
+        }
+        if let Some(before) = before {
+            path.push(sep);
+            path.push_str("before=");
+            path.push_str(&before.to_string());
+        }
+
         let resp = self
-            .request(
-                reqwest::Method::GET,
-                &super::routes::sessions::session_history_path(session_id),
-            )
+            .request(reqwest::Method::GET, &path)
             .send()
             .await
             .context(HttpSnafu {
@@ -787,24 +838,21 @@ impl ApiClient {
         })
     }
 
-    /// Fetch knowledge facts with sorting and pagination.
+    /// Fetch knowledge facts with sorting, filtering, and pagination.
+    ///
+    /// `params` mirrors pylon's `FactsQuery` (#4565): every field left at
+    /// its `Default` value is omitted from the query string, so the server
+    /// applies its own default (sort=confidence, order=desc, limit=100).
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_facts(
-        &self,
-        sort: &str,
-        order: &str,
-        limit: u32,
-    ) -> Result<FactsResponse> {
+    pub async fn knowledge_facts(&self, params: &KnowledgeFactsRequest) -> Result<FactsResponse> {
         let resp = self
-            .request(
-                reqwest::Method::GET,
-                &format!("/api/v1/knowledge/facts?sort={sort}&order={order}&limit={limit}"),
-            )
+            .request(reqwest::Method::GET, "/api/v1/knowledge/facts")
+            .query(params)
             .send()
             .await
             .context(HttpSnafu {
@@ -887,16 +935,23 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Fetch all knowledge entities.
+    /// Fetch knowledge entities with search, filtering, and pagination.
+    ///
+    /// `params` mirrors pylon's `EntitiesQuery` (#4565); every field left at
+    /// its `Default` value is omitted from the query string.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_entities(&self) -> Result<EntitiesResponse> {
+    pub async fn knowledge_entities(
+        &self,
+        params: &KnowledgeEntitiesRequest,
+    ) -> Result<EntitiesResponse> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/entities")
+            .query(params)
             .send()
             .await
             .context(HttpSnafu {
@@ -905,6 +960,99 @@ impl ApiClient {
         let resp = Self::check_status(resp, "entities request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "entities response",
+        })
+    }
+
+    /// Fetch detail for a single knowledge entity.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entity(&self, entity_id: &str) -> Result<Entity> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity",
+            })?;
+        let resp = Self::check_status(resp, "entity request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity response",
+        })
+    }
+
+    /// Fetch the memories (facts) linked to a specific entity.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entity_memories(&self, entity_id: &str) -> Result<Vec<EntityMemory>> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}/memories"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity memories",
+            })?;
+        let resp = Self::check_status(resp, "entity memories request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity memories response",
+        })
+    }
+
+    /// Run server-side graph consistency checks over the knowledge store.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_check(&self) -> Result<GraphCheckReport> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/check")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "run graph check",
+            })?;
+        let resp = Self::check_status(resp, "graph check request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "graph check response",
+        })
+    }
+
+    /// Fetch server-computed memory-health metrics (#6823): the same
+    /// snapshot the `aletheia_memory_health_*` Prometheus gauges export.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_health(&self) -> Result<MemoryHealthResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/health")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load memory health",
+            })?;
+        let resp = Self::check_status(resp, "memory health request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "memory health response",
         })
     }
 
@@ -1100,6 +1248,11 @@ impl ApiClient {
 
     /// Fetch canonical backend-wide token usage telemetry (#4987).
     ///
+    /// `granularity`/`from`/`to` mirror pylon's `MetricsQuery` (daily/weekly/
+    /// monthly buckets over an inclusive `YYYY-MM-DD` date range); `None`
+    /// leaves the corresponding query param unset so the server applies its
+    /// own default (daily, no range limit).
+    ///
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
@@ -1110,9 +1263,15 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn token_metrics(&self) -> Result<TokenMetricsResponse> {
+    pub async fn token_metrics(
+        &self,
+        granularity: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<TokenMetricsResponse> {
+        let path = metrics_query_path("/api/v1/metrics/tokens", granularity, from, to);
         let resp = self
-            .request(reqwest::Method::GET, "/api/v1/metrics/tokens")
+            .request(reqwest::Method::GET, &path)
             .send()
             .await
             .context(HttpSnafu {
@@ -1126,6 +1285,9 @@ impl ApiClient {
 
     /// Fetch canonical backend-wide cost telemetry (#4987).
     ///
+    /// `granularity`/`from`/`to` mirror pylon's `MetricsQuery`; see
+    /// [`Self::token_metrics`].
+    ///
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
@@ -1136,9 +1298,15 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn cost_metrics(&self) -> Result<CostMetricsResponse> {
+    pub async fn cost_metrics(
+        &self,
+        granularity: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<CostMetricsResponse> {
+        let path = metrics_query_path("/api/v1/metrics/costs", granularity, from, to);
         let resp = self
-            .request(reqwest::Method::GET, "/api/v1/metrics/costs")
+            .request(reqwest::Method::GET, &path)
             .send()
             .await
             .context(HttpSnafu {
@@ -1794,6 +1962,89 @@ impl ApiClient {
         let resp = Self::check_status(resp, "agent recover request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "agent recover response",
+        })
+    }
+
+    /// Toggle a nous agent's enabled state.
+    ///
+    /// Persisted to the config file and mirrored into the live actor when
+    /// running; the returned summary reflects the operator's intent even
+    /// when the live actor could not be reached (see
+    /// `NousSummary::restart_required`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn update_agent_enabled(&self, id: &str, enabled: bool) -> Result<NousSummary> {
+        let resp = self
+            .request(reqwest::Method::PATCH, &super::routes::nous::agent_path(id))
+            .json(&serde_json::json!({ "enabled": enabled }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update agent enabled",
+            })?;
+        let resp = Self::check_status(resp, "agent toggle request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent toggle response",
+        })
+    }
+
+    /// Toggle one tool for a nous agent.
+    ///
+    /// Persists the operator intent to the config file; runtime tool-gating
+    /// follows the actor's current config snapshot and picks up the
+    /// persisted allowlist on reload.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn update_agent_tool(
+        &self,
+        id: &str,
+        tool: &str,
+        enabled: bool,
+    ) -> Result<NousToolsResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::PATCH,
+                &super::routes::nous::agent_tools_path(id),
+            )
+            .json(&serde_json::json!({ "tool": tool, "enabled": enabled }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update agent tool",
+            })?;
+        let resp = Self::check_status(resp, "agent tool toggle request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent tool toggle response",
+        })
+    }
+
+    /// Fetch the live tool registry summary: catalog, currently-running
+    /// invocations, recent audit history, and cumulative call/error totals.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn ops_tools(&self) -> Result<OpsToolsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/ops/tools")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load ops tools",
+            })?;
+        let resp = Self::check_status(resp, "ops tools request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "ops tools response",
         })
     }
 

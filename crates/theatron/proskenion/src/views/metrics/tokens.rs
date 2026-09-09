@@ -2,7 +2,6 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::components::chart::{TimeSeriesChart, TimeSeriesColumn};
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
@@ -101,35 +100,22 @@ pub(crate) fn Tokens() -> Element {
 
         spawn(async move {
             fetch_state.set(FetchState::Loading);
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    fetch_state.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let (from, to) = range.to_query_dates();
-            let url = format!(
-                "{}/api/v1/metrics/tokens?granularity={}&from={}&to={}",
-                cfg.server_url.trim_end_matches('/'),
-                gran.url_param(),
-                from,
-                to,
-            );
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<TokenMetricsResponse>().await {
-                        Ok(data) => fetch_state.set(FetchState::Loaded(data)),
-                        Err(e) => fetch_state.set(FetchState::Error(format!("parse error: {e}"))),
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        fetch_state.set(FetchState::Error(err.to_string()));
+                        return;
                     }
-                }
-                Ok(resp) => {
-                    let message = crate::api::error::decode_error_response(resp).await;
-                    fetch_state.set(FetchState::Error(message));
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
-                }
+                };
+            let (from, to) = range.to_query_dates();
+
+            match client
+                .token_metrics(Some(gran.url_param()), Some(&from), Some(&to))
+                .await
+            {
+                Ok(data) => fetch_state.set(FetchState::Loaded(data.into())),
+                Err(err) => fetch_state.set(FetchState::Error(err.to_string())),
             }
         });
     });

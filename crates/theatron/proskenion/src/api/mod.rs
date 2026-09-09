@@ -5,7 +5,6 @@
 //! module no longer carries local copies of either.
 
 pub(crate) mod client;
-pub(crate) mod error;
 pub mod sse;
 /// Backend subsystem status contract: `GET /api/v1/system/status` (#5315).
 pub(crate) mod system_status;
