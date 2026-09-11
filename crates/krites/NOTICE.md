@@ -9,8 +9,8 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4` (last upstream commit 2024-12-04; pin status: pin_is_upstream_head)
-- 212 files under `src/`: 141 derived, 71 sovereign, 0 dual
-- Mean verbatim match across the 141 derived files: 43.9% (unweighted average of the per-file `verbatim_pct` column below)
+- 212 files under `src/`: 134 derived, 71 sovereign, 7 dual
+- Mean verbatim match across the 134 derived files: 45.3% (unweighted average of the per-file `verbatim_pct` column below)
 - Of the 71 sovereign files, **57 carry `method = "unknown"`** (no record of how they were written) and 14 carry a resolved, evidence-backed method — see "Authorship method" below.
 
 | File | Upstream | Verbatim | Status | Method |
@@ -184,13 +184,13 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/error.rs` | — | 0.0% | sovereign | unknown |
 | `src/runtime/exec.rs` | `runtime/db.rs` | 66.6% | derived | — |
 | `src/runtime/fts_reindex_test_barrier.rs` | — | 0.0% | sovereign | unknown |
-| `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived | — |
-| `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived | — |
-| `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived | — |
-| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 27.3% | derived | — |
-| `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 19.5% | derived | — |
-| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 15.9% | derived | — |
-| `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | derived | — |
+| `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | dual | — |
+| `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | dual | — |
+| `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | dual | — |
+| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 27.3% | dual | — |
+| `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 19.5% | dual | — |
+| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 15.9% | dual | — |
+| `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | dual | — |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived | — |
 | `src/runtime/hnsw_disconnect_tests.rs` | — | 0.0% | sovereign | from_spec_derived_siblings (cf. `#6952`) |
 | `src/runtime/hnsw_sovereign/adaptive.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
