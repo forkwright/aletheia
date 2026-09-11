@@ -183,6 +183,66 @@ async fn receipt_metric_records_emitted_when_signer_configured() {
     );
 }
 
+#[tokio::test]
+async fn approval_decision_metric_records_policy_auto_approved() {
+    let registry = fresh_organon_registry();
+    let tool_name = "_test_metrics_gov_policyauto";
+    let tools = make_registry_rev(tool_name, Reversibility::Irreversible);
+    let items = [crate::execute::dispatch::ToolDispatchItem::from((
+        "tool-1".to_owned(),
+        tool_name.to_owned(),
+        serde_json::json!({}),
+    ))];
+    let identity = crate::stream::TurnEventIdentity {
+        turn_id: koina::ulid::Ulid::new(),
+        session_id: "test-session".to_owned(),
+        request_id: None,
+        turn_number: 0,
+        client_turn_id: None,
+    };
+    let signer = organon::receipts::ReceiptSigner::new_session();
+    let mut loop_detector = LoopDetector::new(3);
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+    let postures = crate::approval::ApprovalPostures {
+        required: taxis::config::ApprovalPosture::Gate,
+        mandatory: taxis::config::ApprovalPosture::AutoApprove,
+    };
+
+    crate::execute::dispatch::dispatch_tool_items(
+        &items,
+        &tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        None,
+        None,
+        postures,
+        &policy,
+        0,
+        &signer,
+        None,
+        &identity,
+    )
+    .await
+    .expect("dispatch ok");
+
+    let out = encode(&registry);
+    assert!(
+        out.contains(&format!(
+            "aletheia_approval_decisions_total{{tool_name=\"{tool_name}\",decision=\"policy_auto_approved\"}} 1"
+        )),
+        "policy auto-approval must be recorded on the approval-decisions metric, got: {out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "aletheia_receipts_total{{tool_name=\"{tool_name}\",status=\"emitted\"}} 1"
+        )),
+        "auto-approved execution must still emit a receipt, got: {out}"
+    );
+}
+
 /// Closes #4835's "make it a runtime invariant" ask: this test used to
 /// assert the OPPOSITE (a `"missing"` receipt status when no signer was
 /// explicitly passed) -- that was exactly the optional-wrapper-behavior

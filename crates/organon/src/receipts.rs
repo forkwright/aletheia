@@ -377,9 +377,9 @@ pub struct EmittedReceipt {
     /// Timestamp used for signing.
     pub ts: jiff::Timestamp,
     /// The approval-policy outcome that admitted this call (#4835), e.g.
-    /// `auto_approved`, `advisory_auto`, or the wire string of a real
-    /// approval-gate decision. `None` for legacy entries recorded before
-    /// this field existed.
+    /// `auto_approved`, `advisory_auto`, `policy_auto_approved`, or the wire
+    /// string of a real approval-gate decision. `None` for legacy entries
+    /// recorded before this field existed.
     ///
     /// WHY only this one of the four fields the issue names: `policy_decision`,
     /// `sandbox_mode`, and `executor_identity` are not currently surfaced
