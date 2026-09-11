@@ -1,4 +1,4 @@
-//! Exhaustive OpenAPI route-role floor walker (#7228).
+//! Exhaustive `OpenAPI` route-role floor walker (#7228).
 //!
 //! Follow-up to #7200/#7227. Those PRs added a `Role::Agent` read floor to
 //! session/knowledge/nous routes with hand-maintained `[&str; N]` route
@@ -175,8 +175,24 @@ fn one_role_below(role: Role) -> Role {
 /// serves a path+method with no entry here, so a new route cannot silently
 /// ship without a declared floor.
 fn route_role_floor_table() -> Vec<RouteSpec> {
+    [
+        core_and_docs_routes(),
+        session_routes(),
+        approval_and_event_routes(),
+        system_ops_routes(),
+        nous_and_config_routes(),
+        workspace_routes(),
+        knowledge_routes(),
+        metrics_journal_planning_routes(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+fn core_and_docs_routes() -> Vec<RouteSpec> {
     use Method as M;
-    use Role::{Agent, Operator};
+    use Role::Operator;
     use RoleFloor::{Min, NoFloor, Public};
 
     vec![
@@ -190,6 +206,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
         // the handler itself checks no role.
         RouteSpec::new(M::GET, "/api/docs/openapi.json", NoFloor),
         RouteSpec::new(M::GET, "/api/tool-stats", Min(Operator)),
+    ]
+}
+
+fn session_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::{Agent, Operator};
+    use RoleFloor::Min;
+
+    vec![
         RouteSpec::new(M::GET, "/api/v1/sessions", Min(Agent)),
         RouteSpec::new(M::POST, "/api/v1/sessions", Min(Operator))
             .with_body(r#"{"nous_id":"floor-walker","session_key":"floor-walker"}"#),
@@ -205,6 +230,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
             .with_body(r#"{"name":"floor-walker"}"#),
         RouteSpec::new(M::POST, "/api/v1/sessions/{id}/messages", Min(Operator))
             .with_body(r#"{"content":"hi"}"#),
+    ]
+}
+
+fn approval_and_event_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::{Agent, Operator};
+    use RoleFloor::{Min, NoFloor};
+
+    vec![
         RouteSpec::new(
             M::GET,
             "/api/v1/sessions/{session_id}/approvals",
@@ -236,6 +270,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
         RouteSpec::new(M::GET, "/api/v1/events", NoFloor),
         RouteSpec::new(M::GET, "/api/v1/events/subscribe", NoFloor),
         RouteSpec::new(M::GET, "/api/v1/events/discovery", NoFloor),
+    ]
+}
+
+fn system_ops_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::Operator;
+    use RoleFloor::Min;
+
+    vec![
         RouteSpec::new(M::GET, "/api/v1/ops/tools", Min(Operator)),
         RouteSpec::new(M::GET, "/api/v1/system/credentials", Min(Operator)),
         RouteSpec::new(M::POST, "/api/v1/system/credentials", Min(Operator))
@@ -267,6 +310,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
             "/api/v1/system/credentials/{id}/validate",
             Min(Operator),
         ),
+    ]
+}
+
+fn nous_and_config_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::{Agent, Operator};
+    use RoleFloor::Min;
+
+    vec![
         RouteSpec::new(M::GET, "/api/v1/nous", Min(Agent)),
         RouteSpec::new(M::POST, "/api/v1/nous", Min(Operator))
             .with_body(r#"{"id":"floor-walker-agent"}"#),
@@ -281,6 +333,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
         RouteSpec::new(M::POST, "/api/v1/config/reload", Min(Operator)),
         RouteSpec::new(M::GET, "/api/v1/config/{section}", Min(Operator)),
         RouteSpec::new(M::PUT, "/api/v1/config/{section}", Min(Operator)).with_body("{}"),
+    ]
+}
+
+fn workspace_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::{Agent, Operator};
+    use RoleFloor::Min;
+
+    vec![
         RouteSpec::new(M::GET, "/api/v1/workspace/files", Min(Agent)),
         RouteSpec::new(M::GET, "/api/v1/workspace/git-status", Min(Agent)),
         RouteSpec::new(M::GET, "/api/v1/workspace/files/content", Min(Agent))
@@ -293,6 +354,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
             .with_query("?path=floor-walker.txt"),
         RouteSpec::new(M::GET, "/api/v1/workspace/search", Min(Agent))
             .with_query("?q=floor-walker"),
+    ]
+}
+
+fn knowledge_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::{Agent, Operator};
+    use RoleFloor::Min;
+
+    vec![
         RouteSpec::new(M::GET, "/api/v1/knowledge/facts", Min(Agent)),
         RouteSpec::new(M::POST, "/api/v1/knowledge/facts/import", Min(Operator)).with_body("{}"),
         RouteSpec::new(M::POST, "/api/v1/knowledge/ingest", Min(Operator))
@@ -351,6 +421,15 @@ fn route_role_floor_table() -> Vec<RouteSpec> {
         RouteSpec::new(M::GET, "/api/v1/knowledge/timeline", Min(Agent)),
         RouteSpec::new(M::GET, "/api/v1/knowledge/check", Min(Operator)),
         RouteSpec::new(M::GET, "/api/v1/knowledge/health", Min(Operator)),
+    ]
+}
+
+fn metrics_journal_planning_routes() -> Vec<RouteSpec> {
+    use Method as M;
+    use Role::{Agent, Operator};
+    use RoleFloor::Min;
+
+    vec![
         RouteSpec::new(M::GET, "/api/v1/metrics/agents", Min(Operator)),
         RouteSpec::new(M::GET, "/api/v1/metrics/agents/{id}", Min(Agent)),
         RouteSpec::new(M::GET, "/api/v1/metrics/quality", Min(Operator)),
@@ -593,7 +672,7 @@ async fn walker_public_routes_admit_no_token() {
 /// [`concrete_path`] substitutes into the route's own path params. This is
 /// not merely cosmetic: some Agent-floor routes (the knowledge domain's
 /// reads) additionally require an Agent-role caller to be scoped to a
-/// nous_id -- `KnowledgeReadPolicy::from_single_nous`/`from_claims` reject
+/// `nous_id` -- `KnowledgeReadPolicy::from_single_nous`/`from_claims` reject
 /// an *unscoped* Agent token outright, a real, separate business rule this
 /// walker must not misread as a broken role floor. Scoping to "rwt" also
 /// satisfies any `require_nous_access` check a route runs after
