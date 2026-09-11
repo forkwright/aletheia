@@ -23,6 +23,16 @@ fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
     absolute.canonicalize().unwrap_or(absolute)
 }
 
+/// Resolve the on-disk workspace directory for a configured agent, matching
+/// the resolution [`build_nous_runtime_config`] uses for the actor.
+pub(super) fn resolve_workspace_dir(
+    oikos: &Oikos,
+    config: &AletheiaConfig,
+    agent_id: &str,
+) -> PathBuf {
+    resolve_config_path(oikos, &resolve_nous(config, agent_id).workspace)
+}
+
 fn resolve_allowed_roots(
     oikos: &Oikos,
     workspace: &str,
