@@ -23,9 +23,11 @@ use super::error::{
     parse_retry_after_secs,
 };
 
-/// If no streaming event is received within this window, the connection is
-/// treated as hung. Matches the SSE connection's `READ_TIMEOUT` in `sse.rs`
-/// for a consistent timeout policy across both connection types.
+/// If no bytes arrive on the wire within this window, the connection is
+/// treated as hung. Liveness is judged on raw byte arrival
+/// ([`super::sse::ByteActivity`]), not parsed events: pylon's keepalives are
+/// SSE comment lines that the parser swallows per spec, and a slow provider
+/// can leave multi-minute gaps between real events within one healthy turn.
 pub const STREAM_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Read a non-success streaming response and surface it as
@@ -93,6 +95,10 @@ async fn send_cancellation_abort(tx: &mpsc::Sender<StreamEvent>) {
     clippy::needless_pass_by_value,
     reason = "Client is Arc-based; moved into the spawned task"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the read loop is one cohesive select over cancel, timeout, and event arms; splitting obscures the terminal-event flow"
+)]
 pub fn stream_message(
     // kanon:ignore RUST/pub-visibility
     client: Client,
@@ -153,7 +159,14 @@ pub fn stream_message(
             return;
         }
 
-        let mut es = SseStream::new(resp.bytes_stream());
+        // WHY: the turn stream emits `: heartbeat` comment keepalives
+        // between real events. Comment lines never surface as parsed
+        // events, so a parsed-event timeout would kill healthy slow
+        // turns (e.g. a saturated local provider queuing an LLM call
+        // for minutes). Byte-level liveness keeps the stream alive
+        // through event gaps while still detecting a dead link.
+        let activity = super::sse::ByteActivity::new();
+        let mut es = SseStream::new(activity.watch(resp.bytes_stream()));
 
         loop {
             let maybe_event = tokio::select! {
@@ -180,9 +193,15 @@ pub fn stream_message(
                 }
                 Ok(None) => break,
                 Err(_elapsed) => {
-                    // WHY: No event received within STREAM_READ_TIMEOUT. A healthy
-                    // server sends data more frequently than this window, so
-                    // silence here indicates a hung or dropped connection.
+                    if !activity.idle_longer_than(STREAM_READ_TIMEOUT) {
+                        // NOTE: keepalive comments arrived within the window
+                        // without producing a parsed event; the link is alive
+                        // — keep waiting for the turn to finish.
+                        continue;
+                    }
+                    // WHY: No bytes received within STREAM_READ_TIMEOUT — not
+                    // even a keepalive comment. Silence here indicates a hung
+                    // or dropped connection.
                     tracing::warn!(
                         timeout_secs = STREAM_READ_TIMEOUT.as_secs(),
                         "stream read timeout — treating as error"

@@ -1,11 +1,13 @@
 //! Global SSE connection to `GET /api/v1/events/subscribe`.
 //!
 //! Subscribes to `skene::api::sse::SUBSCRIBE_TOPICS` -- `fact.created`,
-//! `turn.complete`, `nous.lifecycle`, `tool.approval_required`, and
-//! `tool.approval_resolved` -- providing cross-session awareness for newly
-//! created facts, completed turns, agent lifecycle changes, and tool calls
-//! blocked on approval in any session. The connection auto-reconnects with
-//! exponential backoff (1s to 30s) and treats 45s of
+//! `turn.start`, `turn.complete`, `turn.failed`, `turn.cancelled`,
+//! `nous.lifecycle`, `tool.approval_required`, and `tool.approval_resolved`
+//! -- providing cross-session awareness for newly created facts, the full
+//! turn lifecycle (so the sidebar shows an agent as active while it works),
+//! agent lifecycle changes, and tool calls blocked on approval in any
+//! session. The connection auto-reconnects with exponential backoff (1s to
+//! 30s) and treats 45s of
 //! *byte-level* silence as a stale connection (server keepalives are SSE comments
 //! the parser never surfaces as events). Losses are reported to the UI only once
 //! confirmed; clean reconnects are silent.
