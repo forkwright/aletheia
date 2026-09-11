@@ -41,7 +41,7 @@ Files are also split into two load tiers:
 - **Always-loaded (identity tier):** `SOUL.md`, `VOICE.md`, `USER.md`, `IDENTITY.md`, `PROSOCHE.md`.
 - **Conditionally-loaded (operational tier):** `AGENTS.md`, `GOALS.md`, `TOOLS.md`, `CHECKLIST.md`, `MEMORY.md`, `CONTEXT.md`. The task hint selects which operational files are included (coding loads `TOOLS.md`, `CHECKLIST.md`, `MEMORY.md`; research loads `GOALS.md`, `CONTEXT.md`, `MEMORY.md`; planning loads `GOALS.md`, `AGENTS.md`, `CONTEXT.md`).
 
-If a file does not exist in the workspace directory, it is silently skipped. Empty files are also skipped.
+If a file does not exist in the workspace cascade, it is skipped from the prompt — and its name is added to a synthesized `workspace-files-absent` section (last in slot order, dropped first under budget pressure) so the model knows not to call `read` on it. Empty files are skipped without being listed as absent.
 
 ---
 

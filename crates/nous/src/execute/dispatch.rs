@@ -25,8 +25,9 @@ use organon::types::{
     ApprovalRequirement, InputSchema, PropertyDef, PropertyType, RedactionPolicy, ToolContext,
     ToolInput, ToolResult,
 };
+use taxis::config::ApprovalPosture;
 
-use crate::approval::{ApprovalChoice, ApprovalGate};
+use crate::approval::{ApprovalChoice, ApprovalGate, ApprovalPostures};
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
 use crate::stream::{LiveApprovalEvidence, TurnEventIdentity, TurnStreamEvent};
@@ -515,6 +516,12 @@ fn redacted_trace_result(policy: &RedactionPolicy, result: &str) -> String {
 
 const APPROVAL_OUTCOME_AUTO_APPROVED: &str = "auto_approved";
 const APPROVAL_OUTCOME_ADVISORY_AUTO: &str = "advisory_auto";
+/// The configured posture auto-approved this Required/Mandatory call: no
+/// operator gate was consulted, and none was required by policy. Distinct
+/// from `APPROVAL_OUTCOME_AUTO_APPROVED` (a `None` requirement that never
+/// gates) so an auditor can tell "this tool never gates" apart from "this
+/// deployment's operator relaxed the gate for this tier".
+const APPROVAL_OUTCOME_POLICY_AUTO_APPROVED: &str = "policy_auto_approved";
 const APPROVAL_OUTCOME_NO_GATE_DENIED: &str = "no_gate_denied";
 const APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED: &str = "approval_event_unavailable_denied";
 const TOOL_OUTCOME_DENIED_BY_ROLE: &str = "denied_by_role";
@@ -1454,6 +1461,10 @@ pub(super) async fn dispatch_tools(
         iterations,
         stream_tx,
         approval_gate,
+        // WHY: the wrapper preserves the pre-posture default so its existing
+        // call sites keep exercising the fail-closed gate path; posture
+        // coverage lives in tests that call `dispatch_tool_items` directly.
+        ApprovalPostures::default(),
         policy,
         max_tool_result_bytes,
         signer,
@@ -1480,6 +1491,7 @@ pub(super) async fn dispatch_tool_items(
     iterations: u32,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     approval_gate: Option<&ApprovalGate>,
+    approval_postures: ApprovalPostures,
     policy: &ToolDispatchPolicy,
     max_tool_result_bytes: u32,
     // WHY non-optional: see `dispatch_single_tool`'s parameter docs (#4835).
@@ -1728,109 +1740,140 @@ pub(super) async fn dispatch_tool_items(
                 APPROVAL_OUTCOME_ADVISORY_AUTO
             }
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
-                // WHY(#7252): a turn with no approval gate is non-interactive
-                // (daemon, headless streaming, MCP `session_message`) — there
-                // is no approver to reach. Emitting `ToolApprovalRequired`
-                // anyway dangles a request nobody can answer: on streamed
-                // no-gate paths it surfaces to the client as a pending
-                // approval that can never resolve, and on the daemon path it
-                // is the request that must never exist. Skip the request and
-                // go straight to the typed `no_gate_denied` refusal; the
-                // `approval_resolved` audit signal below still records the
-                // policy decision.
-                let (choice, outcome) = if let Some(gate) = approval_gate {
-                    // The connected approver sees the minimum policy-permitted
-                    // evidence from the exact prepared input it is authorizing.
-                    // Replay/history receives the independently produced trace
-                    // copy, which never contains vault/file-expanded values.
-                    let mut live_input = prepared_input.as_tool_input().arguments.clone();
-                    // Vault values are known secrets regardless of length or
-                    // shape. Preserve that provenance from the placeholder-form
-                    // input before the generic/declared policy pass.
-                    redact_resolved_secrets_in_prepared_json(
-                        tool_input,
-                        &unprepared_input.arguments,
-                        &mut live_input,
+                // WHY: the operator's configured posture is consulted first.
+                // `auto_approve` executes the gated tier without an operator
+                // decision — this is what makes Required/Mandatory tools
+                // usable on turns that carry no approval gate at all
+                // (daemon/prosoche turns, non-streaming REST turns). The
+                // execution still records the full audit trail below:
+                // `dispatch_single_tool` issues the receipt V2 attestation
+                // and persists the `ToolCall` with this outcome on its
+                // `approval` field. Unknown future requirements never reach
+                // this branch: `posture_for` fails closed to `Gate`.
+                if approval_postures.posture_for(approval) == ApprovalPosture::AutoApprove {
+                    record_approval_policy_outcome(
+                        tool_id,
+                        tool_name,
+                        approval,
+                        approval_gate.is_some(),
+                        APPROVAL_OUTCOME_POLICY_AUTO_APPROVED,
                     );
-                    let live_approval_input = redacted_live_approval_input(
-                        tools,
-                        &prepared_input.as_tool_input().name,
-                        &live_input,
-                    );
-                    let approval_event_available = emit_approval_required(
+                    emit_approval_resolved(
                         stream_tx,
                         tool_ctx,
                         identity,
                         tool_id,
                         tool_name,
-                        LiveApprovalEvidence::new(live_approval_input),
-                        &trace_input,
-                        approval,
+                        APPROVAL_OUTCOME_POLICY_AUTO_APPROVED,
                     );
-                    if approval_event_available {
-                        let choice = gate.await_decision(tool_id).await;
-                        (choice, choice.as_wire_str())
+                    APPROVAL_OUTCOME_POLICY_AUTO_APPROVED
+                } else {
+                    // WHY(#7252): a turn with no approval gate is non-interactive
+                    // (daemon, headless streaming, MCP `session_message`) — there
+                    // is no approver to reach. Emitting `ToolApprovalRequired`
+                    // anyway dangles a request nobody can answer: on streamed
+                    // no-gate paths it surfaces to the client as a pending
+                    // approval that can never resolve, and on the daemon path it
+                    // is the request that must never exist. Skip the request and
+                    // go straight to the typed `no_gate_denied` refusal; the
+                    // `approval_resolved` audit signal below still records the
+                    // policy decision.
+                    let (choice, outcome) = if let Some(gate) = approval_gate {
+                        // The connected approver sees the minimum policy-permitted
+                        // evidence from the exact prepared input it is authorizing.
+                        // Replay/history receives the independently produced trace
+                        // copy, which never contains vault/file-expanded values.
+                        let mut live_input = prepared_input.as_tool_input().arguments.clone();
+                        // Vault values are known secrets regardless of length or
+                        // shape. Preserve that provenance from the placeholder-form
+                        // input before the generic/declared policy pass.
+                        redact_resolved_secrets_in_prepared_json(
+                            tool_input,
+                            &unprepared_input.arguments,
+                            &mut live_input,
+                        );
+                        let live_approval_input = redacted_live_approval_input(
+                            tools,
+                            &prepared_input.as_tool_input().name,
+                            &live_input,
+                        );
+                        let approval_event_available = emit_approval_required(
+                            stream_tx,
+                            tool_ctx,
+                            identity,
+                            tool_id,
+                            tool_name,
+                            LiveApprovalEvidence::new(live_approval_input),
+                            &trace_input,
+                            approval,
+                        );
+                        if approval_event_available {
+                            let choice = gate.await_decision(tool_id).await;
+                            (choice, choice.as_wire_str())
+                        } else {
+                            warn!(
+                                tool = tool_name.as_str(),
+                                tool_id = tool_id.as_str(),
+                                "approval-required tool call could not reach approver - default-deny"
+                            );
+                            (
+                                ApprovalChoice::Denied,
+                                APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED,
+                            )
+                        }
                     } else {
                         warn!(
                             tool = tool_name.as_str(),
                             tool_id = tool_id.as_str(),
-                            "approval-required tool call could not reach approver - default-deny"
+                            approval_requirement = %approval,
+                            "approval-required tool call with no approval gate wired - default-deny"
                         );
-                        (
-                            ApprovalChoice::Denied,
-                            APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED,
-                        )
-                    }
-                } else {
-                    warn!(
-                        tool = tool_name.as_str(),
-                        tool_id = tool_id.as_str(),
-                        approval_requirement = %approval,
-                        "approval-required tool call with no approval gate wired - default-deny"
-                    );
-                    (ApprovalChoice::Denied, APPROVAL_OUTCOME_NO_GATE_DENIED)
-                };
-                record_approval_policy_outcome(
-                    tool_id,
-                    tool_name,
-                    approval,
-                    approval_gate.is_some(),
-                    outcome,
-                );
-                emit_approval_resolved(stream_tx, tool_ctx, identity, tool_id, tool_name, outcome);
-                if matches!(choice, ApprovalChoice::Denied) {
-                    let message = if outcome == APPROVAL_OUTCOME_NO_GATE_DENIED {
-                        format!(
-                            "Tool '{tool_name}' execution denied by approval policy: \
-                             {approval} approval requires an approval gate."
-                        )
-                    } else if outcome == APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED {
-                        format!(
-                            "Tool '{tool_name}' execution denied by approval policy: \
-                             the live approval event was unavailable."
-                        )
-                    } else {
-                        format!("Tool '{tool_name}' execution denied by user.")
+                        (ApprovalChoice::Denied, APPROVAL_OUTCOME_NO_GATE_DENIED)
                     };
-                    record_denied_call(
-                        all_tool_calls,
-                        &mut unexecuted,
-                        &mut tool_results,
-                        stream_tx,
-                        tool_ctx,
-                        tools,
-                        identity,
-                        &DeniedToolCall {
-                            id: tool_id,
-                            name: tool_name,
-                            input: tool_input,
-                            message,
-                            approval: Some(outcome),
-                        },
+                    record_approval_policy_outcome(
+                        tool_id,
+                        tool_name,
+                        approval,
+                        approval_gate.is_some(),
+                        outcome,
                     );
-                    continue;
+                    emit_approval_resolved(
+                        stream_tx, tool_ctx, identity, tool_id, tool_name, outcome,
+                    );
+                    if matches!(choice, ApprovalChoice::Denied) {
+                        let message = if outcome == APPROVAL_OUTCOME_NO_GATE_DENIED {
+                            format!(
+                                "Tool '{tool_name}' execution denied by approval policy: \
+                                 {approval} approval requires an approval gate."
+                            )
+                        } else if outcome == APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED {
+                            format!(
+                                "Tool '{tool_name}' execution denied by approval policy: \
+                                 the live approval event was unavailable."
+                            )
+                        } else {
+                            format!("Tool '{tool_name}' execution denied by user.")
+                        };
+                        record_denied_call(
+                            all_tool_calls,
+                            &mut unexecuted,
+                            &mut tool_results,
+                            stream_tx,
+                            tool_ctx,
+                            tools,
+                            identity,
+                            &DeniedToolCall {
+                                id: tool_id,
+                                name: tool_name,
+                                input: tool_input,
+                                message,
+                                approval: Some(outcome),
+                            },
+                        );
+                        continue;
+                    }
+                    outcome
                 }
-                outcome
             }
         };
 

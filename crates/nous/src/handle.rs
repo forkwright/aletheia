@@ -50,8 +50,11 @@ impl NousHandle {
     /// # Approval gate
     ///
     /// Non-streaming turns do not carry an operator approval gate. Shared tool
-    /// dispatch auto-executes `None`/`Advisory` calls and policy-denies
-    /// `Required`/`Mandatory` calls when no gate is wired.
+    /// dispatch auto-executes `None`/`Advisory` calls and, for
+    /// `Required`/`Mandatory` calls, applies the nous's configured approval
+    /// posture: `gate` (default) policy-denies them when no gate is wired;
+    /// `auto_approve` executes them with a `policy_auto_approved` audit
+    /// outcome.
     pub async fn send_turn(
         &self,
         session_key: impl Into<String>,
@@ -76,7 +79,9 @@ impl NousHandle {
     /// # Approval gate
     ///
     /// This non-streaming entrypoint has no operator approval channel. Approval-
-    /// required tools fail closed under the shared no-gate dispatch policy.
+    /// required tools follow the configured posture: they fail closed under the
+    /// default (`gate`) no-gate dispatch policy, and execute with a
+    /// `policy_auto_approved` audit outcome under `auto_approve`.
     pub async fn send_turn_with_session_id(
         &self,
         session_key: impl Into<String>,
@@ -137,7 +142,8 @@ impl NousHandle {
     /// Send a turn with an explicit request-scoped cancellation token.
     ///
     /// Approval behavior matches [`send_turn_with_session_id`](Self::send_turn_with_session_id):
-    /// no gate is wired, so approval-required tools fail closed.
+    /// no gate is wired, so approval-required tools follow the configured
+    /// posture — fail closed under `gate`, execute under `auto_approve`.
     pub async fn send_turn_with_cancel(
         &self,
         session_key: impl Into<String>,
@@ -223,7 +229,9 @@ impl NousHandle {
     /// This method passes `approval_gate: None` — intentional for batch/headless
     /// callers (e.g. `diaporeia`'s memory-MCP tool turns) where no interactive
     /// operator is present. The no-gate contract in shared dispatch is:
-    /// `None`/`Advisory` execute, `Required`/`Mandatory` policy-deny. Callers
+    /// `None`/`Advisory` execute; `Required`/`Mandatory` policy-deny under the
+    /// default `gate` posture and execute with a `policy_auto_approved` audit
+    /// outcome under a configured `auto_approve` posture. Callers
     /// that have an interactive operator session must use
     /// [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval)
     /// so the approval event is surfaced to the operator and the gate is wired.
@@ -298,9 +306,12 @@ impl NousHandle {
     /// Send a streaming turn with an operator approval gate (#3958).
     ///
     /// When `approval_gate` is `Some`, every Required/Mandatory tool call
-    /// blocks on a decision from the gate's receiver before executing.
-    /// When `None`, the shared no-gate policy denies Required/Mandatory calls
-    /// and records a `no_gate_denied` approval outcome.
+    /// blocks on a decision from the gate's receiver before executing, unless
+    /// the nous's configured posture auto-approves the tier. When `None`, the
+    /// shared no-gate policy applies the posture: `gate` (default) denies
+    /// Required/Mandatory calls and records a `no_gate_denied` approval
+    /// outcome; `auto_approve` executes them with a `policy_auto_approved`
+    /// outcome.
     ///
     /// # Cancel safety
     ///

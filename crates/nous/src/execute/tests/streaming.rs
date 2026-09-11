@@ -650,6 +650,138 @@ async fn streaming_fallback_uses_approval_gate_for_mandatory_tool() {
     assert_eq!(tool_result, 1);
 }
 
+/// Config-to-loop wiring proof for the relaxed approval posture: a
+/// Mandatory (critical-risk) tool call on a turn with NO approval gate
+/// attached — the daemon/REST shape — must execute when the nous's
+/// behavior config sets the mandatory tier to `auto_approve`, and the
+/// durable tool call must record the policy outcome.
+#[tokio::test]
+async fn mandatory_tool_executes_without_gate_under_auto_approve_posture() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    ));
+
+    let mut tools = ToolRegistry::new();
+    let mut def = make_tool_def("exec");
+    def.reversibility = organon::types::Reversibility::Irreversible;
+    tools
+        .register(def, Box::new(EchoExecutor))
+        .expect("register");
+
+    let mut config = test_config();
+    config.behavior.tool_approval_mandatory_policy = taxis::config::ApprovalPosture::AutoApprove;
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming with relaxed mandatory posture");
+
+    assert_eq!(result.content, "Done!");
+    assert_eq!(result.tool_calls.len(), 1);
+    let tool_call = result.tool_calls.first().expect("one tool call");
+    assert!(
+        !tool_call.is_error,
+        "auto-approved mandatory call must execute: {:?}",
+        tool_call.result
+    );
+    assert_eq!(
+        tool_call.approval.as_deref(),
+        Some("policy_auto_approved"),
+        "the persisted tool call must record the policy auto-approval"
+    );
+    assert!(
+        tool_call.receipt.is_some(),
+        "auto-approved execution must still carry an attestation receipt"
+    );
+
+    drop(tx);
+    let mut approval_required = 0;
+    let mut resolved_decision = None;
+    let mut tool_start = 0;
+    while let Ok(event) = rx.try_recv() {
+        match event {
+            TurnStreamEvent::ToolApprovalRequired { .. } => approval_required += 1,
+            TurnStreamEvent::ToolApprovalResolved { decision, .. } => {
+                resolved_decision = Some(decision);
+            }
+            TurnStreamEvent::ToolStart { .. } => tool_start += 1,
+            _ => {}
+        }
+    }
+    assert_eq!(
+        approval_required, 0,
+        "no approval prompt may be emitted under auto_approve posture"
+    );
+    assert_eq!(resolved_decision.as_deref(), Some("policy_auto_approved"));
+    assert_eq!(tool_start, 1, "the tool must actually start");
+}
+
+/// Mirror-image conservative-default proof: the same shape with no posture
+/// configured (compiled defaults) must keep the ADR-005 fail-closed
+/// behavior — the mandatory call is denied because no gate is wired.
+#[tokio::test]
+async fn mandatory_tool_denied_without_gate_under_default_posture() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Denied handled"),
+        ])
+        .models(&["test-model"]),
+    ));
+
+    let mut tools = ToolRegistry::new();
+    let mut def = make_tool_def("exec");
+    def.reversibility = organon::types::Reversibility::Irreversible;
+    tools
+        .register(def, Box::new(EchoExecutor))
+        .expect("register");
+
+    let (tx, _rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming with default posture");
+
+    assert_eq!(result.tool_calls.len(), 1);
+    let tool_call = result.tool_calls.first().expect("one denied tool call");
+    assert!(
+        tool_call.is_error,
+        "default posture must keep denying a gate-less mandatory call"
+    );
+    assert_eq!(
+        tool_call.approval.as_deref(),
+        Some("no_gate_denied"),
+        "the default posture must record the no-gate denial"
+    );
+}
+
 #[tokio::test]
 async fn streaming_max_iterations_reports_stop_reason() {
     // WHY(#5369): mirrors `max_iterations_reports_stop_reason` in core.rs —

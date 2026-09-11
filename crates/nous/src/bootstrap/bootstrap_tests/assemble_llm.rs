@@ -217,8 +217,8 @@ async fn assemble_llm_missing_directory_no_regression() {
 
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md", "output-style"],
-        "bootstrap should work as before when _llm/ is absent"
+        vec!["SOUL.md", "output-style", "workspace-files-absent"],
+        "bootstrap should work as before when _llm/ is absent, plus the absent-files roster"
     );
 }
 

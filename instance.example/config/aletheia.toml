@@ -108,6 +108,16 @@ workspace = "nous/main"
 # [timeouts]
 # approvalTimeoutSecs = 120   # operator approval wait before default-deny; range: 5–3600
 
+# --- Approval posture (per-tier; default "gate" preserves fail-closed behavior) ---
+# "gate": Required/Mandatory tools need a wired operator approval gate and
+# default-deny when a turn has none (daemon/prosoche turns, plain REST turns).
+# "auto_approve": the tier executes without a gate, recording a
+# "policy_auto_approved" audit outcome on every call. Only relax this on
+# trusted single-operator deployments.
+# [agents.defaults.behavior]
+# toolApprovalRequiredPolicy = "gate"
+# toolApprovalMandatoryPolicy = "gate"
+
 # --- Capacity (Wave 1 — deployment-tunable) ---
 # Tool output and context window limits. Hot-reloadable.
 # [capacity]

@@ -35,8 +35,8 @@ async fn assemble_with_extra_includes_pack_sections() {
     );
     assert_eq!(
         result.sections_included.len(),
-        3,
-        "SOUL.md, output-style, and the extra pack section should be included"
+        4,
+        "SOUL.md, output-style, the extra pack section, and the absent-files roster should be included"
     );
 }
 

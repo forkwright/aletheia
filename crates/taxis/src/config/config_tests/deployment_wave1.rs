@@ -29,6 +29,123 @@ fn timeouts_approval_override_from_json() {
 }
 
 #[test]
+fn approval_posture_defaults_to_gate() {
+    // WHY: an omitted config must reproduce the ADR-005 fail-closed
+    // behavior — the relaxed posture is only ever an explicit opt-in.
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_approval_required_policy,
+        ApprovalPosture::Gate,
+        "default Required-tier posture must be gate"
+    );
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_approval_mandatory_policy,
+        ApprovalPosture::Gate,
+        "default Mandatory-tier posture must be gate"
+    );
+}
+
+#[test]
+fn approval_posture_override_from_json() {
+    let json = r#"{"agents": {"defaults": {"behavior": {
+        "toolApprovalRequiredPolicy": "auto_approve",
+        "toolApprovalMandatoryPolicy": "auto_approve"
+    }}}}"#;
+    let config: AletheiaConfig =
+        serde_json::from_str(json).expect("parse approval posture override");
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_approval_required_policy,
+        ApprovalPosture::AutoApprove,
+        "toolApprovalRequiredPolicy override from json should take effect"
+    );
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_approval_mandatory_policy,
+        ApprovalPosture::AutoApprove,
+        "toolApprovalMandatoryPolicy override from json should take effect"
+    );
+}
+
+#[test]
+fn approval_posture_override_from_toml() {
+    // WHY: TOML is the operator-facing format (`aletheia.toml`); the JSON
+    // tests above share serde but not the TOML parser's key handling, so
+    // the exact block an operator writes is pinned here.
+    let src = r#"
+[agents.defaults.behavior]
+toolApprovalRequiredPolicy = "auto_approve"
+toolApprovalMandatoryPolicy = "auto_approve"
+"#;
+    let config: AletheiaConfig = toml::from_str(src).expect("parse approval posture from TOML");
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_approval_required_policy,
+        ApprovalPosture::AutoApprove
+    );
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_approval_mandatory_policy,
+        ApprovalPosture::AutoApprove
+    );
+}
+
+#[test]
+fn approval_posture_rejects_unknown_value() {
+    let json = r#"{"agents": {"defaults": {"behavior": {
+        "toolApprovalMandatoryPolicy": "permissive"
+    }}}}"#;
+    assert!(
+        serde_json::from_str::<AletheiaConfig>(json).is_err(),
+        "an unknown posture value must fail deserialization, not silently coerce"
+    );
+}
+
+#[test]
+fn approval_posture_survives_serde_roundtrip() {
+    let mut config = AletheiaConfig::default();
+    config
+        .agents
+        .defaults
+        .behavior
+        .tool_approval_mandatory_policy = ApprovalPosture::AutoApprove;
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert_eq!(
+        back.agents.defaults.behavior.tool_approval_mandatory_policy,
+        ApprovalPosture::AutoApprove,
+        "mandatory posture should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.agents.defaults.behavior.tool_approval_required_policy,
+        ApprovalPosture::Gate,
+        "required posture should survive serde roundtrip at its default"
+    );
+}
+
+#[test]
 fn capacity_defaults_match_koina_consts() {
     let config = AletheiaConfig::default();
     assert_eq!(
@@ -554,6 +671,16 @@ fn per_agent_defaults_match_original_constants() {
     );
     assert_eq!(ab.tool_max_image_bytes, 20_971_520, "tool_max_image_bytes");
     assert_eq!(ab.tool_max_pdf_bytes, 33_554_432, "tool_max_pdf_bytes");
+    assert_eq!(
+        ab.tool_approval_required_policy,
+        ApprovalPosture::Gate,
+        "tool_approval_required_policy"
+    );
+    assert_eq!(
+        ab.tool_approval_mandatory_policy,
+        ApprovalPosture::Gate,
+        "tool_approval_mandatory_policy"
+    );
 
     // Corrections
     assert_eq!(

@@ -33,8 +33,8 @@ async fn assemble_with_required_only() {
     );
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md", "output-style"],
-        "SOUL.md and output-style should be included when it is the only file"
+        vec!["SOUL.md", "output-style", "workspace-files-absent"],
+        "SOUL.md, output-style, and the absent-files roster should be included when it is the only file"
     );
     assert!(
         result.sections_dropped.is_empty(),
@@ -143,12 +143,114 @@ async fn assemble_missing_optional_skips() {
         .expect("assemble should succeed");
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md", "output-style"],
-        "SOUL.md and output-style should be included when optional files are absent"
+        vec!["SOUL.md", "output-style", "workspace-files-absent"],
+        "SOUL.md, output-style, and the absent-files roster should be included when optional files are absent"
     );
     assert!(
         result.sections_dropped.is_empty(),
         "missing optional files should be silently skipped, not dropped"
+    );
+}
+
+/// The absent-files roster is the model's only source of negative knowledge
+/// about optional workspace files: without it, a persona or memory document
+/// that references a never-created file (e.g. a layout table listing
+/// GOALS.md) drives the model into `read` calls that can only fail.
+#[tokio::test]
+async fn absent_optional_files_are_rostered_with_a_do_not_read_note() {
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed");
+
+    let roster = result
+        .system_prompt
+        .split("## workspace-files-absent")
+        .nth(1)
+        .expect("absent-files roster should be present when files are missing");
+    assert!(
+        roster.contains("GOALS.md"),
+        "GOALS.md is absent from the fixture and must be rostered: {roster}"
+    );
+    assert!(
+        roster.contains("Do not call `read`"),
+        "the roster must instruct the model not to read absent files: {roster}"
+    );
+    assert!(
+        !roster.contains("SOUL.md"),
+        "a present file must not be rostered: {roster}"
+    );
+}
+
+#[tokio::test]
+async fn absent_roster_is_omitted_when_every_workspace_file_exists() {
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("VOICE.md", "voice"),
+            ("USER.md", "user info"),
+            ("AGENTS.md", "team topology"),
+            ("GOALS.md", "goals"),
+            ("TOOLS.md", "tool list"),
+            ("CHECKLIST.md", "work procedures"),
+            ("MEMORY.md", "memory"),
+            ("IDENTITY.md", "name and emoji"),
+            ("PROSOCHE.md", "checklist"),
+            ("CONTEXT.md", "runtime config"),
+        ],
+    );
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed");
+
+    assert!(
+        !result
+            .sections_included
+            .contains(&"workspace-files-absent".to_owned()),
+        "no absent-files roster when every workspace file exists: {:?}",
+        result.sections_included
+    );
+    assert!(
+        !result.system_prompt.contains("workspace-files-absent"),
+        "the roster must not change prompts on fully-scaffolded workspaces"
+    );
+}
+
+/// A file filtered out by the task hint but absent on disk still belongs on
+/// the roster: the hint governs prompt inclusion, the roster reports disk
+/// state — and a `read` tool call knows nothing of hints.
+#[tokio::test]
+async fn hint_filtered_but_absent_file_is_still_rostered() {
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble_conditional("test", &mut budget, Vec::new(), TaskHint::Conversation)
+        .await
+        .expect("assemble should succeed");
+
+    assert!(
+        result.sections_filtered.contains(&"GOALS.md".to_owned()),
+        "GOALS.md is filtered out of a Conversation turn"
+    );
+    let roster = result
+        .system_prompt
+        .split("## workspace-files-absent")
+        .nth(1)
+        .expect("absent-files roster should be present");
+    assert!(
+        roster.contains("GOALS.md"),
+        "a hint-filtered file that does not exist must still be rostered: {roster}"
     );
 }
 
@@ -220,8 +322,8 @@ async fn assemble_all_files_present() {
         .expect("assemble should succeed");
     assert_eq!(
         result.sections_included.len(),
-        10,
-        "all 9 workspace sections + output-style should be included when budget allows"
+        11,
+        "all 9 workspace sections + output-style + the absent-files roster (VOICE.md, CHECKLIST.md are not in the fixture) should be included when budget allows"
     );
     assert!(
         result.total_tokens > 0,
@@ -248,8 +350,24 @@ async fn assemble_empty_file_skipped() {
         .expect("assemble should succeed");
     assert_eq!(
         result.sections_included,
-        vec!["SOUL.md", "output-style"],
-        "empty and whitespace-only sections should be skipped, output-style always present"
+        vec!["SOUL.md", "output-style", "workspace-files-absent"],
+        "empty and whitespace-only sections should be skipped, output-style always present, absent files rostered"
+    );
+    // WHY: an empty-on-disk file is skipped from the prompt but must NOT land
+    // on the absent-files roster — a `read` on it succeeds (with empty
+    // content), so listing it as absent would teach the model a falsehood.
+    let roster_section = result
+        .system_prompt
+        .split("## workspace-files-absent")
+        .nth(1)
+        .expect("absent-files roster should be present");
+    assert!(
+        !roster_section.contains("AGENTS.md") && !roster_section.contains("GOALS.md"),
+        "empty-but-existing files must not be listed as absent: {roster_section}"
+    );
+    assert!(
+        roster_section.contains("USER.md"),
+        "genuinely absent files must be listed: {roster_section}"
     );
 }
 

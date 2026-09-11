@@ -936,8 +936,10 @@ pub async fn send_message(
             }
 
             // WHY(#4828): legacy message streaming has no approval endpoint wired.
-            // Shared dispatch therefore executes None/Advisory tools and
-            // policy-denies Required/Mandatory tools instead of silently approving.
+            // Shared dispatch therefore executes None/Advisory tools and, for
+            // Required/Mandatory tools, applies the nous's configured approval
+            // posture: `gate` (default) policy-denies them; `auto_approve`
+            // executes them with a `policy_auto_approved` audit outcome.
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
             let turn_fut = handle.send_turn_with_cancel(
