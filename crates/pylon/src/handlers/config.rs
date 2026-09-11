@@ -351,6 +351,8 @@ pub async fn get_section(
     path = "/api/v1/config/reload",
     responses(
         (status = 200, description = "Config reloaded", body = ConfigReloadResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 422, description = "New config is invalid, old config preserved"),
     ),
     security(("bearer_auth" = []))
@@ -508,6 +510,8 @@ fn validate_full_config(config: &taxis::config::AletheiaConfig) -> Result<(), Ap
     request_body = ConfigSectionPayload,
     responses(
         (status = 200, description = "Updated config section", body = ConfigUpdateResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Unknown section"),
         (status = 422, description = "Validation failed"),
     ),

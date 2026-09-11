@@ -676,6 +676,7 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
         (status = 200, description = "SSE event stream", content_type = "text/event-stream"),
         (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Session not found", body = crate::error::ErrorResponse),
         (status = 409, description = "Idempotency conflict — request still in flight", body = crate::error::ErrorResponse),
     ),
@@ -1144,6 +1145,7 @@ pub async fn send_message(
         (status = 200, description = "SSE event stream (TurnStreamEvent format)", content_type = "text/event-stream"),
         (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Nous not found", body = crate::error::ErrorResponse),
         (status = 409, description = "Stream turn idempotency conflict", body = crate::error::ErrorResponse),
     ),
@@ -2630,6 +2632,7 @@ async fn reconnect_turn_task(
     responses(
         (status = 200, description = "SSE event stream (replay + live)", content_type = "text/event-stream"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Turn not found or expired", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

@@ -31,6 +31,7 @@ pub use ingest_dto::{IngestFactError, IngestRequest, IngestResponse};
         (status = 200, description = "Ingestion summary"),
         (status = 400, description = "Invalid format or malformed request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 422, description = "Validation failed", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not available", body = crate::error::ErrorResponse),
     ),

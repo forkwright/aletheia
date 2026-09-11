@@ -87,6 +87,7 @@ fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
     responses(
         (status = 200, description = "Ops tool registry summary", body = OpsToolsResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]

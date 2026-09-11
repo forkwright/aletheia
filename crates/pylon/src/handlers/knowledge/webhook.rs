@@ -30,6 +30,7 @@ pub use webhook_dto::{WebhookIngestRequest, WebhookIngestResponse};
         (status = 200, description = "Ingestion summary"),
         (status = 400, description = "Malformed request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not available", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

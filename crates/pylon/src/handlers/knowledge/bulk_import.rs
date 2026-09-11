@@ -74,6 +74,7 @@ fn parse_import_body(bytes: &[u8]) -> Result<Vec<mneme::knowledge::Fact>, ApiErr
         (status = 200, description = "Import summary with per-fact error details"),
         (status = 400, description = "Batch too large or malformed request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not available", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
