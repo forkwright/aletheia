@@ -224,5 +224,30 @@ class EndToEndOverARealRepo(unittest.TestCase):
             self.assertEqual([c.short_sha for c in missing], [new_sha[:7]])
 
 
+class RefValidation(unittest.TestCase):
+    """WHY(#7107): --from-ref/--to-ref reach git as bare argv. A value shaped like a
+    git option (leading "-") must never be treated as a revision."""
+
+    def test_a_leading_dash_ref_is_rejected(self) -> None:
+        with self.assertRaises(ccc.ChangelogCompletenessError):
+            ccc.validate_ref("--upload-pack=x", "--from-ref")
+
+    def test_an_ordinary_tag_or_sha_is_accepted(self) -> None:
+        self.assertEqual(ccc.validate_ref("v0.43.0", "--from-ref"), "v0.43.0")
+        self.assertEqual(
+            ccc.validate_ref("f7e4d3100fd1e09529f69d3f42aa524c6fdb5c88", "--to-ref"),
+            "f7e4d3100fd1e09529f69d3f42aa524c6fdb5c88",
+        )
+
+    def test_commits_in_range_rejects_an_option_shaped_from_ref_before_calling_git(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _repo(tmp)
+            _commit(root, "src/lib.rs", "v0", "chore: seed")
+            with self.assertRaises(ccc.ChangelogCompletenessError):
+                ccc.commits_in_range(root, "--output=/tmp/pwned", "HEAD")
+
+
 if __name__ == "__main__":
     unittest.main()

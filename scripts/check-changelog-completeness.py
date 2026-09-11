@@ -159,13 +159,23 @@ def visible_commit_types(repo_root: Path, config_path: Path) -> set[str]:
 
 
 def commits_in_range(repo_root: Path, from_ref: str, to_ref: str) -> list[RangeCommit]:
-    validate_ref(from_ref, "--from-ref")
-    validate_ref(to_ref, "--to-ref")
+    from_ref = validate_ref(from_ref, "--from-ref")
+    to_ref = validate_ref(to_ref, "--to-ref")
     # WHY %x1f (unit separator) rather than a printable delimiter: a commit subject can
     # itself carry punctuation of any kind, but never a control character, so this is
     # the one split point guaranteed not to collide with real content.
+    # WHY --end-of-options: git's own guard against argument injection -- it makes
+    # everything after it a revision/pathspec no matter what it looks like, so a ref
+    # shaped like "--output=..." (which SAFE_REF_RE already rejects, but a future
+    # loosening of that pattern must not reopen this) cannot be reinterpreted as a
+    # git-log option.
     raw = run_git(
-        repo_root, "log", "--no-merges", "--format=%H%x1f%s", f"{from_ref}..{to_ref}"
+        repo_root,
+        "log",
+        "--no-merges",
+        "--format=%H%x1f%s",
+        "--end-of-options",
+        f"{from_ref}..{to_ref}",
     )
     commits: list[RangeCommit] = []
     for line in raw.splitlines():
@@ -183,8 +193,8 @@ def read_changelog_section(repo_root: Path, ref: str, changelog_path: str) -> st
     under the `# Changelog` title, so the newest section is everything before the
     SECOND `## [` heading (the first heading belongs to the release under test).
     """
-    validate_ref(ref, "ref")
-    full_text = run_git(repo_root, "show", f"{ref}:{changelog_path}")
+    ref = validate_ref(ref, "ref")
+    full_text = run_git(repo_root, "show", "--end-of-options", f"{ref}:{changelog_path}")
     lines = full_text.splitlines()
     heading_indices = [i for i, line in enumerate(lines) if CHANGELOG_HEADING_RE.match(line)]
     if not heading_indices:
