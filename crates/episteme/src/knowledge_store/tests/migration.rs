@@ -392,6 +392,102 @@ fn open_fjall_passes_matching_embedding_meta() {
         .expect("matching embedding metadata should open");
 }
 
+/// aletheia#7162 F1: the pre-migration snapshot must never land as a
+/// `<cohort>.pre-migration-snapshot` sibling directly inside the
+/// knowledge root -- the same directory every cohort-directory walker
+/// (`is_cohort_dir`, the recall recovery walk, `memory reembed`)
+/// enumerates. Before this fix, `protect_pre_migration` used
+/// `path.with_extension(...)`, which does exactly that; only relying on
+/// every current and future walker remembering to call `is_cohort_dir`
+/// kept it from being mistaken for a live cohort (aletheia#7165's own
+/// near-miss). Nesting it under `.pre-migration-snapshots` instead removes
+/// the hazard structurally rather than depending on that convention being
+/// followed correctly everywhere, forever.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn pre_migration_snapshot_lands_outside_the_enumerable_root() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("knowledge.fjall");
+    let path = root.join("shared");
+
+    {
+        let store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("create fresh store");
+        store
+            .stamp_schema_version(13, "test")
+            .expect("force a stale stamp so a migration reads as pending");
+    } // dropped here: releases the fjall lock before protect_pre_migration reopens it
+
+    let taken = KnowledgeStore::protect_pre_migration(&path)
+        .expect("protect_pre_migration should not error")
+        .expect("a stale stamp must be protected with a snapshot");
+
+    assert!(taken.path.exists(), "the snapshot must exist on disk");
+    assert_eq!(
+        taken.path,
+        KnowledgeStore::pre_migration_snapshot_dir(&path),
+        "protect_pre_migration must use its own documented snapshot location"
+    );
+    assert_ne!(
+        taken.path.parent(),
+        Some(root.as_path()),
+        "the snapshot's parent must not be the knowledge root that \
+         cohort-directory walkers enumerate, got {}",
+        taken.path.display()
+    );
+    assert!(
+        !root.join("shared.pre-migration-snapshot").exists(),
+        "the snapshot must never land at the old `<cohort>.pre-migration-snapshot` \
+         sibling path inside the knowledge root"
+    );
+}
+
+/// aletheia#7162 F2 / aletheia#5779 F1: a cohort literally named `psyche`
+/// is the copy *root* of its own pre-migration snapshot, not a refused
+/// descendant -- [`snapshot::REFUSED_COMPONENT`]'s policy only refuses a
+/// nested `psyche` directory found *below* a different cohort's root.
+/// Confirms this holds at the `protect_pre_migration` entry point named in
+/// aletheia#7162, not only at `copy_excluding_psyche`'s own unit level: the
+/// psyche cohort's own snapshot must be a full copy, never a silent no-op
+/// that still reports success.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn a_cohort_named_psyche_gets_its_own_complete_pre_migration_snapshot() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("knowledge.fjall");
+    let path = root.join("psyche");
+
+    {
+        let store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("create fresh psyche cohort");
+        store
+            .insert_fact(&make_fact(
+                "f-psyche",
+                "alice",
+                "identity-continuity content",
+            ))
+            .expect("insert fact into psyche cohort");
+        store
+            .stamp_schema_version(13, "test")
+            .expect("force a stale stamp so a migration reads as pending");
+    }
+
+    let source_rows = crate::knowledge_store::snapshot::count_data_keyspace_rows(&path)
+        .expect("count source rows");
+    assert!(source_rows > 0, "sanity: the source cohort must hold data");
+
+    let taken = KnowledgeStore::protect_pre_migration(&path)
+        .expect("protect_pre_migration should not error")
+        .expect("a stale stamp must be protected with a snapshot");
+
+    let snapshot_rows = crate::knowledge_store::snapshot::count_data_keyspace_rows(&taken.path)
+        .expect("count snapshot rows");
+    assert_eq!(
+        snapshot_rows, source_rows,
+        "the psyche cohort's own pre-migration snapshot must be a complete copy"
+    );
+}
+
 const V13_FACTS_DDL: &str = r":create facts {
     id: String, valid_from: String =>
     content: String,

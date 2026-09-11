@@ -270,13 +270,21 @@ pub(crate) async fn execute_builtin_with_behavior(
                     .send_prompt_with_cancel(nous_id, "daemon:prosoche", prompt, cancel.clone())
                     .await
                 {
+                    // WHY(#7252): the bridge's own classification is returned
+                    // unchanged. A failed turn must record a failed task run —
+                    // the old code logged `result.is_success()` and then
+                    // reported success regardless, so a turn that failed (e.g.
+                    // history load_failed) was persisted as "task completed".
+                    // The turn content also IS the prosoche report that
+                    // `maybe_queue_self_prompt`'s follow-up extraction reads;
+                    // replacing it with "dispatched" starved that path too.
                     Ok(result) => {
                         tracing::debug!(
                             nous_id = %nous_id,
-                            success = result.is_success(),
-                            "prosoche dispatch succeeded"
+                            outcome = ?result.outcome,
+                            "prosoche dispatch returned"
                         );
-                        Ok(ExecutionResult::success(Some("dispatched".to_owned())))
+                        Ok(result)
                     }
                     Err(e) => {
                         tracing::warn!(

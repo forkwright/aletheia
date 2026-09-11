@@ -70,7 +70,7 @@ bash -n scripts/smoke-proskenion.sh
 scripts/smoke-proskenion.sh --proskenion-binary ~/.cargo/bin/proskenion
 ```
 
-The `proskenion_contract` integration test exercises the protocol surface the app consumes: agent list/status/tool envelopes, knowledge browse endpoints, metrics/cost/token envelopes, session create/list/history, and `POST /api/v1/sessions/stream` SSE event names, terminal events, and JSON field shape. If it fails, file the failure as a server/client runtime-contract mismatch and include the assertion text, full response body printed by the test, endpoint, and expected proskenion field or event name.
+The `proskenion_contract` integration test exercises the protocol surface the app consumes: agent list/status/tool envelopes, knowledge browse endpoints, metrics/cost/token envelopes, session create/resolve/list/history, and `POST /api/v1/sessions/stream` SSE event names, terminal events, and JSON field shape. If it fails, file the failure as a server/client runtime-contract mismatch and include the assertion text, full response body printed by the test, endpoint, and expected proskenion field or event name.
 
 The smoke script starts a local server when no `--server-url` is supplied, or connects to the supplied URL. Use the default gateway port when targeting an already running local server:
 

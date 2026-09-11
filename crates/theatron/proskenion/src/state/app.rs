@@ -182,6 +182,35 @@ impl TabBar {
         self.tabs.get(self.active)
     }
 
+    /// Stamp the durable session identity resolved from the server onto the
+    /// tab bound to `(agent_id, session_key)`.
+    ///
+    /// WHY: tabs created from a sidebar click know only the stable session
+    /// key; the durable id and message count arrive later, after
+    /// `POST /api/v1/sessions/resolve` answers. Stamping them lets history
+    /// pagination and the tab tooltip work against the real session.
+    /// Returns `true` when a matching tab was found.
+    pub(crate) fn stamp_session_identity(
+        &mut self,
+        agent_id: &ApiNousId,
+        session_key: &str, // kanon:ignore RUST/plain-string-secret
+        session_id: ApiSessionId,
+        message_count: Option<u32>,
+    ) -> bool {
+        let Some(tab) = self
+            .tabs
+            .iter_mut()
+            .find(|t| &t.agent_id == agent_id && t.session_key.as_deref() == Some(session_key))
+        else {
+            return false;
+        };
+        tab.session_id = Some(session_id);
+        if message_count.is_some() {
+            tab.message_count = message_count;
+        }
+        true
+    }
+
     /// Close a tab by index. Returns the removed entry.
     pub(crate) fn close(&mut self, index: usize) -> Option<TabEntry> {
         if index >= self.tabs.len() {
@@ -297,6 +326,36 @@ mod tests {
         let tab = bar.active_tab();
         assert!(tab.is_some());
         assert_eq!(tab.unwrap().title, "first");
+    }
+
+    #[test]
+    fn tab_bar_stamp_session_identity_updates_matching_tab() {
+        let mut bar = TabBar::new();
+        bar.create_for_session(ApiNousId::from("syn"), "syn:default".to_string(), "Syn");
+        let stamped = bar.stamp_session_identity(
+            &ApiNousId::from("syn"),
+            "syn:default",
+            ApiSessionId::from("ses-1"),
+            Some(7),
+        );
+        assert!(stamped);
+        let tab = &bar.tabs[0];
+        assert_eq!(tab.session_id.as_deref(), Some("ses-1"));
+        assert_eq!(tab.message_count, Some(7));
+    }
+
+    #[test]
+    fn tab_bar_stamp_session_identity_ignores_unknown_pair() {
+        let mut bar = TabBar::new();
+        bar.create_for_session(ApiNousId::from("syn"), "syn:default".to_string(), "Syn");
+        let stamped = bar.stamp_session_identity(
+            &ApiNousId::from("arc"),
+            "arc:default",
+            ApiSessionId::from("ses-2"),
+            None,
+        );
+        assert!(!stamped);
+        assert!(bar.tabs[0].session_id.is_none());
     }
 
     #[test]

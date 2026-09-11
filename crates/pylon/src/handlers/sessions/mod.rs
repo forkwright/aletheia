@@ -13,8 +13,8 @@ pub use streaming::{events, reconnect_turn, send_message, stream_turn};
 use types::{
     CreateSessionRequest, HistoryMessage, HistoryParams, HistoryResponse, ListSessionsParams,
     ListSessionsResponse, RenameSessionRequest, ReplayMessage, ReplaySession,
-    ReplayToolAuditRecord, ReplayTurnAttempt, ReplayUsageRecord, SessionListItem,
-    SessionReplayResponse, SessionResponse,
+    ReplayToolAuditRecord, ReplayTurnAttempt, ReplayUsageRecord, ResolveSessionRequest,
+    SessionListItem, SessionReplayResponse, SessionResponse,
 };
 
 use axum::Json;
@@ -77,6 +77,52 @@ fn session_matches_search(session: &mneme::types::Session, search: &str) -> bool
     fields
         .into_iter()
         .any(|field| field.to_lowercase().contains(&search))
+}
+
+/// Validate the `nous_id`/`session_key` identifier pair shared by the create
+/// and resolve endpoints.
+///
+/// WHY(#3275): collect all field errors and return them in one response so
+/// callers can fix all issues in a single round-trip.
+fn validate_session_identifiers(
+    nous_id: &str,
+    session_key: &str,
+    max_id_bytes: usize,
+) -> Result<(), ApiError> {
+    let mut field_errors = Vec::new();
+    if nous_id.is_empty() {
+        field_errors.push(FieldError {
+            field: "nous_id".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        });
+    } else if nous_id.len() > max_id_bytes {
+        field_errors.push(FieldError {
+            field: "nous_id".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+        });
+    }
+    if session_key.is_empty() {
+        field_errors.push(FieldError {
+            field: "session_key".to_owned(),
+            code: "required".to_owned(),
+            message: "must not be empty".to_owned(),
+        });
+    } else if session_key.len() > max_id_bytes {
+        field_errors.push(FieldError {
+            field: "session_key".to_owned(),
+            code: "too_long".to_owned(),
+            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+        });
+    }
+    if !field_errors.is_empty() {
+        return Err(ValidationFailedSnafu {
+            errors: field_errors,
+        }
+        .build());
+    }
+    Ok(())
 }
 
 fn replay_session_from_mneme(session: mneme::types::Session) -> ReplaySession {
@@ -203,42 +249,8 @@ pub async fn create(
     let nous_id = body.nous_id;
     let session_key = body.session_key;
 
-    // WHY(#3275): collect all field errors and return them in one response so
-    // callers can fix all issues in a single round-trip.
     let max_id_bytes = state.config.read().await.api_limits.max_identifier_bytes;
-    let mut field_errors = Vec::new();
-    if nous_id.is_empty() {
-        field_errors.push(FieldError {
-            field: "nous_id".to_owned(),
-            code: "required".to_owned(),
-            message: "must not be empty".to_owned(),
-        });
-    } else if nous_id.len() > max_id_bytes {
-        field_errors.push(FieldError {
-            field: "nous_id".to_owned(),
-            code: "too_long".to_owned(),
-            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
-        });
-    }
-    if session_key.is_empty() {
-        field_errors.push(FieldError {
-            field: "session_key".to_owned(),
-            code: "required".to_owned(),
-            message: "must not be empty".to_owned(),
-        });
-    } else if session_key.len() > max_id_bytes {
-        field_errors.push(FieldError {
-            field: "session_key".to_owned(),
-            code: "too_long".to_owned(),
-            message: format!("exceeds maximum length of {max_id_bytes} bytes"),
-        });
-    }
-    if !field_errors.is_empty() {
-        return Err(ValidationFailedSnafu {
-            errors: field_errors,
-        }
-        .build());
-    }
+    validate_session_identifiers(&nous_id, &session_key, max_id_bytes)?;
 
     let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {
         NousNotFoundSnafu {
@@ -290,6 +302,72 @@ pub async fn create(
         StatusCode::CREATED,
         Json(SessionResponse::from_mneme(&session)),
     ))
+}
+
+/// POST /api/v1/sessions/resolve: resolve-or-create the session for a
+/// (`nous_id`, `session_key`) pair.
+///
+/// This is the read-mostly counterpart to [`create`]: where `create` answers
+/// 409 when the pair already exists, `resolve` returns the existing session
+/// (reactivating it if archived — see [`resolve_session`]). Interactive
+/// clients (proskenion's chat) call it when entering a nous's conversation so
+/// every visit attaches to the one canonical ongoing session instead of
+/// accumulating a fresh empty session per visit. The model label follows the
+/// nous's configured generation model, matching `stream_turn`'s session
+/// resolution.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[utoipa::path(
+    post,
+    path = "/api/v1/sessions/resolve",
+    request_body = ResolveSessionRequest,
+    responses(
+        (status = 200, description = "Session resolved (existing) or created", body = SessionResponse),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state, claims, body))]
+pub async fn resolve(
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Json(body): Json<ResolveSessionRequest>,
+) -> Result<Json<SessionResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &body.nous_id)?;
+    let nous_id = body.nous_id;
+    let session_key = body.session_key;
+
+    let max_id_bytes = state.config.read().await.api_limits.max_identifier_bytes;
+    validate_session_identifiers(&nous_id, &session_key, max_id_bytes)?;
+
+    let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {
+        NousNotFoundSnafu {
+            id: nous_id.clone(),
+        }
+        .build()
+    })?;
+    let model = config
+        .generation
+        .resolve_model(ModelRole::Generation)
+        .to_owned();
+
+    let session_id = resolve_session(&state, &nous_id, &session_key, Some(&model)).await?;
+    let session = find_session(&state, &session_id).await?;
+
+    let mut response = SessionResponse::from_mneme(&session);
+    // WHY(#6824): same overlay as `get_session` — a client entering a chat
+    // whose nous is mid-turn can join the live stream immediately.
+    response.active_turn_id = state
+        .turn_buffer_registry
+        .active_turn_for_session(&session.id)
+        .await;
+    Ok(Json(response))
 }
 
 /// Reject a `CreateSessionRequest.model` override that no registered provider
@@ -847,6 +925,14 @@ pub async fn history(
 }
 
 /// Resolve or create a session for the given agent and session key.
+///
+/// An existing archived session for the pair is reactivated rather than
+/// surfaced as an error: retention and shutdown archiving lifecycle-close
+/// idle sessions, but a client that resolves a key is explicitly resuming
+/// that conversation (the desktop app attaches to one canonical ongoing
+/// session per nous), so the resume is the honest response. The store-level
+/// `SessionIsArchived` guard still holds for direct writes to a session id
+/// (e.g. `POST /sessions/{id}/messages`).
 pub(crate) async fn resolve_session(
     state: &SessionsState,
     agent_id: &str,
@@ -866,6 +952,22 @@ pub(crate) async fn resolve_session(
         let store = state_clone.session_store.blocking_lock();
         match store.find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None) {
             Ok(session) => Ok(session),
+            Err(mneme::error::Error::SessionIsArchived {
+                id: archived_id, ..
+            }) => {
+                info!(session_id = %archived_id, nous_id = %aid, session_key = %skey,
+                    "reactivating archived session on resolve");
+                store
+                    .update_session_status(&archived_id, SessionStatus::Active)
+                    .map_err(ApiError::from)?;
+                store
+                    .find_session_by_id(&archived_id)
+                    .map_err(ApiError::from)?
+                    .ok_or_else(|| ApiError::Internal {
+                        message: "session missing after reactivation".to_owned(),
+                        location: snafu::location!(),
+                    })
+            }
             Err(e) if e.is_unique_constraint_violation() => {
                 // WHY: Concurrent stream requests may race to create the same session.
                 // Fall back to returning whichever session won the INSERT race.
@@ -899,4 +1001,216 @@ pub(crate) async fn find_session(
     .await??;
 
     session.ok_or_else(|| SessionNotFoundSnafu { id: id_for_error }.build())
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture writes the SOUL.md bootstrap file to a temp directory"
+)]
+mod tests {
+    use std::sync::Arc;
+
+    use tokio::sync::Mutex;
+
+    use super::*;
+
+    fn operator_claims() -> Claims {
+        Claims {
+            sub: "alice".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+            unauthenticated: false,
+        }
+    }
+
+    async fn resolve_test_state() -> (SessionsState, tempfile::TempDir) {
+        let tmp = tempfile::TempDir::new().expect("tmpdir");
+        // WHY: actor spawn validates the workspace cascade — SOUL.md must
+        // resolve for the spawned nous or spawn fails fast.
+        std::fs::create_dir_all(tmp.path().join("nous/nous-a")).expect("mkdir nous-a");
+        std::fs::write(tmp.path().join("nous/nous-a/SOUL.md"), "I am a test nous.")
+            .expect("write SOUL.md");
+        let session_store = Arc::new(Mutex::new(
+            mneme::store::SessionStore::open_in_memory().expect("in-memory store"),
+        ));
+        let provider_registry = Arc::new(hermeneus::provider::ProviderRegistry::new());
+        let tool_registry = Arc::new(organon::registry::ToolRegistry::new());
+        let oikos = Arc::new(taxis::oikos::Oikos::from_root(tmp.path()));
+        let mut nous_manager = nous::manager::NousManager::new(
+            Arc::clone(&provider_registry),
+            tool_registry,
+            oikos,
+            None,
+            None,
+            Some(Arc::clone(&session_store)),
+            #[cfg(feature = "knowledge-store")]
+            None,
+            Arc::new(vec![]),
+            None,
+            None,
+            taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
+        );
+        nous_manager
+            .spawn(
+                nous::config::NousConfig {
+                    id: Arc::from("nous-a"),
+                    generation: nous::config::NousGenerationConfig {
+                        model: "test-model".to_owned(),
+                        ..nous::config::NousGenerationConfig::default()
+                    },
+                    ..nous::config::NousConfig::default()
+                },
+                nous::config::PipelineConfig::default(),
+            )
+            .await
+            .expect("spawn nous-a");
+
+        let state = SessionsState {
+            session_store,
+            nous_manager: Arc::new(nous_manager),
+            provider_registry,
+            shutdown: tokio_util::sync::CancellationToken::new(),
+            idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
+            config: Arc::new(tokio::sync::RwLock::new(
+                taxis::config::AletheiaConfig::default(),
+            )),
+            turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
+            event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+            approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
+        };
+        (state, tmp)
+    }
+
+    fn resolve_body(nous_id: &str, session_key: &str) -> Json<ResolveSessionRequest> {
+        Json(ResolveSessionRequest {
+            nous_id: nous_id.to_owned(),
+            session_key: session_key.to_owned(),
+        })
+    }
+
+    #[test]
+    fn validate_session_identifiers_accepts_valid_pair() {
+        validate_session_identifiers("syn", "syn:default", 64).expect("valid identifiers");
+    }
+
+    #[test]
+    fn validate_session_identifiers_collects_all_errors() {
+        let err = validate_session_identifiers("", "", 64).expect_err("both empty must fail");
+        match err {
+            ApiError::ValidationFailed { errors, .. } => {
+                assert_eq!(errors.len(), 2, "nous_id and session_key both reported");
+            }
+            other => panic!("expected ValidationFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_unknown_nous_is_not_found() {
+        let (state, _tmp) = resolve_test_state().await;
+        let result = resolve(
+            State(state),
+            operator_claims(),
+            resolve_body("ghost", "ghost:default"),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ApiError::NousNotFound { .. })),
+            "expected NousNotFound, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_creates_then_returns_same_session() {
+        let (state, _tmp) = resolve_test_state().await;
+
+        let first = resolve(
+            State(state.clone()),
+            operator_claims(),
+            resolve_body("nous-a", "nous-a:default"),
+        )
+        .await
+        .expect("first resolve");
+        assert_eq!(first.nous_id, "nous-a");
+        assert_eq!(first.session_key, "nous-a:default");
+        assert_eq!(first.status, "active");
+        assert_eq!(first.model.as_deref(), Some("test-model"));
+
+        let second = resolve(
+            State(state),
+            operator_claims(),
+            resolve_body("nous-a", "nous-a:default"),
+        )
+        .await
+        .expect("second resolve");
+        assert_eq!(
+            first.id, second.id,
+            "resolve is get-or-create: the same key returns the same session"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_reactivates_archived_session() {
+        let (state, _tmp) = resolve_test_state().await;
+
+        let first = resolve(
+            State(state.clone()),
+            operator_claims(),
+            resolve_body("nous-a", "nous-a:default"),
+        )
+        .await
+        .expect("initial resolve");
+        {
+            let store = state.session_store.lock().await;
+            store
+                .update_session_status(&first.id, SessionStatus::Archived)
+                .expect("archive session");
+        }
+
+        let second = resolve(
+            State(state),
+            operator_claims(),
+            resolve_body("nous-a", "nous-a:default"),
+        )
+        .await
+        .expect("resolve after archive");
+        assert_eq!(second.id, first.id);
+        assert_eq!(
+            second.status, "active",
+            "resolve reactivates an archived canonical session"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_rejects_empty_session_key() {
+        let (state, _tmp) = resolve_test_state().await;
+        let result = resolve(State(state), operator_claims(), resolve_body("nous-a", "")).await;
+        assert!(
+            matches!(result, Err(ApiError::ValidationFailed { .. })),
+            "expected ValidationFailed, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_rejects_cross_nous_scoped_token() {
+        let (state, _tmp) = resolve_test_state().await;
+        let scoped = Claims {
+            sub: "bob".to_owned(),
+            role: Role::Operator,
+            nous_id: Some("nous-b".to_owned()),
+            unauthenticated: false,
+        };
+        let result = resolve(
+            State(state),
+            scoped,
+            resolve_body("nous-a", "nous-a:default"),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ApiError::Forbidden { .. })),
+            "expected Forbidden, got {result:?}"
+        );
+    }
 }

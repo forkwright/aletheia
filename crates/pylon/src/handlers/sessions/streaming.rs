@@ -373,14 +373,82 @@ fn tool_approval_resolved_event_payload(
     tool_id: &str,
     decision: &str,
 ) -> serde_json::Value {
+    tool_approval_resolved_payload(
+        &identity.session_id,
+        nous_id,
+        &identity.turn_id.to_string(),
+        identity.request_id.as_deref().unwrap_or(""),
+        tool_id,
+        decision,
+    )
+}
+
+/// Shared field assembly behind [`tool_approval_resolved_event_payload`].
+///
+/// WHY(#7252): the turn-ended cancellation path rebuilds the payload from
+/// the approval registry's plain-string ids (no `TurnEventIdentity` survives
+/// to guard drop); both entry points must emit the identical shape.
+fn tool_approval_resolved_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    request_id: &str,
+    tool_id: &str,
+    decision: &str,
+) -> serde_json::Value {
     serde_json::json!({
-        "session_id": identity.session_id,
+        "session_id": session_id,
         "nous_id": nous_id,
-        "turn_id": identity.turn_id.to_string(),
-        "request_id": identity.request_id.as_deref().unwrap_or(""),
+        "turn_id": turn_id,
+        "request_id": request_id,
         "tool_id": tool_id,
         "decision": decision,
     })
+}
+
+/// Publish `tool.approval_resolved` with the registry's `turn_ended`
+/// disposition for every approval still pending when its turn ended (#7252).
+///
+/// WHY: the approval guard's synchronous `Drop` removal keeps the
+/// pending-approval read honest, but the domain bus — and the replay journal
+/// a reconnecting client resumes from — still held the unanswered
+/// `tool.approval_required`, so a reconnect re-paged the operator on an
+/// approval nobody could ever answer. Publishing the cancellation closes the
+/// pair on the bus. Removal itself stays synchronous in the guard (#5737);
+/// this hook only spawns the async publication, the same best-effort shape
+/// `AbortOnDrop` uses for `turn.cancelled`.
+fn publish_turn_ended_approvals(
+    event_bus: Arc<crate::event_bus::EventBus>,
+    nous_id: String,
+    request_id: String,
+    ended: Vec<crate::approval_registry::PendingApproval>,
+) {
+    let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+        tracing::warn!(
+            nous_id = %nous_id,
+            count = ended.len(),
+            "turn ended with pending approvals and no runtime to publish their cancellation"
+        );
+        return;
+    };
+    runtime.spawn(async move {
+        for approval in ended {
+            event_bus
+                .publish(crate::event_bus::DomainEvent::new(
+                    event_bus.next_id(),
+                    "tool.approval_resolved",
+                    tool_approval_resolved_payload(
+                        &approval.session_id,
+                        &nous_id,
+                        &approval.turn_id,
+                        &request_id,
+                        &approval.tool_id,
+                        crate::approval_registry::ApprovalDisposition::TurnEnded.as_reason_str(),
+                    ),
+                ))
+                .await;
+        }
+    });
 }
 
 /// Map a nous pipeline error to the `turn.failed` `recoverable` field.
@@ -1277,9 +1345,26 @@ pub async fn stream_turn(
         approval_rx,
         approval_gate_timeout(approval_timeout_secs),
     ));
-    let approval_guard = state
-        .approval_registry
-        .register_turn(session_id.clone(), turn_id.clone());
+    // WHY(#7252): if this turn ends with approvals still unanswered (client
+    // disconnect aborting the turn mid-wait, shutdown), the guard's removal
+    // keeps the pending read honest and the hook publishes each cancellation
+    // on the domain bus, so the replay journal never carries an approval
+    // request without its resolution.
+    let turn_ended_bus = Arc::clone(&state.event_bus);
+    let turn_ended_nous_id = agent_id.clone();
+    let turn_ended_request_id = stream_request_id.clone();
+    let approval_guard = state.approval_registry.register_turn_with_turn_ended_hook(
+        session_id.clone(),
+        turn_id.clone(),
+        Some(Box::new(move |ended| {
+            publish_turn_ended_approvals(
+                turn_ended_bus,
+                turn_ended_nous_id,
+                turn_ended_request_id,
+                ended,
+            );
+        })),
+    );
 
     // WHY(#3276): Create a turn buffer so events survive client disconnection.
     let turn_buf = state

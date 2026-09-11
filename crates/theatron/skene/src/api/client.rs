@@ -566,6 +566,36 @@ impl ApiClient {
         })
     }
 
+    /// Resolve or create the canonical session for a (nous, key) pair.
+    ///
+    /// Unlike [`create_session`](Self::create_session), which 409s when the
+    /// pair already exists, this returns the existing session — the
+    /// get-or-create an interactive client wants when entering a nous's one
+    /// ongoing conversation.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn resolve_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
+        let resp = self
+            .request(reqwest::Method::POST, "/api/v1/sessions/resolve")
+            .json(&serde_json::json!({
+                "nous_id": nous_id,
+                "session_key": session_key,
+            }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "resolve session",
+            })?;
+        let resp = Self::check_status(resp, "resolve session request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "resolve session response",
+        })
+    }
+
     /// Archive a session.
     #[must_use]
     #[expect(
@@ -3106,6 +3136,32 @@ mod tests {
         assert!(request.contains(r#""path":"src/a.rs""#));
         assert!(request.contains(r#""content":"hello""#));
         assert!(request.contains(r#""if_match_mtime_ms":999"#));
+    }
+
+    #[tokio::test]
+    async fn resolve_session_posts_to_the_resolve_route() {
+        // WHY: the resolve endpoint is the get-or-create the desktop chat
+        // calls when entering a nous's canonical conversation; a drifted
+        // path here 404s against a real pylon with no compile-time signal.
+        crate::install_test_crypto_provider();
+        let body = r#"{"id":"ses-1","nous_id":"syn","session_key":"syn:default","status":"active","model":"test-model","message_count":4}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let session = client
+            .resolve_session("syn", "syn:default")
+            .await
+            .expect("resolve should succeed");
+        assert_eq!(session.id.as_ref(), "ses-1");
+        assert_eq!(session.key, "syn:default");
+        assert_eq!(session.message_count, 4);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/sessions/resolve "),
+            "must POST pylon's resolve route, got: {request}"
+        );
+        assert!(request.contains(r#""nous_id":"syn""#));
+        assert!(request.contains(r#""session_key":"syn:default""#));
     }
 
     #[tokio::test]

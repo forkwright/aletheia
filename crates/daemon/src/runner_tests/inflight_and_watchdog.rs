@@ -188,6 +188,137 @@ async fn hung_bridge_task_cancels_token_before_abort() {
     );
 }
 
+/// Bridge returning a canned turn outcome immediately, for end-to-end
+/// runner tests of turn-outcome → task-outcome mapping (#7252).
+struct CannedOutcomeBridge {
+    result: ExecutionResult,
+}
+
+impl DaemonBridge for CannedOutcomeBridge {
+    fn send_prompt(
+        &self,
+        _nous_id: &str,
+        _session_key: &str,
+        _prompt: &str,
+    ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
+        let result = self.result.clone();
+        Box::pin(async move { Ok(result) })
+    }
+}
+
+/// Register a due prosoche task on a bridge-backed runner, run one
+/// tick + in-flight sweep, and return the runner for assertions.
+async fn run_prosoche_once(bridge: Arc<dyn DaemonBridge>, mode: DaemonOutputMode) -> TaskRunner {
+    let shutdown = CancellationToken::new();
+    let mut runner = TaskRunner::with_bridge("test-nous", shutdown, bridge).with_output_mode(mode);
+
+    let task = TaskDef {
+        id: "test-prosoche".to_owned(),
+        name: "Prosoche attention check".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_mins(45)),
+        action: TaskAction::Builtin(BuiltinTask::Prosoche),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+    runner.tasks[0].next_run = Some(
+        jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .expect("past timestamp arithmetic should succeed"),
+    );
+
+    runner.tick();
+    assert!(
+        runner.in_flight.contains_key("test-prosoche"),
+        "task should be in flight after tick"
+    );
+
+    // Wait for the spawned task to finish, then collect the outcome.
+    for _ in 0..100 {
+        if runner
+            .in_flight
+            .get("test-prosoche")
+            .is_some_and(|task| task.handle.is_finished())
+        {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    runner.check_in_flight().await;
+    runner
+}
+
+/// WHY(#7252): the regression this issue reports — a daemon prosoche run
+/// whose turn failed (e.g. history `load_failed`) logged `task completed`
+/// and kept a clean failure count. The turn's failure must reach the task
+/// record: `consecutive_failures` increments and the error is surfaced.
+#[tokio::test]
+async fn prosoche_failed_turn_records_task_failure() {
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(CannedOutcomeBridge {
+        result: ExecutionResult::failed(Some("turn failed: history load_failed".to_owned())),
+    });
+    let runner = run_prosoche_once(bridge, DaemonOutputMode::Brief).await;
+
+    assert_eq!(
+        runner.tasks[0].consecutive_failures, 1,
+        "a failed turn must record a failed task run"
+    );
+    let last_error = runner.tasks[0]
+        .last_error
+        .as_deref()
+        .expect("failed run must surface the turn's error");
+    assert!(
+        last_error.contains("turn failed: history load_failed"),
+        "brief mode carries the redacted error excerpt, got: {last_error}"
+    );
+    assert_eq!(
+        runner.tasks[0].run_count, 0,
+        "a failed run must not inflate the completion count"
+    );
+}
+
+/// WHY(#7252 + #4948): in the default Summary output mode the failure is
+/// still recorded honestly — outcome failed, failure count increments — but
+/// the task record carries only the metadata digest of the output, never
+/// raw turn content. The readable error is in the daemon's WARN logs.
+#[tokio::test]
+async fn prosoche_failed_turn_records_failure_without_leaking_output() {
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(CannedOutcomeBridge {
+        result: ExecutionResult::failed(Some("turn failed: history load_failed".to_owned())),
+    });
+    let runner = run_prosoche_once(bridge, DaemonOutputMode::Summary).await;
+
+    assert_eq!(runner.tasks[0].consecutive_failures, 1);
+    let last_error = runner.tasks[0]
+        .last_error
+        .as_deref()
+        .expect("failed run must record an error reference");
+    assert!(
+        last_error.starts_with("output summary:"),
+        "summary mode digests the output, got: {last_error}"
+    );
+    assert!(
+        !last_error.contains("load_failed"),
+        "summary mode must not leak raw output text, got: {last_error}"
+    );
+}
+
+#[tokio::test]
+async fn prosoche_successful_turn_records_task_completion() {
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(CannedOutcomeBridge {
+        result: ExecutionResult::success(Some("prosoche report".to_owned())),
+    });
+    let runner = run_prosoche_once(bridge, DaemonOutputMode::Summary).await;
+
+    assert_eq!(
+        runner.tasks[0].consecutive_failures, 0,
+        "a successful turn must not record a failure"
+    );
+    assert_eq!(runner.tasks[0].run_count, 1);
+    assert_eq!(runner.tasks[0].last_error, None);
+}
+
 #[tokio::test]
 async fn watchdog_enabled_restarts_hung_inflight_task() {
     let token = CancellationToken::new();
