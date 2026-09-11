@@ -677,3 +677,115 @@ async fn test_ls_uses_workspace_when_path_not_specified() {
         "ls without explicit path should list workspace contents"
     );
 }
+
+// ── absolute-path input preparation (syn ls/find failure regression) ─────────
+//
+// WHY: a live agent's `ls`/`find` calls with absolute paths failed with the
+// opaque "input preparation failed" after dispatch collapsed the typed error.
+// These tests pin the registry-level contract: an absolute path inside the
+// allowed roots prepares and executes; an out-of-scope path fails with a
+// message that names the allowed roots so the caller can self-correct.
+
+fn registry_with_fs_tools() -> crate::registry::ToolRegistry {
+    let mut reg = crate::registry::ToolRegistry::new();
+    register_with_sandbox(&mut reg, test_sandbox()).expect("register");
+    reg
+}
+
+#[tokio::test]
+async fn ls_absolute_path_inside_allowed_roots_prepares_and_executes() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let workspace = dir.path().canonicalize().expect("canonical workspace");
+    std::fs::create_dir_all(workspace.join("memory")).expect("mkdir memory");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(workspace.join("memory/notes.txt"), "entry").expect("write");
+
+    let ctx = test_ctx(&workspace);
+    let registry = registry_with_fs_tools();
+    let absolute = workspace.join("memory").to_string_lossy().into_owned();
+    let input = tool_input("ls", serde_json::json!({ "path": absolute }));
+
+    let prepared = registry
+        .prepare_input(&input, &ctx)
+        .expect("in-scope absolute path must prepare");
+    assert_eq!(
+        prepared
+            .as_tool_input()
+            .arguments
+            .get("path")
+            .and_then(serde_json::Value::as_str),
+        Some(absolute.as_str()),
+        "preparation must canonicalize the absolute path in place"
+    );
+
+    let result = registry.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        !result.is_error,
+        "ls on in-scope absolute path must succeed"
+    );
+    assert!(
+        result.content.text_summary().contains("notes.txt"),
+        "ls output should list the directory contents"
+    );
+}
+
+#[tokio::test]
+async fn find_absolute_path_inside_allowed_roots_prepares_and_executes() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let workspace = dir.path().canonicalize().expect("canonical workspace");
+    let memory = workspace.join("memory");
+    std::fs::create_dir_all(&memory).expect("mkdir memory");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(memory.join("notes.txt"), "entry").expect("write");
+
+    let ctx = test_ctx(&workspace);
+    let registry = registry_with_fs_tools();
+    let absolute = memory.to_string_lossy().into_owned();
+    let input = tool_input(
+        "find",
+        serde_json::json!({ "pattern": "notes", "path": absolute }),
+    );
+
+    registry
+        .prepare_input(&input, &ctx)
+        .expect("in-scope absolute path must prepare");
+
+    let result = registry.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        !result.is_error,
+        "find on in-scope absolute path must succeed"
+    );
+    assert!(
+        result.content.text_summary().contains("notes.txt"),
+        "find output should include the matching file"
+    );
+}
+
+#[tokio::test]
+async fn ls_absolute_path_outside_allowed_roots_names_the_roots() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let workspace = dir.path().canonicalize().expect("canonical workspace");
+    let ctx = test_ctx(&workspace);
+    let registry = registry_with_fs_tools();
+    let input = tool_input("ls", serde_json::json!({ "path": "/etc" }));
+
+    let err = registry
+        .prepare_input(&input, &ctx)
+        .map(|prepared| prepared.as_tool_input().arguments.clone())
+        .expect_err("out-of-scope absolute path must be rejected");
+    let text = err.to_string();
+    assert!(
+        text.contains("outside allowed roots"),
+        "error must state the containment failure: {text}"
+    );
+    assert!(
+        text.contains(&workspace.display().to_string()),
+        "error must name the allowed roots so the caller can retry in scope: {text}"
+    );
+}

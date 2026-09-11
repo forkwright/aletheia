@@ -10,7 +10,8 @@ use tracing::{debug, info, warn};
 use tokio::sync::mpsc;
 
 use hermeneus::secret::{
-    redact_in_json, redact_resolved_secrets_in_prepared_json, substitute_in_json,
+    redact_in_json, redact_resolved_secrets_in_prepared_json, redact_vault_values_in_str,
+    substitute_in_json,
 };
 use hermeneus::types::{ContentBlock, ToolDefinition, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
@@ -1570,16 +1571,30 @@ pub(super) async fn dispatch_tool_items(
             arguments: substituted_args,
         };
         let prepared_input = if substitution_failed {
-            Err("Tool error: secret substitution failed")
+            Err("Tool error: secret substitution failed".to_owned())
         } else {
             tools
                 .prepare_input(&unprepared_input, tool_ctx)
-                .map_err(|_error| "Tool error: input preparation failed")
+                .map_err(|error| {
+                    // WHY: the typed reason (schema violation, path outside the
+                    // allowed roots, file-ref interpolation failure) is the only
+                    // signal the model gets to self-correct. Collapsing every
+                    // failure to one fixed string made agents diagnose the tool
+                    // as broken when the argument was merely out of scope. The
+                    // error is derived from post-substitution arguments, so
+                    // vault-resolved values are scrubbed before the message
+                    // reaches the model or the transcript.
+                    let mut message = format!("Tool error: input preparation failed: {error}");
+                    if let Some(services) = tool_ctx.services.as_ref() {
+                        redact_vault_values_in_str(&services.secret_vault, &mut message);
+                    }
+                    message
+                })
         };
         let prepared_input = match prepared_input {
             Ok(prepared) => prepared,
             Err(message) => {
-                let msg = message.to_owned();
+                let msg = message;
                 let recorded_message =
                     redacted_trace_result(&redaction_policy_for(tools, tool_name), &msg);
                 crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
