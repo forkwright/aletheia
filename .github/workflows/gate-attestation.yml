@@ -624,13 +624,29 @@ jobs:
       - name: Episteme ML-feature gate (gliner, nuextract)
         run: cargo clippy -p episteme --features gliner,nuextract --all-targets -- -D warnings
 
-      # WHY(#6862) there is no gliner/nuextract nextest step here: executing those tests
-      # requires LINKING episteme, and `ort-sys`' build script does not supply the
-      # `onnxruntime` native library on a hosted runner — `could not find native static
-      # library 'onnxruntime'`. `cargo check`/`clippy` never link, which is why the existing
-      # ML-feature lint steps pass while a test run cannot. Adding the step without solving
-      # the native dependency turns a required check permanently red, so the gap is tracked
-      # rather than papered over.
+      # WHY(#6862): the ML-feature clippy step above never links (cargo
+      # check/clippy don't), so it never caught that `ort-sys`'s build
+      # script leaves this crate unlinkable here: `download-binaries`
+      # fetches a prebuilt onnxruntime from pyke's CDN, and that fetch
+      # does not land on this hosted runner, so any command that actually
+      # links (cargo test/nextest run) failed with "could not find native
+      # static library `onnxruntime`" — reproduced across two independent
+      # runs on #6856, so not a one-off CDN blip. `ort-load-dynamic`
+      # (episteme's own feature, forwarding to `ort/load-dynamic` ->
+      # `ort-sys/disable-linking`) defers all native linking to a runtime
+      # `dlopen`, so the test binary links without the onnxruntime library
+      # present at all. gliner's and nuextract's own feature lists above
+      # are untouched, so production linkage for either is unaffected —
+      # this feature only ever appears in this CI invocation. Executes for
+      # real: split_words_keeps_punctuation_tokens, the
+      # parse_extraction_json_* parsing tests, and the
+      # gliner_provider_is_send_and_sync-class compile-time Send+Sync
+      # checks. The smoke-inference tests still self-skip (no ONNX model
+      # staged on the runner) — that gap is unchanged and undisguised by
+      # this fix.
+      - name: Episteme ML-feature gate (gliner, nuextract) nextest
+        run: cargo nextest run --profile ci -p episteme --features gliner,nuextract,ort-load-dynamic --build-jobs 4 --test-threads 4 --no-fail-fast
+
       # WHY: `runtime/mod.rs`'s land-dark selector claims both HNSW trees are
       # covered by a "CI matrix". No workflow referenced
       # `krites_sovereign_hnsw` before this step, so the sovereign tree — the
