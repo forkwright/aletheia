@@ -1263,6 +1263,31 @@ impl RuntimeBuilder {
                 &nous_manager,
             )));
             for agent_def in &self.config.agents.list {
+                // WHY(#7191): the prosoche heartbeat prompt runs "per
+                // PROSOCHE.md", but only the init/add-nous scaffolds wrote
+                // that file — a nous created any other way failed every
+                // heartbeat tick with "file not found". Materialize it from
+                // the template once per nous at daemon start; an existing
+                // (operator-edited) file is never overwritten.
+                let workspace_dir =
+                    resolve_workspace_dir(&self.oikos, &self.config, agent_def.id.as_str());
+                match oikonomos::workspace::materialize_prosoche_md(&workspace_dir) {
+                    Ok(oikonomos::workspace::ProsocheMaterialization::Materialized) => {
+                        info!(
+                            agent = %agent_def.id,
+                            path = %workspace_dir.join("PROSOCHE.md").display(),
+                            "materialized PROSOCHE.md from template"
+                        );
+                    }
+                    Ok(oikonomos::workspace::ProsocheMaterialization::AlreadyPresent) => {}
+                    Err(err) => {
+                        warn!(
+                            agent = %agent_def.id,
+                            error = %err,
+                            "failed to materialize PROSOCHE.md; prosoche heartbeat will fail until the file exists"
+                        );
+                    }
+                }
                 let agent_token = shutdown_token.child_token();
                 let agent_state_store = oikonomos::state::TaskStateStore::open(
                     &task_state_root.join(task_state_component(agent_def.id.as_str())),
@@ -1475,7 +1500,7 @@ mod metrics;
 mod nous_config;
 
 use metrics::{RuntimeBackupMetricsRecorder, register_all_metrics, task_state_component};
-use nous_config::{build_nous_runtime_config, overlay_policy_from_config};
+use nous_config::{build_nous_runtime_config, overlay_policy_from_config, resolve_workspace_dir};
 
 mod setup;
 mod tool_adapters;
