@@ -124,6 +124,10 @@ pub fn build_router_with(
             "/sessions",
             get(sessions::list_sessions).post(sessions::create),
         )
+        // WHY: static segment must be registered alongside (and wins over)
+        // `/sessions/{id}` — resolve is the idempotent get-or-create used by
+        // interactive clients entering a nous's canonical conversation.
+        .route("/sessions/resolve", post(sessions::resolve))
         .route("/sessions/stream", post(sessions::stream_turn))
         .route(
             "/sessions/{id}",

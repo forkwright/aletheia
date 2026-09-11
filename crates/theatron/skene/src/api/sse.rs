@@ -1,18 +1,25 @@
 //! Domain-event SSE subscription to `GET /api/v1/events/subscribe`.
 //!
-//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`,
-//! `nous.lifecycle`, `tool.approval_required`, and `tool.approval_resolved`,
-//! providing cross-session awareness: newly created facts, completed turns,
+//! Subscribes to the `EventBus` topics `fact.created`, `turn.start`,
+//! `turn.complete`, `turn.failed`, `turn.cancelled`, `nous.lifecycle`,
+//! `tool.approval_required`, and `tool.approval_resolved`, providing
+//! cross-session awareness: newly created facts, the full turn lifecycle
+//! (so presence surfaces can show an agent as active while a turn runs),
 //! agent lifecycle changes, and tool calls blocked on approval in any
 //! session. The legacy `GET /api/v1/events` endpoint is keepalive-only and
 //! is not used here.
 //!
 //! Auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
-//! silence as a stale connection.
+//! *byte-level* silence as a stale connection: server keepalives are SSE
+//! comment lines, which the parser swallows per the SSE spec, so liveness
+//! is judged on raw byte arrival, never on parsed-event arrival.
 //!
 //! The connection tracks the last received SSE event ID and sends it as
 //! `Last-Event-ID` on reconnect, enabling the server to replay missed events
 //! from the last acknowledged cursor.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -26,10 +33,60 @@ use crate::sse::SseStream;
 use super::error::{format_error_fields_for_display, format_http_error_body};
 use super::types::SseEvent;
 
-/// If no SSE event is received within this window, the connection is treated as
-/// stale and a reconnect is triggered. Must be > 2× the server's keepalive
-/// interval (15s) to tolerate jitter. The 45s value matches proskenion's
-/// `HEARTBEAT_TIMEOUT` and provides 3× margin over the server ping interval.
+/// Byte-level liveness tracker for an SSE byte stream.
+///
+/// Server keepalives are SSE *comment* lines (`: heartbeat`), which the
+/// keryx parser swallows per the SSE spec — they never surface as parsed
+/// events, so a read timeout measured against parsed events fires on
+/// perfectly healthy connections whenever the gap between real events
+/// exceeds the window (e.g. a slow provider between tool calls of one
+/// turn). Tracking raw byte arrival instead treats keepalive comments as
+/// the liveness proof they are.
+pub(crate) struct ByteActivity {
+    started_at: std::time::Instant,
+    last_activity_ms: Arc<AtomicU64>,
+}
+
+impl ByteActivity {
+    pub(crate) fn new() -> Self {
+        Self {
+            started_at: std::time::Instant::now(),
+            last_activity_ms: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Wrap a byte stream, recording every arriving chunk as liveness.
+    pub(crate) fn watch<S, E>(
+        &self,
+        stream: S,
+    ) -> impl futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin
+    where
+        S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
+    {
+        let started_at = self.started_at;
+        let last_activity_ms = Arc::clone(&self.last_activity_ms);
+        stream.inspect(move |chunk| {
+            if chunk.is_ok() {
+                let elapsed = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+                last_activity_ms.store(elapsed, Ordering::Relaxed);
+            }
+        })
+    }
+
+    /// Whether no bytes have arrived within `window`.
+    pub(crate) fn idle_longer_than(&self, window: std::time::Duration) -> bool {
+        let now_ms = u64::try_from(self.started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let idle_ms = now_ms.saturating_sub(self.last_activity_ms.load(Ordering::Relaxed));
+        idle_ms >= u64::try_from(window.as_millis()).unwrap_or(u64::MAX)
+    }
+}
+
+/// If no bytes arrive on the wire within this window, the connection is
+/// treated as stale and a reconnect is triggered. Must exceed the server's
+/// keepalive interval (30s by default,
+/// `taxis::config::gateway`'s `sse_heartbeat_interval_secs`) with margin
+/// for scheduling jitter. The 45s value matches proskenion's
+/// `HEARTBEAT_TIMEOUT`.
 const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Topics subscribed to on the domain-event SSE endpoint.
@@ -42,8 +99,12 @@ const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 /// these two topics in the subscribe list, pylon's strict topic filter
 /// (`crates/pylon/src/handlers/events.rs`) drops both events silently and no
 /// first-party client can ever learn an agent is waiting on approval.
-pub const SUBSCRIBE_TOPICS: &str =
-    "fact.created,turn.complete,nous.lifecycle,tool.approval_required,tool.approval_resolved";
+///
+/// WHY: `turn.start`/`turn.failed`/`turn.cancelled` join `turn.complete` so
+/// presence surfaces (proskenion's sidebar, koilon's roster) see a turn the
+/// moment it starts and clear it on *any* terminal event — subscribing only
+/// to `turn.complete` left agents permanently "idle" while they worked.
+pub const SUBSCRIBE_TOPICS: &str = "fact.created,turn.start,turn.complete,turn.failed,turn.cancelled,nous.lifecycle,tool.approval_required,tool.approval_resolved";
 
 /// Manages the global SSE connection to `/api/v1/events/subscribe`.
 /// Runs in a background task, sends parsed events through a channel.
@@ -202,7 +263,13 @@ async fn stream_until_disconnect(
     tx: &mpsc::Sender<SseEvent>,
     last_event_id: &mut Option<String>,
 ) -> bool {
-    let mut es = SseStream::new(resp.bytes_stream());
+    // WHY: the subscription stream sends domain events as they occur and a
+    // `: heartbeat` comment keepalive otherwise. Comment lines are swallowed
+    // by the SSE parser per spec, so `es.next()` can stay pending on a
+    // perfectly healthy idle connection; only byte-level silence past
+    // READ_TIMEOUT is a dead link.
+    let activity = ByteActivity::new();
+    let mut es = SseStream::new(activity.watch(resp.bytes_stream()));
 
     loop {
         let maybe_event = tokio::select! {
@@ -224,12 +291,17 @@ async fn stream_until_disconnect(
             }
             Ok(None) => break,
             Err(_elapsed) => {
-                // WHY: No event received within READ_TIMEOUT. A healthy
-                // server sends pings more frequently than this window, so
-                // silence here indicates a hung or dropped connection.
+                if !activity.idle_longer_than(READ_TIMEOUT) {
+                    // NOTE: heartbeat comments are byte activity without
+                    // parsed events; the link is alive — keep waiting.
+                    continue;
+                }
+                // WHY: No bytes received within READ_TIMEOUT — not even a
+                // keepalive comment. Silence here indicates a hung or
+                // dropped connection.
                 tracing::warn!(
                     timeout_secs = READ_TIMEOUT.as_secs(),
-                    "SSE read timeout — treating as disconnect"
+                    "SSE byte-level silence — treating as disconnect"
                 );
                 break;
             }
@@ -354,6 +426,10 @@ fn bool_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option
 /// `SseConnection`, which adds Dioxus-lifecycle cancellation and UI-facing
 /// loss-confirmation on top of the same byte stream) call this directly
 /// rather than re-deriving event parsing locally.
+#[expect(
+    clippy::too_many_lines,
+    reason = "flat match arms; splitting would obscure the 1:1 topic-to-variant mapping"
+)]
 pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
@@ -383,9 +459,26 @@ pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             session_id: ApiSessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
             turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
         }),
+        // WHY: `turn.start` is the domain-bus topic pylon actually publishes
+        // (`turn_start_event_payload` in pylon's streaming handlers); the
+        // camelCase `turn:before` arm above is the legacy wire shape. The
+        // domain payload is snake_case, matching `turn.complete` below.
+        "turn.start" => Some(SseEvent::TurnBefore {
+            nous_id: ApiNousId::from(str_field(&json, "nous_id", event_type)?.to_string()),
+            session_id: ApiSessionId::from(str_field(&json, "session_id", event_type)?.to_string()),
+            turn_id: TurnId::from(str_field(&json, "turn_id", event_type)?.to_string()),
+        }),
         "turn:after" => Some(SseEvent::TurnAfter {
             nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             session_id: ApiSessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+        }),
+        // WHY: a turn that failed or was cancelled is terminal for presence
+        // purposes — the agent is no longer working it — so both map to the
+        // same removal `turn:after` performs. `turn.complete` carries usage
+        // and keeps its own variant.
+        "turn.failed" | "turn.cancelled" => Some(SseEvent::TurnAfter {
+            nous_id: ApiNousId::from(str_field(&json, "nous_id", event_type)?.to_string()),
+            session_id: ApiSessionId::from(str_field(&json, "session_id", event_type)?.to_string()),
         }),
         "turn.complete" => turn_complete_event(&json, event_type),
         "fact.created" => fact_created_event(&json, event_type),
@@ -543,6 +636,90 @@ mod tests {
     use crate::api::client::build_streaming_client;
 
     use super::*;
+
+    // ── turn lifecycle domain events (presence) ─────────────────────────
+
+    #[test]
+    fn parse_turn_start_valid() {
+        let data = r#"{"session_id":"s1","nous_id":"syn","turn_id":"t1","request_id":"r1","phase":"start","endpoint":"stream_turn"}"#;
+        let result = parse_sse_event("turn.start", data);
+        if let Some(SseEvent::TurnBefore {
+            nous_id,
+            session_id,
+            turn_id,
+        }) = result
+        {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*session_id, "s1");
+            assert_eq!(&*turn_id, "t1");
+        } else {
+            panic!("expected TurnBefore, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn parse_turn_failed_maps_to_turn_after() {
+        let data = r#"{"session_id":"s1","nous_id":"syn","turn_id":"t1","request_id":"r1","phase":"failed","endpoint":"stream_turn","error_class":"provider_unavailable","error_message":"provider unavailable"}"#;
+        let result = parse_sse_event("turn.failed", data);
+        assert!(
+            matches!(result, Some(SseEvent::TurnAfter { ref nous_id, ref session_id })
+                if &**nous_id == "syn" && &**session_id == "s1"),
+            "expected TurnAfter, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn parse_turn_cancelled_maps_to_turn_after() {
+        let data = r#"{"session_id":"s1","nous_id":"syn","turn_id":"t1","request_id":"r1","phase":"cancelled","endpoint":"stream_turn","reason":"client_disconnect"}"#;
+        let result = parse_sse_event("turn.cancelled", data);
+        assert!(
+            matches!(result, Some(SseEvent::TurnAfter { ref nous_id, .. }) if &**nous_id == "syn"),
+            "expected TurnAfter, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn parse_turn_start_missing_field_returns_none() {
+        let data = r#"{"nous_id":"syn"}"#;
+        assert!(parse_sse_event("turn.start", data).is_none());
+    }
+
+    #[test]
+    fn subscribe_topics_includes_turn_lifecycle() {
+        for topic in [
+            "turn.start",
+            "turn.complete",
+            "turn.failed",
+            "turn.cancelled",
+        ] {
+            assert!(
+                SUBSCRIBE_TOPICS.split(',').any(|t| t == topic),
+                "SUBSCRIBE_TOPICS missing {topic}"
+            );
+        }
+    }
+
+    // ── ByteActivity: byte-level liveness for comment-only keepalives ────
+
+    #[test]
+    fn byte_activity_with_no_bytes_is_idle() {
+        let activity = ByteActivity::new();
+        assert!(activity.idle_longer_than(std::time::Duration::ZERO));
+    }
+
+    #[tokio::test]
+    async fn byte_activity_marks_stream_bytes_as_liveness() {
+        let activity = ByteActivity::new();
+        let chunks: Vec<Result<bytes::Bytes, std::io::Error>> =
+            vec![Ok(bytes::Bytes::from_static(b": heartbeat\n\n"))];
+        let mut stream = activity.watch(futures_util::stream::iter(chunks));
+        let first = stream.next().await;
+        assert!(matches!(first, Some(Ok(_))));
+        assert!(
+            !activity.idle_longer_than(std::time::Duration::from_mins(1)),
+            "a freshly received keepalive comment must count as liveness"
+        );
+    }
 
     // ── #5899: reconnect_error_message delegates to the single owning
     // extractor rather than re-deriving field-precedence logic ──

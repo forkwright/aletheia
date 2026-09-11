@@ -25,6 +25,20 @@ pub(crate) fn resolve_chat_session_key(nous_id: &ApiNousId, session_key: Option<
     session_key.map_or_else(|| format!("{nous_id}:default"), str::to_owned)
 }
 
+/// Build the selection for a nous's canonical ongoing conversation — the
+/// single continuous chat the desktop app attaches to when the operator
+/// enters a nous without picking a specific session.
+///
+/// The returned selection has no server session id yet; the caller resolves
+/// it through `POST /api/v1/sessions/resolve` before fetching history.
+pub(crate) fn canonical_agent_selection(agent_id: &ApiNousId, title: String) -> ChatSelection {
+    ChatSelection::new(
+        agent_id.clone(),
+        resolve_chat_session_key(agent_id, None),
+        title,
+    )
+}
+
 pub(crate) fn activate_chat_selection(
     selection: &ChatSelection,
     legacy_state: &mut ChatState,
@@ -193,6 +207,19 @@ mod tests {
         let key = resolve_chat_session_key(&ApiNousId::from("syn"), Some("incident-review"));
 
         assert_eq!(key, "incident-review");
+    }
+
+    #[test]
+    fn canonical_agent_selection_uses_stable_default_key_without_session_id() {
+        let selection = canonical_agent_selection(&ApiNousId::from("syn"), "Syn".to_string());
+
+        assert_eq!(selection.agent_id.as_ref(), "syn");
+        assert_eq!(selection.session_key, "syn:default");
+        assert!(
+            selection.session_id.is_none(),
+            "canonical selection carries no server id until resolve answers"
+        );
+        assert_eq!(selection.title, "Syn");
     }
 
     #[test]
