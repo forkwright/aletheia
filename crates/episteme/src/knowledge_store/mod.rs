@@ -55,6 +55,8 @@
 #[cfg(feature = "mneme-engine")]
 mod causal;
 #[cfg(feature = "mneme-engine")]
+mod consolidation_commit;
+#[cfg(feature = "mneme-engine")]
 pub(crate) mod derived_rules;
 #[cfg(feature = "mneme-engine")]
 mod entity;
@@ -95,6 +97,12 @@ pub use marshal::scoped_visibility_rules;
 /// be named outside this module.
 #[cfg(feature = "mneme-engine")]
 pub(crate) use persist_batch::FactInsert;
+
+/// Failure-injection seam and write-step labels for the consolidation
+/// commit's atomicity tests (#5311), re-exported so consolidation engine
+/// tests can arm each write step.
+#[cfg(all(test, feature = "mneme-engine"))]
+pub(crate) use consolidation_commit::{WriteStep, failpoint};
 
 #[cfg(test)]
 mod tests;
