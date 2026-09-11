@@ -328,6 +328,7 @@ pub async fn create(
         (status = 200, description = "Session resolved (existing) or created", body = SessionResponse),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))

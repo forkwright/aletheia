@@ -218,6 +218,8 @@ fn session_routes() -> Vec<RouteSpec> {
         RouteSpec::new(M::GET, "/api/v1/sessions", Min(Agent)),
         RouteSpec::new(M::POST, "/api/v1/sessions", Min(Operator))
             .with_body(r#"{"nous_id":"floor-walker","session_key":"floor-walker"}"#),
+        RouteSpec::new(M::POST, "/api/v1/sessions/resolve", Min(Operator))
+            .with_body(r#"{"nous_id":"floor-walker","session_key":"floor-walker"}"#),
         RouteSpec::new(M::POST, "/api/v1/sessions/stream", Min(Operator))
             .with_body(r#"{"nous_id":"floor-walker","message":"hi"}"#),
         RouteSpec::new(M::GET, "/api/v1/sessions/{id}", Min(Agent)),
