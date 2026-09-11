@@ -13,7 +13,52 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::consolidation::ConsolidationResult;
 use crate::engine::DataValue;
+use crate::knowledge_store::{WriteStep, failpoint};
 use crate::test_fixtures::{make_entity, make_fact, make_store};
+
+/// Commit a hand-built `ConsolidationResult` through the same atomic write
+/// path `execute_consolidation` uses: derive the run key from the candidate's
+/// source set, build the write plan, commit it as one transaction.
+fn commit_result(
+    store: &KnowledgeStore,
+    result: &ConsolidationResult,
+    nous_id: &str,
+) -> Result<Vec<FactId>, ConsolidationError> {
+    let source_ids: Vec<FactId> = result.superseded_fact_ids.clone();
+    let entity_id = EntityId::new("e-commit").expect("valid test id");
+    let candidate = ConsolidationCandidate {
+        trigger: ConsolidationTrigger::EntityOverflow {
+            entity_id: entity_id.clone(),
+            fact_count: source_ids.len(),
+        },
+        fact_ids: source_ids.clone(),
+        fact_count: source_ids.len(),
+        entity_id: Some(entity_id),
+        cluster_id: None,
+    };
+    // Group outputs into supersession batches the way run_llm_consolidation
+    // does: one batch per distinct source set, pointing at its first output.
+    let mut batches: Vec<BatchSupersession> = Vec::new();
+    for (index, consolidated) in result.consolidated_facts.iter().enumerate() {
+        let seen = batches
+            .iter()
+            .any(|b| b.source_fact_ids == consolidated.source_fact_ids);
+        if !seen {
+            batches.push(BatchSupersession {
+                source_fact_ids: Arc::clone(&consolidated.source_fact_ids),
+                consolidated_fact_index: index,
+            });
+        }
+    }
+    let run_key = consolidation_run_key(
+        &candidate,
+        &source_ids,
+        nous_id,
+        &ConsolidationConfig::default(),
+    );
+    let plan = build_consolidation_write_plan(&candidate, result, &batches, nous_id, &run_key)?;
+    store.commit_consolidation(&plan)
+}
 
 // kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
 /// Requirement #3634: consolidating N source facts into one Fact must
@@ -61,9 +106,7 @@ fn consolidation_preserves_multiplicity_metadata() {
         superseded_fact_ids: source_ids.clone(),
     };
 
-    let new_ids = store
-        .persist_consolidated_facts(&result, "nous-test")
-        .expect("persist succeeds");
+    let new_ids = commit_result(&store, &result, "nous-test").expect("commit succeeds");
     assert_eq!(
         new_ids.len(),
         1,
@@ -165,9 +208,7 @@ fn consolidation_preserves_confidential_project_metadata() {
         superseded_fact_ids: source_ids.clone(),
     };
 
-    let new_ids = store
-        .persist_consolidated_facts(&result, "nous-test")
-        .expect("persist succeeds");
+    let new_ids = commit_result(&store, &result, "nous-test").expect("commit succeeds");
     let new_id = new_ids.first().expect("one new fact").clone();
 
     let stored = store
@@ -248,9 +289,7 @@ fn consolidation_mixed_sensitivity_takes_strictest() {
         superseded_fact_ids: source_ids,
     };
 
-    let new_ids = store
-        .persist_consolidated_facts(&result, "nous-test")
-        .expect("persist succeeds");
+    let new_ids = commit_result(&store, &result, "nous-test").expect("commit succeeds");
     let new_id = new_ids.first().expect("one new fact").clone();
 
     let stored = store
@@ -304,9 +343,8 @@ fn consolidation_mixed_project_ids_refused() {
         superseded_fact_ids: vec![],
     };
 
-    let err = store
-        .persist_consolidated_facts(&result, "nous-test")
-        .expect_err("mixed project IDs must be refused");
+    let err =
+        commit_result(&store, &result, "nous-test").expect_err("mixed project IDs must be refused");
     let msg = format!("{err:?}");
     assert!(
         msg.contains("mixed project IDs"),
@@ -418,6 +456,11 @@ fn execute_consolidation_empty_response_preserves_source_facts() {
     assert!(
         ids.contains(&"f-empty-0"),
         "source fact must remain retrievable after empty consolidation; got {ids:?}"
+    );
+    assert_eq!(
+        audit_ids(&store).len(),
+        1,
+        "an empty consolidation still records its audit row (the rate limiter reads it)"
     );
 }
 
@@ -896,5 +939,378 @@ fn find_community_overflow_candidates_sees_cluster_scores_from_recompute() {
         candidate.fact_ids,
         vec![fact.id.clone()],
         "gather_cluster_facts must join the same score_type as the overflow query"
+    );
+}
+
+// ---------------------------------------------------------------------
+// #5311: atomicity and idempotency of the consolidation write sequence
+// ---------------------------------------------------------------------
+
+/// Provider returning one consolidated fact per call and counting
+/// invocations, so a test can prove a short-circuited retry never re-runs
+/// the LLM.
+struct CountingOneFactProvider {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl ConsolidationProvider for CountingOneFactProvider {
+    fn consolidate(
+        &self,
+        _system: &str,
+        _user_message: &str,
+    ) -> Result<String, ConsolidationError> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(r#"[{"content":"consolidated: alice is an engineer"}]"#.to_owned())
+    }
+}
+
+/// Seed an entity with `fact_count` linked facts and return the candidate
+/// plus the source IDs. The facts use the fixtures' fixed 2026-03-01
+/// `recorded_at`, so they pass the age gate under `min_age_days: 0`.
+fn seed_consolidation_candidate(
+    store: &KnowledgeStore,
+    label: &str,
+    fact_count: usize,
+) -> (ConsolidationCandidate, Vec<FactId>) {
+    let entity = make_entity(&format!("e-{label}"), &format!("{label} Entity"), "topic");
+    store.insert_entity(&entity).expect("insert entity");
+
+    let mut source_ids = Vec::with_capacity(fact_count);
+    for i in 0..fact_count {
+        let fact = make_fact(
+            &format!("f-{label}-{i}"),
+            "alice",
+            &format!("{label} source fact {i}"),
+        );
+        store.insert_fact(&fact).expect("insert source fact");
+        store
+            .insert_fact_entity(&fact.id, &entity.id)
+            .expect("link source fact to entity");
+        source_ids.push(fact.id);
+    }
+
+    let candidate = ConsolidationCandidate {
+        trigger: ConsolidationTrigger::EntityOverflow {
+            entity_id: entity.id.clone(),
+            fact_count,
+        },
+        fact_ids: source_ids.clone(),
+        fact_count,
+        entity_id: Some(entity.id),
+        cluster_id: None,
+    };
+    (candidate, source_ids)
+}
+
+fn no_age_gate_config() -> ConsolidationConfig {
+    ConsolidationConfig {
+        min_age_days: 0,
+        ..ConsolidationConfig::default()
+    }
+}
+
+fn relation_ids(store: &KnowledgeStore, script: &str, column: &str) -> BTreeSet<String> {
+    let rows = store
+        .run_query(script, BTreeMap::new())
+        .expect("list relation rows");
+    (0..rows.row_count())
+        .map(|i| rows.get_string(i, column).expect("row has the column"))
+        .collect()
+}
+
+/// Every fact row in the store, any lifecycle state.
+fn all_fact_ids(store: &KnowledgeStore) -> BTreeSet<String> {
+    relation_ids(store, "?[id] := *facts{id}", "id")
+}
+
+fn multiplicity_ids(store: &KnowledgeStore) -> BTreeSet<String> {
+    relation_ids(
+        store,
+        "?[fact_id] := *fact_multiplicity{fact_id}",
+        "fact_id",
+    )
+}
+
+fn provenance_ids(store: &KnowledgeStore) -> BTreeSet<String> {
+    relation_ids(
+        store,
+        "?[consolidated_fact_id] := *consolidation_provenance{consolidated_fact_id}",
+        "consolidated_fact_id",
+    )
+}
+
+/// The `superseded_by` target of each listed fact (`None` while active).
+fn superseded_targets(store: &KnowledgeStore, ids: &[FactId]) -> Vec<Option<FactId>> {
+    ids.iter()
+        .map(|id| {
+            store
+                .read_facts_by_id(id.as_str())
+                .expect("read fact")
+                .first()
+                .and_then(|fact| fact.lifecycle.superseded_by.clone())
+        })
+        .collect()
+}
+
+/// Assert the aborted run left no trace: exactly the seeded sources, all
+/// still active, and every side-index and audit relation empty.
+fn assert_no_partial_state(store: &KnowledgeStore, source_ids: &[FactId]) {
+    let source_id_set: BTreeSet<String> =
+        source_ids.iter().map(|id| id.as_str().to_owned()).collect();
+    assert_eq!(
+        all_fact_ids(store),
+        source_id_set,
+        "no consolidated fact row may survive the aborted commit"
+    );
+    assert!(
+        superseded_targets(store, source_ids)
+            .iter()
+            .all(Option::is_none),
+        "no source may be marked superseded after an aborted commit"
+    );
+    assert!(
+        multiplicity_ids(store).is_empty(),
+        "no multiplicity row may survive the aborted commit"
+    );
+    assert!(
+        provenance_ids(store).is_empty(),
+        "no provenance row may survive the aborted commit"
+    );
+    assert!(
+        audit_ids(store).is_empty(),
+        "no audit row may survive the aborted commit"
+    );
+}
+
+/// Assert the retried run converged: exactly the rows an uninterrupted run
+/// committed in the never-failed store, with sources superseded once each.
+fn assert_retry_converged(
+    failed_store: &KnowledgeStore,
+    clean_store: &KnowledgeStore,
+    source_ids: &[FactId],
+) {
+    let retried_fact_ids = all_fact_ids(failed_store);
+    assert_eq!(
+        retried_fact_ids,
+        all_fact_ids(clean_store),
+        "the retried run must land the same fact IDs as an uninterrupted run"
+    );
+    assert_eq!(
+        retried_fact_ids.len(),
+        3,
+        "two sources plus exactly one consolidated fact"
+    );
+    let cons_id = retried_fact_ids
+        .iter()
+        .find(|id| id.starts_with("cons-"))
+        .expect("the deterministic cons- fact exists")
+        .clone();
+
+    for source in source_ids {
+        let stored = failed_store
+            .read_facts_by_id(source.as_str())
+            .expect("read source fact");
+        assert_eq!(
+            stored.len(),
+            1,
+            "each source must still have exactly one temporal row"
+        );
+        assert_eq!(
+            stored
+                .first()
+                .and_then(|f| f.lifecycle.superseded_by.as_ref().map(FactId::as_str)),
+            Some(cons_id.as_str()),
+            "each source must be superseded by the consolidated fact exactly once"
+        );
+    }
+    assert_eq!(
+        multiplicity_ids(failed_store),
+        BTreeSet::from([cons_id.clone()]),
+        "exactly one multiplicity row, keyed on the consolidated fact"
+    );
+    assert_eq!(
+        provenance_ids(failed_store),
+        BTreeSet::from([cons_id.clone()]),
+        "exactly one provenance row, keyed on the consolidated fact"
+    );
+    let retried_audits = audit_ids(failed_store);
+    assert_eq!(retried_audits.len(), 1, "exactly one audit row");
+    assert!(
+        retried_audits
+            .iter()
+            .next()
+            .expect("one audit row")
+            .starts_with("cons-audit-"),
+        "the audit row is keyed on the deterministic run idempotency key"
+    );
+    assert_eq!(
+        retried_audits,
+        audit_ids(clean_store),
+        "the retried run must land the same audit row as an uninterrupted run"
+    );
+}
+
+/// Requirement #5311: every write in the consolidation sequence — fact,
+/// multiplicity, provenance, supersession, audit — commits atomically. A
+/// failure injected at `step` must leave no trace of the run, and the retry
+/// (the failpoint fires exactly once) must converge to exactly the rows an
+/// uninterrupted run commits in a second, never-failed store.
+fn assert_step_failure_is_atomic_and_retry_converges(step: WriteStep) {
+    let config = no_age_gate_config();
+
+    let failed_store = make_store();
+    let (candidate, source_ids) = seed_consolidation_candidate(&failed_store, "atomic", 2);
+
+    failpoint::arm(step);
+    let err = failed_store
+        .execute_consolidation(
+            &OneFactPerBatchProvider,
+            &candidate,
+            "alice",
+            &config,
+            false,
+        )
+        .expect_err("the armed write step must fail the consolidation");
+    assert!(
+        err.to_string()
+            .contains("injected consolidation write failure"),
+        "the failure must come from the failpoint, not the environment: {err}"
+    );
+    assert_no_partial_state(&failed_store, &source_ids);
+
+    // Retry with the failpoint spent: the run must succeed and converge.
+    let retried = failed_store
+        .execute_consolidation(
+            &OneFactPerBatchProvider,
+            &candidate,
+            "alice",
+            &config,
+            false,
+        )
+        .expect("retry after the aborted run must succeed");
+    assert_eq!(retried.consolidated_count, 1);
+
+    // An identical run in a never-failed store must land the same rows: the
+    // minted IDs derive from the source set, not from fresh ULIDs.
+    let clean_store = make_store();
+    let (clean_candidate, _) = seed_consolidation_candidate(&clean_store, "atomic", 2);
+    clean_store
+        .execute_consolidation(
+            &OneFactPerBatchProvider,
+            &clean_candidate,
+            "alice",
+            &config,
+            false,
+        )
+        .expect("clean run must succeed");
+
+    assert_retry_converged(&failed_store, &clean_store, &source_ids);
+}
+
+#[test]
+fn failure_at_fact_write_leaves_no_partial_state_and_retry_converges() {
+    assert_step_failure_is_atomic_and_retry_converges(WriteStep::Fact);
+}
+
+#[test]
+fn failure_at_multiplicity_write_leaves_no_partial_state_and_retry_converges() {
+    assert_step_failure_is_atomic_and_retry_converges(WriteStep::Multiplicity);
+}
+
+#[test]
+fn failure_at_provenance_write_leaves_no_partial_state_and_retry_converges() {
+    assert_step_failure_is_atomic_and_retry_converges(WriteStep::Provenance);
+}
+
+#[test]
+fn failure_at_supersede_write_leaves_no_partial_state_and_retry_converges() {
+    assert_step_failure_is_atomic_and_retry_converges(WriteStep::Supersede);
+}
+
+#[test]
+fn failure_at_audit_write_leaves_no_partial_state_and_retry_converges() {
+    assert_step_failure_is_atomic_and_retry_converges(WriteStep::Audit);
+}
+
+/// Requirement #5311: a retry that finds the run's audit row already
+/// committed must not call the LLM again — the recorded counts come back and
+/// the store is untouched.
+#[test]
+fn committed_run_short_circuits_retry_before_the_llm() {
+    let store = make_store();
+    let (candidate, source_ids) = seed_consolidation_candidate(&store, "shortcircuit", 2);
+    let config = no_age_gate_config();
+    let run_key = consolidation_run_key(&candidate, &source_ids, "alice", &config);
+
+    // Hand-write the run's idempotency record: the state a retry observes
+    // when the first attempt committed but its outcome never reached the
+    // caller.
+    let source_ids_json =
+        serde_json::to_string(&source_ids.iter().map(FactId::as_str).collect::<Vec<_>>())
+            .expect("serialize source ids");
+    let script = r"
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
+    [[$id, $nous_id, 'entity_overflow', 'e-shortcircuit', 2, 1, $original_fact_ids, '[]', '2026-06-01T00:00:00Z']]
+
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
+                          consolidated_count, original_fact_ids,
+                          consolidated_fact_ids, consolidated_at}
+";
+    let mut params = BTreeMap::new();
+    params.insert(
+        "id".to_owned(),
+        DataValue::Str(audit_id_for_run_key(&run_key).into()),
+    );
+    params.insert("nous_id".to_owned(), DataValue::Str("alice".into()));
+    params.insert(
+        "original_fact_ids".to_owned(),
+        DataValue::Str(source_ids_json.into()),
+    );
+    store
+        .run_mut_query(script, params)
+        .expect("insert idempotency record");
+
+    let provider = CountingOneFactProvider {
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let result = store
+        .execute_consolidation(&provider, &candidate, "alice", &config, false)
+        .expect("the recorded run resolves without the LLM");
+
+    assert_eq!(
+        provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a recorded run must never re-run the LLM"
+    );
+    assert_eq!(result.original_count, 2);
+    assert_eq!(result.consolidated_count, 1);
+    assert_eq!(
+        result.superseded_fact_ids, source_ids,
+        "the recorded result carries the run's superseded source IDs"
+    );
+    assert!(
+        result.consolidated_facts.is_empty(),
+        "a short-circuited retry returns recorded counts, not new payloads"
+    );
+
+    let expected: BTreeSet<String> = source_ids.iter().map(|id| id.as_str().to_owned()).collect();
+    assert_eq!(
+        all_fact_ids(&store),
+        expected,
+        "a short-circuited retry writes no facts"
+    );
+    assert!(
+        superseded_targets(&store, &source_ids)
+            .iter()
+            .all(Option::is_none),
+        "a short-circuited retry writes no supersessions"
+    );
+    assert!(multiplicity_ids(&store).is_empty());
+    assert!(provenance_ids(&store).is_empty());
+    assert_eq!(
+        audit_ids(&store).len(),
+        1,
+        "still exactly the one idempotency record"
     );
 }
