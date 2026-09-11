@@ -187,6 +187,7 @@ fn replay_turn_attempts_from_notes(notes: Vec<mneme::types::AgentNote>) -> Vec<R
         (status = 201, description = "Session created", body = SessionResponse),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -555,6 +556,7 @@ pub async fn replay(
     responses(
         (status = 204, description = "Session closed"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -584,6 +586,7 @@ pub async fn close(
     responses(
         (status = 204, description = "Session permanently deleted"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -625,6 +628,7 @@ pub async fn purge(
     responses(
         (status = 204, description = "Session archived"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -672,6 +676,7 @@ async fn archive_session_by_id(state: &SessionsState, id: &str) -> Result<Status
     responses(
         (status = 204, description = "Session reactivated"),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -715,6 +720,7 @@ pub async fn unarchive(
         (status = 204, description = "Session renamed"),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))

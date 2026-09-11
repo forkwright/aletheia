@@ -32,6 +32,7 @@ mod nous;
 mod ops;
 mod per_user_rate_limit;
 mod route_contract;
+mod route_role_floor;
 mod session;
 mod signal;
 mod sse_events;

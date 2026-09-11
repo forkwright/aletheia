@@ -90,6 +90,7 @@ fn require_routed(outcome: RouteOutcome, turn_id: &str, tool_id: &str) -> Result
         (status = 404, description = "Session not found, or no approval was ever registered for the turn/tool pair", body = ErrorResponse),
         (status = 410, description = "Approval is gone: details.reason is already_resolved (details.decision names the winning choice), timed_out, or turn_ended", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -344,6 +345,7 @@ pub async fn list_nous_pending(
         (status = 404, description = "No approval was ever registered for the turn/tool pair", body = ErrorResponse),
         (status = 410, description = "Approval is gone: details.reason is already_resolved (details.decision names the winning choice), timed_out, or turn_ended", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -373,6 +375,7 @@ pub async fn approve_tool(
         (status = 404, description = "No approval was ever registered for the turn/tool pair", body = ErrorResponse),
         (status = 410, description = "Approval is gone: details.reason is already_resolved (details.decision names the winning choice), timed_out, or turn_ended", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
