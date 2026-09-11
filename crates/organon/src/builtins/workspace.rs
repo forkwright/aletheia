@@ -163,9 +163,24 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     });
 
     if !allowed {
+        // WHY: name the allowed roots so the caller (usually an agent that
+        // produced an absolute path from instance documentation) can tell an
+        // out-of-scope path apart from a broken tool, and retry under a root
+        // it is actually permitted to touch. The roots are the agent's own
+        // configured scope — the same paths already echoed in prepared
+        // arguments and tool error output — so this discloses nothing new.
+        let roots_display = if ctx.allowed_roots.is_empty() {
+            "none configured; every path is rejected".to_owned()
+        } else {
+            ctx.allowed_roots
+                .iter()
+                .map(|root| root.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         return Err(error::InvalidInputSnafu {
             name: tool_name.clone(),
-            reason: format!("path outside allowed roots: {raw}"),
+            reason: format!("path outside allowed roots: {raw} (allowed roots: {roots_display})"),
         }
         .build());
     }
