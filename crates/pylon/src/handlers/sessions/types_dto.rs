@@ -23,6 +23,16 @@ pub struct CreateSessionRequest {
     pub model: Option<String>,
 }
 
+/// Body for `POST /api/v1/sessions/resolve` (get-or-create by key).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResolveSessionRequest {
+    /// Target nous agent that owns the session.
+    pub nous_id: String,
+    /// Stable client-chosen key identifying the ongoing conversation
+    /// (e.g. `"syn:default"` for the desktop app's per-nous chat).
+    pub session_key: String,
+}
+
 /// Body for `PUT /api/v1/sessions/{id}/name`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenameSessionRequest {

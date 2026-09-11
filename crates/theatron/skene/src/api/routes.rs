@@ -58,6 +58,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "POST",
+        path_template: "/api/v1/sessions/resolve",
+    },
+    ClientRouteContract {
+        method: "POST",
         path_template: "/api/v1/sessions/stream",
     },
     ClientRouteContract {
