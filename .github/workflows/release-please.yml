@@ -146,6 +146,60 @@ jobs:
           fi
           echo "All declared extra-files moved with the version."
 
+      # WHY(#7107): the commit-message parser release-please's changelog writer runs
+      # on top of aborts silently on a malformed body -- one it cannot finish parsing
+      # -- and the action still reports success. 0.44.0 (#7007) shipped without its
+      # most operationally significant fix, `fix(agora)` #7105, because that commit's
+      # ` ```rust ` body fence held an unclosed `(`; the only trace was a debug line
+      # in the run log ("commit could not be parsed"), never surfaced on the PR, the
+      # run conclusion, or the changelog itself. The same run dropped a second,
+      # unrelated commit (#7062) the same way. Neither failure turned anything red.
+      #
+      # This is the identical shape as the extra-files guard above: release-please
+      # can silently drop something it was supposed to carry forward, so detect the
+      # drop from outside rather than trust the tool's own success signal.
+      #
+      # WARNING: this step deliberately only DETECTS, for the same reason as above --
+      # amending the release branch from CI would authenticate with GITHUB_TOKEN and
+      # every required check would go missing rather than red.
+      - name: Assert the changelog names every visible commit in the release range
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_PR_JSON: ${{ steps.release.outputs.pr }}
+        run: |
+          set -euo pipefail
+          HEAD_BRANCH="$(printf '%s' "${RELEASE_PR_JSON}" | jq -r '.headBranchName')"
+          if [ -z "${HEAD_BRANCH}" ] || [ "${HEAD_BRANCH}" = "null" ]; then
+            echo "::error::release-please reported prs_created=true but its pr output carries no headBranchName"
+            exit 1
+          fi
+
+          # The manifest on disk right now is the PRE-bump version: release-please
+          # talks to the API to build the PR branch, it never touches this checkout,
+          # so this file still names the release the current range starts after.
+          PREV_VERSION="$(jq -r '.["."]' .release-please-manifest.json)"
+          FROM_REF="v${PREV_VERSION}"
+
+          # First-ever release: nothing has shipped yet, so there is no prior tag to
+          # diff a range against and nothing could have been dropped from one.
+          if [ -z "$(git ls-remote --tags origin "refs/tags/${FROM_REF}")" ]; then
+            echo "No ${FROM_REF} tag on origin; nothing to diff against. Skipping."
+            exit 0
+          fi
+
+          # WHY --shallow-exclude and not a fixed --depth: the release range's
+          # commit count varies release to release, and a fixed depth is either
+          # wasteful most of the time or silently too shallow on a big one. This
+          # fetches exactly the history between the prior tag and the release
+          # branch head, no more.
+          git fetch --no-tags --shallow-exclude="${FROM_REF}" origin \
+            "+refs/heads/${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}" \
+            "+refs/tags/${FROM_REF}:refs/tags/${FROM_REF}"
+          head="$(git rev-parse "origin/${HEAD_BRANCH}")"
+
+          python3 scripts/check-changelog-completeness.py \
+            --from-ref "${FROM_REF}" --to-ref "${head}"
+
   # WHY(#6513): Cargo.lock's per-member version fields (#6418) are patched by
   # release-please itself, via the `$.package[?(!@.source)].version` extra-file
   # added in #6516 — the same entry the rest of the fleet uses. A second job
