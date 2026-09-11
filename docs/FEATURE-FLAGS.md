@@ -60,6 +60,7 @@ Cargo metadata cannot infer.
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
 | **episteme** | `gliner` | no | GLiNER ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `nuextract` | no | NuExtract ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
+| **episteme** | `ort-load-dynamic` | no | CI-only: links gliner/nuextract tests via a runtime `dlopen` instead of a build-time onnxruntime (aletheia#6862) | `ort?/load-dynamic` |
 | **episteme** | `openai-embed` | no | OpenAI-compatible embedding provider | `dep:reqwest`, `dep:tokio`, `dep:rustls` |
 | **episteme** | `online-tests` | no | Network-dependent candle tests | - |
 | **episteme** | `test-support` | no | Test helpers | - |
