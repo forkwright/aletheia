@@ -299,15 +299,13 @@ async fn mandatory_without_gate_defaults_to_denial() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    // approval_required → approval_resolved(denied) → tool_result(denial)
-    assert_event_kinds(
-        &events,
-        &["approval_required", "approval_resolved", "tool_result"],
-    );
-    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+    // WHY(#7252): no gate means no approver exists, so no `approval_required`
+    // request is ever emitted — the typed denial is the whole signal.
+    assert_event_kinds(&events, &["approval_resolved", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "no_gate_denied");
     } else {
-        panic!("expected ToolApprovalResolved at idx 1");
+        panic!("expected ToolApprovalResolved at idx 0");
     }
 }
 
@@ -359,14 +357,12 @@ async fn required_without_gate_defaults_to_denial() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    assert_event_kinds(
-        &events,
-        &["approval_required", "approval_resolved", "tool_result"],
-    );
-    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+    // WHY(#7252): no gate ⇒ no request event — see mandatory_without_gate.
+    assert_event_kinds(&events, &["approval_resolved", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "no_gate_denied");
     } else {
-        panic!("expected ToolApprovalResolved at idx 1");
+        panic!("expected ToolApprovalResolved at idx 0");
     }
 }
 
@@ -412,14 +408,12 @@ async fn sessions_spawn_without_gate_defaults_to_denial() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    assert_event_kinds(
-        &events,
-        &["approval_required", "approval_resolved", "tool_result"],
-    );
-    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+    // WHY(#7252): no gate ⇒ no request event — see mandatory_without_gate.
+    assert_event_kinds(&events, &["approval_resolved", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "no_gate_denied");
     } else {
-        panic!("expected ToolApprovalResolved at idx 1");
+        panic!("expected ToolApprovalResolved at idx 0");
     }
 }
 
@@ -550,6 +544,60 @@ async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record()
     assert_eq!(batch_calls[0].input, streaming_calls[0].input);
     assert_eq!(batch_calls[0].is_error, streaming_calls[0].is_error);
     assert_eq!(batch_calls[0].result, streaming_calls[0].result);
+}
+
+/// WHY(#7252): the daemon's turn shape — no stream, no gate (`NousMessage::Turn`
+/// carries neither). An approval-required call must produce the typed
+/// `no_gate_denied` refusal as its whole signal: no request event can exist
+/// because no approver does, and the refusal rides back into the turn so the
+/// agent can adapt instead of the call dangling.
+#[tokio::test]
+async fn daemon_shaped_turn_denies_without_any_approval_request() {
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "exec".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut loop_detector = LoopDetector::new(3);
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        None,
+        None,
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    assert_eq!(result.blocks.len(), 1);
+    assert_eq!(all_calls.len(), 1);
+    assert!(all_calls[0].is_error, "no-gate mandatory call must deny");
+    assert_eq!(
+        all_calls[0].approval.as_deref(),
+        Some("no_gate_denied"),
+        "the typed refusal must be recorded on the call"
+    );
+    assert!(
+        all_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("approval policy"),
+        "the refusal text must reach the turn, got: {:?}",
+        all_calls[0].result
+    );
 }
 
 #[tokio::test]

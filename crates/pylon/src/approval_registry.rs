@@ -197,10 +197,27 @@ impl ApprovalRegistry {
 
     /// Create a guard for a streaming turn.
     pub fn register_turn(self: &Arc<Self>, session_id: String, turn_id: String) -> Guard {
+        self.register_turn_with_turn_ended_hook(session_id, turn_id, None)
+    }
+
+    /// Create a guard for a streaming turn, with a hook fired once from
+    /// [`Guard::drop`] when the turn ends with approvals still pending
+    /// (#7252): the removals alone keep the pending read honest, but the
+    /// hook lets the caller publish the cancellation on the domain bus so
+    /// subscribers and reconnect replay see the request closed rather than
+    /// unanswered forever. The hook runs synchronously inside `Drop`; async
+    /// publication is the hook's own concern.
+    pub fn register_turn_with_turn_ended_hook(
+        self: &Arc<Self>,
+        session_id: String,
+        turn_id: String,
+        on_turn_ended: Option<Box<dyn FnOnce(Vec<PendingApproval>) + Send>>,
+    ) -> Guard {
         Guard {
             registry: Arc::clone(self),
             session_id: Some(session_id),
             turn_id: Some(turn_id),
+            on_turn_ended,
         }
     }
 
@@ -400,7 +417,12 @@ impl ApprovalRegistry {
         }
     }
 
-    fn remove_turn(&self, session_id: &str, turn_id: &str) {
+    /// Remove every pending approval for `(session_id, turn_id)`, burying
+    /// each as [`ApprovalDisposition::TurnEnded`], and return what was
+    /// removed (oldest first) so the caller can publish the cancellations
+    /// (#7252). Approvals already resolved or gate-resolved left the pending
+    /// map earlier and are not reported here.
+    fn remove_turn(&self, session_id: &str, turn_id: &str) -> Vec<PendingApproval> {
         let mut inner = self
             .inner
             .lock()
@@ -411,11 +433,23 @@ impl ApprovalRegistry {
             .filter(|(key, entry)| key.turn_id == turn_id && entry.session_id == session_id)
             .map(|(key, _)| key.clone())
             .collect();
+        let mut removed = Vec::with_capacity(keys.len());
         for key in keys {
             if let Some(entry) = inner.pending.remove(&key) {
+                removed.push(PendingApproval {
+                    session_id: entry.session_id.clone(),
+                    turn_id: key.turn_id.clone(),
+                    tool_id: key.tool_id.clone(),
+                    tool_name: entry.tool_name.clone(),
+                    risk: entry.risk.clone(),
+                    requested_at: entry.requested_at,
+                    deadline: entry.deadline,
+                });
                 inner.bury(key, entry.session_id, ApprovalDisposition::TurnEnded);
             }
         }
+        removed.sort_by_key(|approval| approval.requested_at);
+        removed
     }
 }
 
@@ -424,6 +458,9 @@ pub struct Guard {
     registry: Arc<ApprovalRegistry>,
     session_id: Option<String>,
     turn_id: Option<String>,
+    /// Fired once from `Drop` when the turn ended with approvals still
+    /// pending (#7252) — the turn-ended cancellations nobody answered.
+    on_turn_ended: Option<Box<dyn FnOnce(Vec<PendingApproval>) + Send>>,
 }
 
 impl Drop for Guard {
@@ -433,7 +470,14 @@ impl Drop for Guard {
         // runtime shutdown. The inner lock is a std::sync::Mutex, so Drop can
         // hold it without spawning.
         if let (Some(sid), Some(turn_id)) = (self.session_id.take(), self.turn_id.take()) {
-            self.registry.remove_turn(&sid, &turn_id);
+            let ended = self.registry.remove_turn(&sid, &turn_id);
+            // WHY(#7252): only unanswered approvals are reported — a resolved
+            // approval already published its own resolution when it routed.
+            if !ended.is_empty()
+                && let Some(hook) = self.on_turn_ended.take()
+            {
+                hook(ended);
+            }
         }
     }
 }
@@ -975,5 +1019,156 @@ mod tests {
         let pending = reg.pending_for_session("sess").await;
         let tool_ids: Vec<&str> = pending.iter().map(|p| p.tool_id.as_str()).collect();
         assert_eq!(tool_ids, vec!["first", "second"]);
+    }
+
+    // ── #7252: turn-ended cancellation hook ──
+
+    /// WHY(#7252): a turn that dies mid-approval-wait (client disconnect,
+    /// abort, shutdown) must hand its unanswered approvals to the turn-ended
+    /// hook so the caller can publish their cancellation — otherwise the
+    /// domain bus keeps an approval request nobody can ever answer.
+    #[tokio::test]
+    async fn guard_drop_fires_turn_ended_hook_with_unanswered_approvals() {
+        use std::sync::Mutex as StdMutex;
+
+        let reg = Arc::new(ApprovalRegistry::new());
+        let fired: Arc<StdMutex<Vec<Vec<String>>>> = Arc::new(StdMutex::new(Vec::new()));
+        let fired_into = Arc::clone(&fired);
+        let hook: Box<dyn FnOnce(Vec<PendingApproval>) + Send> = Box::new(move |ended| {
+            fired_into
+                .lock()
+                .expect("lock")
+                .push(ended.iter().map(|p| p.tool_id.clone()).collect());
+        });
+
+        {
+            let _guard = reg.register_turn_with_turn_ended_hook(
+                "sess".to_owned(),
+                "turn".to_owned(),
+                Some(hook),
+            );
+            let (tx_a, _rx_a) = mpsc::channel::<ApprovalDecision>(4);
+            let (tx_b, _rx_b) = mpsc::channel::<ApprovalDecision>(4);
+            reg.register_tool("sess", "turn", "t-a".to_owned(), tx_a, test_meta())
+                .await;
+            reg.register_tool("sess", "turn", "t-b".to_owned(), tx_b, test_meta())
+                .await;
+        }
+
+        let mut ended_ids = {
+            let calls = fired.lock().expect("lock");
+            assert_eq!(calls.len(), 1, "the hook fires exactly once on drop");
+            calls.first().expect("one call").clone()
+        };
+        ended_ids.sort_unstable();
+        assert_eq!(
+            ended_ids,
+            vec!["t-a", "t-b"],
+            "every unanswered approval is reported to the hook"
+        );
+        assert!(
+            reg.inner.lock().expect("lock").pending.is_empty(),
+            "the pending map is empty after the guard drops"
+        );
+
+        // The removed approvals keep their turn-ended tombstones, so a late
+        // resolve is answered 410/turn_ended rather than collapsing to 404.
+        assert_eq!(
+            reg.try_send(
+                Some("sess"),
+                "turn",
+                "t-a",
+                decision("t-a", ApprovalChoice::Approved)
+            )
+            .await,
+            RouteOutcome::Gone(ApprovalDisposition::TurnEnded)
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_drop_without_pending_does_not_fire_hook() {
+        use std::sync::Mutex as StdMutex;
+
+        let reg = Arc::new(ApprovalRegistry::new());
+        let fired = Arc::new(StdMutex::new(false));
+        let fired_into = Arc::clone(&fired);
+        let hook: Box<dyn FnOnce(Vec<PendingApproval>) + Send> = Box::new(move |_ended| {
+            *fired_into.lock().expect("lock") = true;
+        });
+
+        {
+            let _guard = reg.register_turn_with_turn_ended_hook(
+                "sess".to_owned(),
+                "turn".to_owned(),
+                Some(hook),
+            );
+        }
+
+        assert!(
+            !*fired.lock().expect("lock"),
+            "a turn with nothing pending has no cancellations to publish"
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_drop_reports_only_unanswered_approvals() {
+        use std::sync::Mutex as StdMutex;
+
+        let reg = Arc::new(ApprovalRegistry::new());
+        let fired: Arc<StdMutex<Vec<Vec<String>>>> = Arc::new(StdMutex::new(Vec::new()));
+        let fired_into = Arc::clone(&fired);
+        let hook: Box<dyn FnOnce(Vec<PendingApproval>) + Send> = Box::new(move |ended| {
+            fired_into
+                .lock()
+                .expect("lock")
+                .push(ended.iter().map(|p| p.tool_id.clone()).collect());
+        });
+
+        {
+            let _guard = reg.register_turn_with_turn_ended_hook(
+                "sess".to_owned(),
+                "turn".to_owned(),
+                Some(hook),
+            );
+            let (tx_answered, mut rx_answered) = mpsc::channel::<ApprovalDecision>(4);
+            let (tx_unanswered, _rx_unanswered) = mpsc::channel::<ApprovalDecision>(4);
+            reg.register_tool(
+                "sess",
+                "turn",
+                "answered".to_owned(),
+                tx_answered,
+                test_meta(),
+            )
+            .await;
+            reg.register_tool(
+                "sess",
+                "turn",
+                "unanswered".to_owned(),
+                tx_unanswered,
+                test_meta(),
+            )
+            .await;
+
+            // The operator answers one approval before the turn ends.
+            assert_eq!(
+                reg.try_send(
+                    Some("sess"),
+                    "turn",
+                    "answered",
+                    decision("answered", ApprovalChoice::Approved)
+                )
+                .await,
+                RouteOutcome::Routed
+            );
+            assert!(rx_answered.recv().await.is_some());
+        }
+
+        let calls = fired.lock().expect("lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls.first().expect("one call"),
+            &vec!["unanswered".to_owned()],
+            "an answered approval already published its resolution when it routed"
+        );
     }
 }

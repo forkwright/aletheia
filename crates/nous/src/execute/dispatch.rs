@@ -1713,47 +1713,59 @@ pub(super) async fn dispatch_tool_items(
                 APPROVAL_OUTCOME_ADVISORY_AUTO
             }
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
-                // The connected approver sees the minimum policy-permitted
-                // evidence from the exact prepared input it is authorizing.
-                // Replay/history receives the independently produced trace
-                // copy, which never contains vault/file-expanded values.
-                let mut live_input = prepared_input.as_tool_input().arguments.clone();
-                // Vault values are known secrets regardless of length or
-                // shape. Preserve that provenance from the placeholder-form
-                // input before the generic/declared policy pass.
-                redact_resolved_secrets_in_prepared_json(
-                    tool_input,
-                    &unprepared_input.arguments,
-                    &mut live_input,
-                );
-                let live_approval_input = redacted_live_approval_input(
-                    tools,
-                    &prepared_input.as_tool_input().name,
-                    &live_input,
-                );
-                let approval_event_available = emit_approval_required(
-                    stream_tx,
-                    tool_ctx,
-                    identity,
-                    tool_id,
-                    tool_name,
-                    LiveApprovalEvidence::new(live_approval_input),
-                    &trace_input,
-                    approval,
-                );
-                let (choice, outcome) = if !approval_event_available {
-                    warn!(
-                        tool = tool_name.as_str(),
-                        tool_id = tool_id.as_str(),
-                        "approval-required tool call could not reach approver - default-deny"
+                // WHY(#7252): a turn with no approval gate is non-interactive
+                // (daemon, headless streaming, MCP `session_message`) — there
+                // is no approver to reach. Emitting `ToolApprovalRequired`
+                // anyway dangles a request nobody can answer: on streamed
+                // no-gate paths it surfaces to the client as a pending
+                // approval that can never resolve, and on the daemon path it
+                // is the request that must never exist. Skip the request and
+                // go straight to the typed `no_gate_denied` refusal; the
+                // `approval_resolved` audit signal below still records the
+                // policy decision.
+                let (choice, outcome) = if let Some(gate) = approval_gate {
+                    // The connected approver sees the minimum policy-permitted
+                    // evidence from the exact prepared input it is authorizing.
+                    // Replay/history receives the independently produced trace
+                    // copy, which never contains vault/file-expanded values.
+                    let mut live_input = prepared_input.as_tool_input().arguments.clone();
+                    // Vault values are known secrets regardless of length or
+                    // shape. Preserve that provenance from the placeholder-form
+                    // input before the generic/declared policy pass.
+                    redact_resolved_secrets_in_prepared_json(
+                        tool_input,
+                        &unprepared_input.arguments,
+                        &mut live_input,
                     );
-                    (
-                        ApprovalChoice::Denied,
-                        APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED,
-                    )
-                } else if let Some(gate) = approval_gate {
-                    let choice = gate.await_decision(tool_id).await;
-                    (choice, choice.as_wire_str())
+                    let live_approval_input = redacted_live_approval_input(
+                        tools,
+                        &prepared_input.as_tool_input().name,
+                        &live_input,
+                    );
+                    let approval_event_available = emit_approval_required(
+                        stream_tx,
+                        tool_ctx,
+                        identity,
+                        tool_id,
+                        tool_name,
+                        LiveApprovalEvidence::new(live_approval_input),
+                        &trace_input,
+                        approval,
+                    );
+                    if approval_event_available {
+                        let choice = gate.await_decision(tool_id).await;
+                        (choice, choice.as_wire_str())
+                    } else {
+                        warn!(
+                            tool = tool_name.as_str(),
+                            tool_id = tool_id.as_str(),
+                            "approval-required tool call could not reach approver - default-deny"
+                        );
+                        (
+                            ApprovalChoice::Denied,
+                            APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED,
+                        )
+                    }
                 } else {
                     warn!(
                         tool = tool_name.as_str(),
