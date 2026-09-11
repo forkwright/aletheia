@@ -768,6 +768,115 @@ mod refusal_mapping {
         }
     }
 
+    /// The menos-code incident regression: a `--parallel 1` llama.cpp
+    /// backend cold-loading (~15s model load) while busy with interactive
+    /// turns answers a maintenance-cycle request with an accepted connection
+    /// and no timely response -- a client-side timeout, surfaced as the
+    /// typed Loading refusal. Loading is deployment lifecycle state, not
+    /// failure evidence: no number of consecutive timeouts may latch the
+    /// front door Failed. The mock holds the connection open past the
+    /// provider's configured request timeout to produce a real reqwest
+    /// timeout on every attempt.
+    #[tokio::test]
+    async fn loading_timeouts_never_latch_the_front_door_failed() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_secs(5))
+                    .set_body_json(success_body()),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = OpenAiProvider::new(OpenAiProviderConfig {
+            name: "conformance-loading".to_owned(),
+            base_url: format!("{}/v1", server.uri()),
+            models: vec!["qwen3.8-27b".to_owned()],
+            deployment_target: DeploymentTarget::Embedded,
+            front_door_enabled: true,
+            request_timeout: Duration::from_millis(100),
+            retry_policy: RetryPolicy {
+                max_retries: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .expect("provider constructs");
+
+        // Well past FRONT_DOOR_FAILURE_THRESHOLD: if timeouts counted
+        // toward the latch, the third refusal would come back Failed.
+        for attempt in 0..6 {
+            let err = provider
+                .complete(&short_chat_request("qwen3.8-27b"))
+                .await
+                .expect_err("a timed-out request must fail");
+            match err {
+                Error::ProviderNotReady { state, .. } => {
+                    assert_eq!(
+                        state,
+                        FrontDoorState::Loading,
+                        "attempt {attempt}: a Loading timeout must never escalate to Failed"
+                    );
+                }
+                other => panic!("expected ProviderNotReady, got: {other}"),
+            }
+        }
+        assert_eq!(
+            provider.front_door_state(),
+            Some(FrontDoorState::Loading),
+            "consecutive Loading timeouts must leave the front door Loading, not Failed"
+        );
+    }
+
+    /// The latch still works for genuine transport failures: repeated
+    /// connection refusals (nothing accepting connections at all) escalate
+    /// to `Failed` at `FRONT_DOOR_FAILURE_THRESHOLD`, which is what asks an
+    /// operator to look at a down backend instead of retrying forever.
+    #[tokio::test]
+    async fn connect_refusals_still_latch_the_front_door_failed() {
+        let provider = OpenAiProvider::new(OpenAiProviderConfig {
+            name: "conformance-refused".to_owned(),
+            base_url: "http://127.0.0.1:8197/v1".to_owned(),
+            models: vec!["qwen3.8-27b".to_owned()],
+            deployment_target: DeploymentTarget::Embedded,
+            front_door_enabled: true,
+            retry_policy: RetryPolicy {
+                max_retries: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .expect("provider constructs");
+
+        let expected_states = [
+            FrontDoorState::Sleeping,
+            FrontDoorState::Sleeping,
+            FrontDoorState::Failed,
+        ];
+        for (attempt, expected) in expected_states.iter().enumerate() {
+            let err = provider
+                .complete(&short_chat_request("qwen3.8-27b"))
+                .await
+                .expect_err("connection refused must fail");
+            match err {
+                Error::ProviderNotReady { state, .. } => {
+                    assert_eq!(
+                        &state, expected,
+                        "attempt {attempt}: unexpected front-door state"
+                    );
+                }
+                other => panic!("expected ProviderNotReady, got: {other}"),
+            }
+        }
+        assert_eq!(
+            provider.front_door_state(),
+            Some(FrontDoorState::Failed),
+            "three consecutive connect refusals must latch Failed"
+        );
+    }
+
     /// `CapacityExceeded`, aletheia's OWN side today: the client-side Fixed
     /// admission cap (`crates/hermeneus/src/concurrency.rs`,
     /// `crates/aletheia/src/runtime/setup.rs::admission_policy_for_entry`)
