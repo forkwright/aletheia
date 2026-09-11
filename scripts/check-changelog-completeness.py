@@ -49,9 +49,45 @@ CONVENTIONAL_HEADER_RE = re.compile(
 PR_NUMBER_RE = re.compile(r"\(#(\d+)\)\s*$")
 CHANGELOG_HEADING_RE = re.compile(r"^## \[")
 
+# WHY(#7107): --from-ref/--to-ref reach `git log`/`git show` as bare argv entries. A
+# value starting with "-" is not a revision to git -- it is parsed as an option on
+# whatever subcommand receives it, the same argument-injection shape any CLI tool must
+# guard wherever a value that passed through argparse reaches a subprocess argv
+# unchanged. This allowlist (tags, branches, and hex SHAs all match) rejects that shape
+# outright instead of trying to enumerate every dangerous git flag.
+SAFE_REF_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]+$")
+
 
 class ChangelogCompletenessError(RuntimeError):
     """Raised when the release range or changelog cannot be read at all."""
+
+
+def validate_ref(value: str, what: str) -> str:
+    """Reject a ref/SHA shaped like a git option instead of a revision."""
+    if not SAFE_REF_RE.match(value):
+        raise ChangelogCompletenessError(f"{what} {value!r} is not a safe git ref")
+    return value
+
+
+def confine_to_repo_root(repo_root: Path, candidate: Path, what: str) -> Path:
+    """Resolve `candidate` and refuse anything that would read outside `repo_root`.
+
+    WHY(#7107): --config exists so a future caller (or test) can point this script at
+    a non-default layout, but nothing forces that caller to be trustworthy -- a value
+    composed from untrusted text could just as easily be `../../etc/passwd`. Confining
+    the resolved path to the repo root this script already scopes every git call to
+    (`-C str(repo_root)` in `run_git`) closes that off without narrowing any use this
+    script actually makes of the flag.
+    """
+    resolved_root = repo_root.resolve()
+    resolved = (resolved_root / candidate).resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ChangelogCompletenessError(
+            f"{what} {candidate} resolves outside repo root {resolved_root}"
+        ) from exc
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -88,7 +124,7 @@ def run_git(repo_root: Path, *args: str) -> str:
     return result.stdout
 
 
-def visible_commit_types(config_path: Path) -> set[str]:
+def visible_commit_types(repo_root: Path, config_path: Path) -> set[str]:
     """Types release-please's own config renders into a visible changelog section.
 
     WHY read from `release-please-config.json` rather than hardcoded: this list is
@@ -96,6 +132,7 @@ def visible_commit_types(config_path: Path) -> set[str]:
     there -- adding a section, hiding one -- keeps this check in step without a second
     edit anyone has to remember to make.
     """
+    config_path = confine_to_repo_root(repo_root, config_path, "--config")
     try:
         raw = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -122,11 +159,13 @@ def visible_commit_types(config_path: Path) -> set[str]:
 
 
 def commits_in_range(repo_root: Path, from_ref: str, to_ref: str) -> list[RangeCommit]:
+    validate_ref(from_ref, "--from-ref")
+    validate_ref(to_ref, "--to-ref")
     # WHY %x1f (unit separator) rather than a printable delimiter: a commit subject can
     # itself carry punctuation of any kind, but never a control character, so this is
     # the one split point guaranteed not to collide with real content.
     raw = run_git(
-        repo_root, "log", "--no-merges", f"--format=%H%x1f%s", f"{from_ref}..{to_ref}"
+        repo_root, "log", "--no-merges", "--format=%H%x1f%s", f"{from_ref}..{to_ref}"
     )
     commits: list[RangeCommit] = []
     for line in raw.splitlines():
@@ -144,6 +183,7 @@ def read_changelog_section(repo_root: Path, ref: str, changelog_path: str) -> st
     under the `# Changelog` title, so the newest section is everything before the
     SECOND `## [` heading (the first heading belongs to the release under test).
     """
+    validate_ref(ref, "ref")
     full_text = run_git(repo_root, "show", f"{ref}:{changelog_path}")
     lines = full_text.splitlines()
     heading_indices = [i for i, line in enumerate(lines) if CHANGELOG_HEADING_RE.match(line)]
@@ -182,7 +222,7 @@ def check(
     config_path: Path,
     changelog_path: str,
 ) -> list[RangeCommit]:
-    visible_types = visible_commit_types(config_path)
+    visible_types = visible_commit_types(repo_root, config_path)
     commits = commits_in_range(repo_root, from_ref, to_ref)
     section_text = read_changelog_section(repo_root, to_ref, changelog_path)
     return missing_entries(commits, visible_types, section_text)
@@ -236,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
             repo_root, args.from_ref, args.to_ref, config_path, args.changelog_path
         )
     except ChangelogCompletenessError as exc:
-        LOGGER.error("changelog completeness check could not run: %s", exc)
+        LOGGER.exception("changelog completeness check could not run: %s", exc)
         return 2
 
     if missing:

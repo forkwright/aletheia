@@ -87,21 +87,33 @@ class RangeCommitParsing(unittest.TestCase):
 class VisibleCommitTypes(unittest.TestCase):
     def test_hidden_types_are_excluded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = _config_file(Path(tmp))
+            root = Path(tmp)
+            path = _config_file(root)
             self.assertEqual(
-                ccc.visible_commit_types(path), {"feat", "fix", "perf", "docs"}
+                ccc.visible_commit_types(root, path), {"feat", "fix", "perf", "docs"}
             )
 
     def test_a_config_with_no_visible_type_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = _config_file(Path(tmp), [{"type": "chore", "hidden": True}])
+            root = Path(tmp)
+            path = _config_file(root, [{"type": "chore", "hidden": True}])
             with self.assertRaises(ccc.ChangelogCompletenessError):
-                ccc.visible_commit_types(path)
+                ccc.visible_commit_types(root, path)
 
     def test_a_missing_config_is_an_error_not_an_empty_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
             with self.assertRaises(ccc.ChangelogCompletenessError):
-                ccc.visible_commit_types(Path(tmp) / "nope.json")
+                ccc.visible_commit_types(root, root / "nope.json")
+
+    def test_a_config_outside_repo_root_is_rejected(self) -> None:
+        """WHY(#7107): --config must not become a path-traversal escape hatch --
+        confining it to repo_root is the fix for the SonarCloud finding on this line."""
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other:
+            root = Path(tmp)
+            outside = _config_file(Path(other))
+            with self.assertRaises(ccc.ChangelogCompletenessError):
+                ccc.visible_commit_types(root, outside)
 
 
 class MissingEntries(unittest.TestCase):
