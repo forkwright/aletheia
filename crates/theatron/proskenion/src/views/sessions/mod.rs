@@ -5,6 +5,9 @@ pub(crate) mod detail;
 pub(crate) mod list;
 pub(crate) mod search;
 
+#[cfg(test)]
+mod mount_fetch_loop_tests;
+
 use dioxus::prelude::*;
 use skene::api::error::ApiError;
 use skene::api::types::{HistoryMessage, Session};
@@ -334,7 +337,19 @@ pub(crate) fn Sessions() -> Element {
         }
     };
 
-    use_effect(move || {
+    // WHY(#7280): this must run exactly once at mount, not react to
+    // `list_store` changes. `fetch_sessions` both reads `list_store` (for
+    // the current filters) and writes it (`mark_loading`, then the spawned
+    // request's own completion). A `use_effect` here would track that read
+    // as a dependency and re-run on every write `fetch_sessions` itself
+    // makes -- including the async completion -- producing a standing
+    // refetch loop (continuous flicker, unbounded duplicate requests) for
+    // as long as the view stays mounted. Every filter/search/refresh/retry
+    // action below already calls `fetch_sessions()` explicitly from its own
+    // event handler, so a reactive re-run on `list_store` change is never
+    // needed for those paths; `use_hook` runs the closure once on the
+    // component's first render and is not part of any reactive context.
+    use_hook(|| {
         fetch_sessions();
     });
 
