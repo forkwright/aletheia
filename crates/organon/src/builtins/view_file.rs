@@ -91,7 +91,16 @@ fn read_file_bounded(file: &mut File, max_bytes: u64) -> std::io::Result<Vec<u8>
                 "file exceeds configured byte limit",
             ));
         }
-        bytes.extend_from_slice(&chunk[..count]);
+        // INVARIANT: `count` is `Read::read`'s return value against `chunk`,
+        // which never exceeds the buffer it filled -- `.get` still avoids a
+        // direct-index panic if that contract is ever violated upstream.
+        let Some(filled) = chunk.get(..count) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "read reported more bytes than the buffer holds",
+            ));
+        };
+        bytes.extend_from_slice(filled);
     }
 }
 

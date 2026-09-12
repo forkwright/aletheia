@@ -71,7 +71,18 @@ pub fn read_pdf_file_bounded(path: &Path, max_input_bytes: usize) -> Result<Vec<
         if next > max_input_bytes {
             return Err(InspectError::PdfInputTooLarge);
         }
-        bytes.extend_from_slice(&chunk[..count]);
+        // INVARIANT: `count` is `Read::read`'s return value against `chunk`,
+        // which never exceeds the buffer it filled -- `.get` still avoids a
+        // direct-index panic if that contract is ever violated upstream.
+        let Some(filled) = chunk.get(..count) else {
+            return Err(InspectError::Io {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "read reported more bytes than the buffer holds",
+                ),
+            });
+        };
+        bytes.extend_from_slice(filled);
     }
 }
 
