@@ -285,6 +285,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn csrf_defaults_match_the_documented_first_party_client_header() {
+        // WHY: this is the single pin for the compiled CSRF defaults; every
+        // downstream consumer asserts equality with these constants instead
+        // of restating the literal (see the WHY(#4823, #5059, #7012) doc
+        // comment on CSRF_HEADER_NAME above).
+        assert_eq!(
+            CSRF_HEADER_NAME, "x-requested-with",
+            "CSRF_HEADER_NAME must match the documented first-party client header"
+        );
+        assert_eq!(
+            DEFAULT_CSRF_HEADER_VALUE, "aletheia",
+            "DEFAULT_CSRF_HEADER_VALUE must match the documented first-party client header"
+        );
+    }
+
+    #[test]
     fn detects_http_scheme() {
         assert!(has_http_or_https_scheme("http://example.com"));
     }
