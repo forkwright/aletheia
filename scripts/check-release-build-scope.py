@@ -202,7 +202,9 @@ TRUSTED_CROSS_INPUTS = {
 # directory together. None marks the only two permitted artifact builds.
 SAFE_STEP_DIGESTS = (
     "31288298e225f078066ea178c65a3bc79d7bf0435bbeae39dc59e1ec6469dfa6",
-    "f15858d5aa5e3a0cdf7386474998073069eb5afb72d67368aa728ab1eafc37cf",
+    # WHY(aletheia#5328): regenerated for a trailing `pii-allow` marker added
+    # to the credential-helper printf line (scan-pii.sh now scans dotfiles).
+    "e269ab9194331bf6ea8cf607cb746f97e5c57a20af21c07f0fee0f32d7d8e9ca",
     "522453cb2d8914f58a3e2731c036e5964b973afe8663297937af774428158912",
     "6309c59e9b567f338b863c299ea22ae49a9c7675350701f2bf792ffaab6b8f33",
     "f927992240c2340ccbfd18b4e2dcd33769d33866b741eb278e8066ee03b0222d",

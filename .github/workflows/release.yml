@@ -318,7 +318,7 @@ jobs:
             exit 0
           fi
           git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials # pii-allow: credential-helper format string, token comes from a secret at runtime
           chmod 0600 ~/.git-credentials
 
       - name: Extract version from tag

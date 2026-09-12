@@ -149,3 +149,18 @@ EOF
     [ "${status}" -ne 0 ]
     [[ "${output}" != *"scan-pii: clean"* ]]
 }
+
+# aletheia#7284: scan-pii.sh's `rg` invocation had no `--hidden` flag, so
+# PII_PATTERNS_EXTRA_FILE (the maintainer-private-pattern path) could never
+# reach .kanon-ci.toml or any other dotfile. This exercises the fixed path.
+@test "PII_PATTERNS_EXTRA_FILE reaches a dotfile once scanned with --hidden" {
+    local host="fleet" tail="hostbox-9"
+    local token="${host}-${tail}"
+    local extra="${WORK}/private-patterns.txt"
+    printf '\\b%s\\b\n' "${token}" > "${extra}"
+    echo "# cap cargo defaults to num_cpus (64 on this ${token})" > "${WORK}/.kanon-ci.toml"
+    PII_PATTERNS_EXTRA_FILE="${extra}" run "${WORK}/scripts/scan-pii.sh"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"PII:"* ]]
+    [[ "${output}" == *".kanon-ci.toml"* ]]
+}
