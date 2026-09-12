@@ -264,10 +264,6 @@ pub fn reattach_turn_stream(
 /// `cancel` is checked before each event read. On cancellation the
 /// connection is dropped and a single [`StreamEvent::TurnAbort`] is sent
 /// before the channel closes.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the read loop is one cohesive select over cancel, timeout, and event arms; splitting obscures the terminal-event flow"
-)]
 async fn drive_turn_stream(
     resp: reqwest::Response,
     tx: mpsc::Sender<StreamEvent>,
@@ -1074,6 +1070,131 @@ mod tests {
             "syn",
             "main",
             "hello",
+            "turn-cancel",
+            cancel.clone(),
+        );
+
+        server.wait_ready().await;
+        cancel.cancel();
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("cancellation should arrive promptly")
+            .expect("cancellation should be delivered as a stream event");
+
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+        server.finish();
+    }
+
+    // ── reattach_turn_stream (#7297) ───────────────────────────────────────
+    //
+    // Mirrors the `stream_message` cases above: `reattach_turn_stream` shares
+    // `drive_turn_stream` and the same pre-connect cancellation check, so it
+    // should behave identically at the wire level -- these tests exist
+    // because that sharing was previously only exercised by `stream_message`
+    // itself, leaving the reattach entry point with zero direct coverage.
+
+    #[tokio::test]
+    async fn reattach_turn_stream_connect_failure_surfaces_as_stream_event_error() {
+        crate::install_test_crypto_provider();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        // WHY: an address nothing listens on -- a real (uncancelled) connect
+        // failure, distinct from the pre-cancellation case below.
+        let mut rx = reattach_turn_stream(
+            client,
+            "http://127.0.0.1:1",
+            "session-1",
+            "turn-1",
+            CancellationToken::new(),
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("connect failure should surface promptly")
+            .expect("connect failure should deliver a stream event");
+
+        let StreamEvent::Error(message) = event else {
+            panic!("expected connect-failure Error event, got {event:?}");
+        };
+        assert!(message.contains("failed to connect"));
+    }
+
+    #[tokio::test]
+    async fn reattach_turn_stream_http_error_preserves_pylon_envelope() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
+        let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let mut rx = reattach_turn_stream(
+            client,
+            &base_url,
+            "session-1",
+            "turn-2",
+            CancellationToken::new(),
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("stream HTTP error should arrive promptly")
+            .expect("stream HTTP error event should be delivered");
+        server.join().expect("test server thread should finish");
+
+        let StreamEvent::Error(message) = event else {
+            panic!("expected stream HTTP error event");
+        };
+        assert!(message.contains("invalid stream request"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-http"));
+        assert!(message.contains(r#""field":"message""#));
+    }
+
+    #[tokio::test]
+    async fn reattach_turn_stream_cancellation_before_connect_emits_abort() {
+        crate::install_test_crypto_provider();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let mut rx = reattach_turn_stream(
+            client,
+            "http://127.0.0.1:1",
+            "session-1",
+            "turn-precancel",
+            cancel,
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("pre-cancelled reattach should abort promptly")
+            .expect("pre-cancelled reattach should deliver TurnAbort");
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn reattach_turn_stream_cancellation_mid_stream_emits_abort_and_closes() {
+        crate::install_test_crypto_provider();
+        let mut server = serve_hanging_sse_once();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let cancel = CancellationToken::new();
+        let mut rx = reattach_turn_stream(
+            client,
+            &server.base_url,
+            "session-1",
             "turn-cancel",
             cancel.clone(),
         );
