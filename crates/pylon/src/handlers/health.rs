@@ -35,6 +35,25 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Overall endpoint timeout: the health response is always returned within this bound.
 const OVERALL_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Per-subsystem timeout for `/api/v1/system/status`'s collector (#7288).
+///
+/// Tighter than [`CHECK_TIMEOUT`]: every check this endpoint reaches reads
+/// local, in-memory state (a mutex-guarded store, an actor mailbox, a
+/// journal counter) rather than making a network call. A check that has
+/// not resolved within this window is unconfirmed, not necessarily stuck —
+/// `session_store`'s lock is also taken synchronously
+/// (`blocking_lock()`) by ordinary request handling elsewhere (see
+/// handlers/insights.rs, handlers/sessions/mod.rs, handlers/ops.rs), so a
+/// busy-but-live gateway can legitimately hold it past this bound under
+/// real contention. That is exactly why a `"timeout"` record aggregates as
+/// `"degraded"`, not `"failed"` (see [`aggregate_subsystem_status`]).
+/// Bounding each subsystem individually — and running them concurrently —
+/// is what lets one hung subsystem report its own typed `"timeout"` record
+/// while every sibling subsystem still reports its real status, instead of
+/// the whole response blocking until [`OVERALL_TIMEOUT`] and collapsing
+/// every subsystem into one opaque `system_status_collector` failure.
+const SUBSYSTEM_CHECK_TIMEOUT: Duration = Duration::from_secs(1);
+
 /// GET /api/health: public liveness check.
 ///
 /// # Cancel safety
@@ -510,6 +529,67 @@ async fn timed_check(
                 CHECK_TIMEOUT.as_secs()
             )),
             details: None,
+        },
+    }
+}
+
+/// Run a health check with [`SUBSYSTEM_CHECK_TIMEOUT`] for the
+/// `/api/v1/system/status` collector (#7288). Mirrors [`timed_check`]'s
+/// pattern with a tighter bound appropriate to this endpoint's
+/// local-state-only checks.
+async fn timed_subsystem_check(
+    name: &'static str,
+    future: impl std::future::Future<Output = HealthCheck>,
+) -> HealthCheck {
+    match tokio::time::timeout(SUBSYSTEM_CHECK_TIMEOUT, future).await {
+        Ok(check) => check,
+        Err(_elapsed) => HealthCheck {
+            name: name.to_owned(),
+            status: "timeout".to_owned(),
+            message: Some(format!(
+                "{name} check timed out after {}s",
+                SUBSYSTEM_CHECK_TIMEOUT.as_secs()
+            )),
+            details: None,
+        },
+    }
+}
+
+/// Run a subsystem-status future — one that assembles its own
+/// [`SubsystemStatus`] directly rather than going through
+/// [`subsystem_from_check`] — with [`SUBSYSTEM_CHECK_TIMEOUT`] (#7288). On
+/// timeout, synthesizes a typed `"timeout"` record naming this specific
+/// subsystem instead of letting the hang propagate up and collapse the
+/// whole `/api/v1/system/status` response into one opaque
+/// `system_status_collector` failure.
+async fn bounded_subsystem_status(
+    id: &'static str,
+    name: &'static str,
+    owner: &'static str,
+    generated_at: &str,
+    future: impl std::future::Future<Output = SubsystemStatus>,
+) -> SubsystemStatus {
+    match tokio::time::timeout(SUBSYSTEM_CHECK_TIMEOUT, future).await {
+        Ok(status) => status,
+        Err(_elapsed) => SubsystemStatus {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            status: "timeout".to_owned(),
+            owner: owner.to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: Some(generated_at.to_owned()),
+            degraded_reason: None,
+            failure_reason: Some(format!(
+                "{name} check timed out after {}s",
+                SUBSYSTEM_CHECK_TIMEOUT.as_secs()
+            )),
+            details: None,
+            suggested_action: Some(format!(
+                "{owner} did not respond within {}s; check for a stuck lock, actor, or \
+                 blocking I/O call.",
+                SUBSYSTEM_CHECK_TIMEOUT.as_secs()
+            )),
         },
     }
 }
@@ -1389,7 +1469,13 @@ fn subsystem_from_check(
     let status = match check.status.as_str() {
         "pass" => "healthy",
         "warn" => "degraded",
-        _ => "failed", // "fail" | "timeout"
+        // WHY(#7288): "timeout" is kept distinct from "fail" here — a
+        // subsystem that did not answer in time is a different, typed
+        // signal from one that answered with an explicit failure, and an
+        // operator or the control-plane UI should be able to tell them
+        // apart instead of both reading as an identical opaque "failed".
+        "timeout" => "timeout",
+        _ => "failed", // "fail"
     };
     SubsystemStatus {
         id: id.to_owned(),
@@ -1398,11 +1484,11 @@ fn subsystem_from_check(
         owner: owner.to_owned(),
         last_checked: generated_at.to_owned(),
         last_success: None,
-        last_failure: None,
+        last_failure: (status == "failed" || status == "timeout").then(|| generated_at.to_owned()),
         degraded_reason: (status == "degraded")
             .then(|| check.message.clone())
             .flatten(),
-        failure_reason: (status == "failed")
+        failure_reason: (status == "failed" || status == "timeout")
             .then(|| check.message.clone())
             .flatten(),
         details: check.details,
@@ -1485,8 +1571,19 @@ async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemCheck
         )
     };
 
-    let session_store = check_session_store(state).await;
-    let actor = check_nous_actors(state).await;
+    // WHY(#7288): session_store, nous_actors, and credential_runtime each
+    // await a lock or actor mailbox that can legitimately hang. Previously
+    // these were awaited one after another with no bound, so a single stuck
+    // one blocked this whole function (and every sync check below it) until
+    // the outer `/api/v1/system/status` handler's `OVERALL_TIMEOUT` fired.
+    // Running them concurrently, each under `SUBSYSTEM_CHECK_TIMEOUT`, means
+    // a stuck one reports its own typed "timeout" while its siblings — here
+    // and the synchronous checks that follow — still resolve normally.
+    let (session_store, actor, credential_runtime) = tokio::join!(
+        timed_subsystem_check("session_store", check_session_store(state)),
+        timed_subsystem_check("nous_actors", check_nous_actors(state)),
+        timed_subsystem_check("credential_runtime", check_credential_runtime(state)),
+    );
     let poller_snapshot = state.nous_manager.poller_snapshot();
     let poller = check_nous_health_poller(
         poller_snapshot.running,
@@ -1496,7 +1593,6 @@ async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemCheck
     let provider_reachability = check_provider_reachability(state);
     let credential_validity =
         check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
-    let credential_runtime = check_credential_runtime(state).await;
     let embedding = check_embedding_provider(state);
     let metrics = metrics_exposure_check(
         metrics_mode,
@@ -1553,7 +1649,38 @@ fn subsystem_provider_credentials(
 /// Subsystems with no pylon-reachable signal today report `"unknown"`
 /// rather than being silently omitted or defaulted to `"healthy"`.
 async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Vec<SubsystemStatus> {
-    let checks = gather_flat_subsystem_checks(state).await;
+    // WHY(#7288): these four gathering calls were previously awaited one
+    // after another with no per-item bound, so a hang in any one of them —
+    // `gather_flat_subsystem_checks` internally bounds its own hang-prone
+    // checks, but `subsystem_turn_event_persistence`,
+    // `subsystem_tool_execution_history`, and `subsystem_event_bus` did not
+    // — blocked the entire response until the outer handler's
+    // `OVERALL_TIMEOUT`. Running them concurrently, each bounded, keeps a
+    // stuck one from delaying or blanking out its siblings.
+    let (checks, turn_event_persistence, tool_execution_history, event_bus) = tokio::join!(
+        gather_flat_subsystem_checks(state),
+        bounded_subsystem_status(
+            "turn_event_persistence",
+            "Turn Event Buffer",
+            "crates/pylon::turn_buffer",
+            generated_at,
+            subsystem_turn_event_persistence(state, generated_at),
+        ),
+        bounded_subsystem_status(
+            "tool_execution_history",
+            "Tool Execution History",
+            "crates/mneme::store",
+            generated_at,
+            subsystem_tool_execution_history(state, generated_at),
+        ),
+        bounded_subsystem_status(
+            "event_bus",
+            "Domain Event Bus / SSE",
+            "crates/pylon::event_bus",
+            generated_at,
+            subsystem_event_bus(state, generated_at),
+        ),
+    );
 
     vec![
         subsystem_from_check(
@@ -1593,11 +1720,11 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
             generated_at,
             Some("Check nous actor logs; a dead actor may need POST /api/v1/nous/{id}/recover."),
         ),
-        subsystem_turn_event_persistence(state, generated_at).await,
+        turn_event_persistence,
         subsystem_memory_graph(state, generated_at),
         subsystem_domain_packs(state, generated_at),
         subsystem_daemon_runtime(&state.daemon_task_states, &checks.prosoche, generated_at),
-        subsystem_tool_execution_history(state, generated_at).await,
+        tool_execution_history,
         subsystem_training_qa_persistence(generated_at),
         subsystem_from_check(
             checks.metrics,
@@ -1621,7 +1748,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
                  means tools run without the restriction the config asks for.",
             ),
         ),
-        subsystem_event_bus(state, generated_at).await,
+        event_bus,
         subsystem_disk_space(state, generated_at),
         subsystem_from_check(
             combine_checks(
@@ -2245,14 +2372,30 @@ async fn subsystem_event_bus(state: &HealthState, generated_at: &str) -> Subsyst
 }
 
 /// Aggregate status across every subsystem record: `"failed"` if any
-/// subsystem failed, else `"degraded"` if any subsystem degraded, else
-/// `"healthy"`. `"unknown"` subsystems never elevate the aggregate — they
-/// are always listed (see [`collect_subsystem_status`]) so the gap stays
-/// visible without being mistaken for a live failure.
+/// subsystem failed, else `"degraded"` if any subsystem degraded or timed
+/// out, else `"healthy"`. `"unknown"` subsystems never elevate the
+/// aggregate — they are always listed (see [`collect_subsystem_status`]) so
+/// the gap stays visible without being mistaken for a live failure.
 fn aggregate_subsystem_status(subsystems: &[SubsystemStatus]) -> &'static str {
     if subsystems.iter().any(|s| s.status == "failed") {
         "failed"
-    } else if subsystems.iter().any(|s| s.status == "degraded") {
+    } else if subsystems
+        .iter()
+        // WHY(#7288): a `"timeout"` record is not a confirmed failure — a
+        // handful of this endpoint's checks (`session_store` chief among
+        // them) share a lock (`blocking_lock()` in handlers/insights.rs,
+        // handlers/sessions/mod.rs, handlers/ops.rs) with ordinary
+        // synchronous request handling elsewhere, so an unanswered check
+        // within SUBSYSTEM_CHECK_TIMEOUT can mean "busy under real
+        // contention" as plausibly as "genuinely stuck". Elevating that to
+        // `"failed"` (and a 503) would make a serving-but-busy gateway
+        // report itself down; `"degraded"` says "not confirmed healthy"
+        // without asserting a failure the evidence does not support. The
+        // per-record `status` field still reads the literal `"timeout"`,
+        // with its own `failure_reason`/`suggested_action` — only the
+        // *aggregate* bucket this contributes to changes.
+        .any(|s| s.status == "degraded" || s.status == "timeout")
+    {
         "degraded"
     } else {
         "healthy"

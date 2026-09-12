@@ -594,7 +594,7 @@ async fn system_status_lists_every_subsystem_with_an_owner() {
         assert!(subsystem["last_checked"].is_string());
         let status = subsystem["status"].as_str().expect("status is a string");
         assert!(
-            ["healthy", "degraded", "failed", "unknown"].contains(&status),
+            ["healthy", "degraded", "failed", "timeout", "unknown"].contains(&status),
             "unexpected status vocabulary: {status}"
         );
     }

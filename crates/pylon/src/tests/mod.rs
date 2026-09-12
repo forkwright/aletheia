@@ -21,6 +21,7 @@ mod error;
 mod error_envelope;
 mod handler_doc;
 mod health;
+mod health_subsystem_timeout;
 mod helpers;
 mod idempotency;
 mod insights;
