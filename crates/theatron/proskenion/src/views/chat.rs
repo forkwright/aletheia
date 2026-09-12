@@ -624,6 +624,20 @@ pub(crate) fn Chat() -> Element {
 
     let active_nous_id = agent_store.read().active_id.clone();
 
+    // WHY(#7282): the live streaming placeholder's header must show the
+    // responding nous's display name too, not the literal "Assistant" --
+    // it renders before the turn's `ChatMessage` (and its own `agent_id`)
+    // exists, so it falls back to the currently active nous instead.
+    let streaming_label = active_nous_id
+        .as_ref()
+        .and_then(|id| {
+            agent_store
+                .read()
+                .get(id)
+                .map(|r| r.display_name().to_string())
+        })
+        .unwrap_or_else(|| "Assistant".to_string());
+
     let is_streaming = legacy_state.read().streaming.is_streaming;
 
     // WHY: Drive elapsed-time re-renders every second during streaming.
@@ -675,7 +689,7 @@ pub(crate) fn Chat() -> Element {
     let (pad_top, pad_bottom) =
         skeue::spacer_heights(range_start, range_end, total_messages, ESTIMATED_MSG_HEIGHT);
 
-    let visible_messages: Vec<(usize, ChatMessage, bool)> = messages
+    let visible_messages: Vec<(usize, ChatMessage, bool, Option<String>)> = messages
         .iter()
         .enumerate()
         .skip(range_start)
@@ -686,7 +700,21 @@ pub(crate) fn Chat() -> Element {
             } else {
                 false
             };
-            (i, msg.clone(), grouped)
+            // WHY(#7282): resolve the responding nous's display name
+            // per-message from its own `agent_id` (not the currently
+            // active nous) so history stays correct even after the
+            // operator switches which nous is active mid-session.
+            // Resolved here (not inside the rsx `for` body) because
+            // dioxus-rsx's `TemplateBody` grammar for a `for` loop body
+            // only accepts Element/Component/Text/RawExpr/ForLoop/IfChain
+            // nodes -- a bare `let` statement fails to parse.
+            let agent_name = msg.agent_id.as_ref().and_then(|id| {
+                agent_store
+                    .read()
+                    .get(id)
+                    .map(|r| r.display_name().to_string())
+            });
+            (i, msg.clone(), grouped, agent_name)
         })
         .collect();
 
@@ -1120,12 +1148,12 @@ pub(crate) fn Chat() -> Element {
                         }
                     }
 
-                    for (idx , msg , grouped) in visible_messages {
+                    for (idx , msg , grouped , agent_name) in visible_messages {
                         MessageBubble {
                             key: "{idx}",
                             message: msg,
                             is_grouped: grouped,
-                            agent_name: None,
+                            agent_name,
                         }
                     }
 
@@ -1148,7 +1176,7 @@ pub(crate) fn Chat() -> Element {
                                         font-weight: var(--weight-semibold);
                                         margin-bottom: var(--space-1);
                                     ",
-                                    "Assistant"
+                                    "{streaming_label}"
                                 }
                                 div {
                                     style: "

@@ -44,6 +44,22 @@ fn format_message_ids(message: &ChatMessage) -> Option<String> {
     }
 }
 
+/// Label shown above a message bubble for its role.
+///
+/// WHY(#7282): `agent_name` is the responding nous's display name (e.g.
+/// `Syn`, `Phrouros`), resolved by the caller from `Signal<AgentStore>` --
+/// the generic `"Assistant"` fallback is only for the rare case no nous
+/// could be resolved (e.g. a history-loaded message predating this field),
+/// not the everyday label.
+#[must_use]
+fn role_label(role: Role, agent_name: Option<&str>) -> String {
+    match role {
+        Role::User => "You".to_string(),
+        Role::Assistant => agent_name.unwrap_or("Assistant").to_string(),
+        Role::System => "System".to_string(),
+    }
+}
+
 /// Render a single chat message with role-based styling.
 #[component]
 pub(crate) fn MessageBubble(
@@ -54,11 +70,7 @@ pub(crate) fn MessageBubble(
     let is_user = message.role == Role::User;
     let is_system = message.role == Role::System;
 
-    let role_label = match message.role {
-        Role::User => "You".to_string(),
-        Role::Assistant => agent_name.unwrap_or_else(|| "Assistant".to_string()),
-        Role::System => "System".to_string(),
-    };
+    let role_label = role_label(message.role, agent_name.as_deref());
 
     let container_style = if is_user {
         "\
@@ -274,6 +286,32 @@ mod tests {
         assert_eq!(role_color(Role::User), "var(--role-user)");
         assert_eq!(role_color(Role::Assistant), "var(--role-assistant)");
         assert_eq!(role_color(Role::System), "var(--role-system)");
+    }
+
+    // WHY(#7282): the message header must show the responding nous's
+    // display name (e.g. "Syn", "Phrouros"), not a generic "Assistant"
+    // label, whenever the caller has resolved one.
+    #[test]
+    fn role_label_shows_nous_display_name_when_known() {
+        assert_eq!(
+            role_label(Role::Assistant, Some("Phrouros")),
+            "Phrouros".to_string()
+        );
+        assert_eq!(role_label(Role::Assistant, Some("Syn")), "Syn".to_string());
+    }
+
+    #[test]
+    fn role_label_falls_back_to_assistant_when_nous_unresolved() {
+        assert_eq!(role_label(Role::Assistant, None), "Assistant".to_string());
+    }
+
+    #[test]
+    fn role_label_ignores_agent_name_for_non_assistant_roles() {
+        assert_eq!(role_label(Role::User, Some("Phrouros")), "You".to_string());
+        assert_eq!(
+            role_label(Role::System, Some("Phrouros")),
+            "System".to_string()
+        );
     }
 
     #[test]
