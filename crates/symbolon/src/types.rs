@@ -101,42 +101,6 @@ pub struct TokenPair {
     pub refresh_token: SecretString,
 }
 
-/// Actions that can be authorized via RBAC.
-#[non_exhaustive]
-pub enum Action {
-    /// Read a session belonging to a specific nous.
-    ReadSession {
-        /// Nous identifier whose session is being read.
-        nous_id: String,
-    },
-    /// Write to a session belonging to a specific nous.
-    WriteSession {
-        /// Nous identifier whose session is being written.
-        nous_id: String,
-    },
-    /// Manage agent configurations.
-    ManageAgents,
-    /// Manage user accounts.
-    ManageUsers,
-    /// Manage provider credential files.
-    ManageCredentials,
-    /// Read the dashboard (metrics, status).
-    ReadDashboard,
-}
-
-impl std::fmt::Display for Action {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ReadSession { nous_id } => write!(f, "read session (nous: {nous_id})"),
-            Self::WriteSession { nous_id } => write!(f, "write session (nous: {nous_id})"),
-            Self::ManageAgents => f.write_str("manage agents"),
-            Self::ManageUsers => f.write_str("manage users"),
-            Self::ManageCredentials => f.write_str("manage credentials"),
-            Self::ReadDashboard => f.write_str("read dashboard"),
-        }
-    }
-}
-
 /// Credential role within a provider's local file set.
 // kanon:ignore RUST/no-debug-derive-on-public-types — role enum contains no secret data; Debug is safe
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
