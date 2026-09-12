@@ -74,3 +74,5 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod cli_tests;
+#[cfg(test)]
+mod cli_tests_poiesis;

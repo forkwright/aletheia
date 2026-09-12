@@ -87,6 +87,13 @@ organon = { path = "../organon", features = ["poiesis"] }
 # dependency on the wrong thing. This adds no transitive weight -- the `poiesis` feature
 # above already pulls this crate and `pdf_extract` into the binary.
 poiesis-inspect = { path = "../poiesis/inspect" }
+# WHY(#7172) direct and not through organon: `aletheia poiesis list`/`get` enumerate the
+# shipped Deck component registry directly -- there is no organon tool for that (the
+# organon poiesis builtins are document/report renderers), so reaching ComponentRegistry
+# through the tool-registry crate that merely also uses it would be, same as
+# poiesis-inspect above, a dependency on the wrong thing. Adds no transitive weight -- the
+# `poiesis` feature above already pulls this crate into the binary.
+poiesis-core = { path = "../poiesis/core" }
 mneme = { path = "../mneme" }
 nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
@@ -132,6 +139,7 @@ quick-xml = "0.42"
 supports-color = "3"
 toml = { workspace = true }
 toml_edit = "0.25"
+tempfile = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -142,7 +150,6 @@ organon = { path = "../organon", features = ["test-support"] }
 mneme = { path = "../mneme", features = ["test-support"] }
 rmp-serde = "1.2"
 serde_json = { workspace = true }
-tempfile = { workspace = true }
 toml = { workspace = true }
 
 [lints]
