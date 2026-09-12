@@ -18,6 +18,7 @@ pub(crate) mod maintenance;
 pub(crate) mod mcp;
 pub(crate) mod memory;
 pub(crate) mod migrate;
+pub(crate) mod poiesis;
 pub(crate) mod prompt_audit;
 pub(crate) mod repl;
 pub(crate) mod server;
@@ -191,6 +192,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Repl(a) => repl::run(instance_root, &a).await.map_err(Into::into),
         Command::Migrate(a) => migrate::run(&a).await.map_err(Into::into),
         Command::Ingest(ref a) => ingest::run(a, instance_root).await.map_err(Into::into),
+        Command::Poiesis { action } => poiesis::run(action).await.map_err(Into::into),
         // NOTE: Serve is intercepted in main() before dispatch is called.
         // This arm exists only for match exhaustiveness.
         #[expect(

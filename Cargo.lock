@@ -153,6 +153,7 @@ dependencies = [
  "owo-colors",
  "p256",
  "pem",
+ "poiesis-core",
  "poiesis-inspect",
  "predicates",
  "pylon",
