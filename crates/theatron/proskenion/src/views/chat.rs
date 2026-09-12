@@ -35,6 +35,7 @@ use crate::state::commands::{
     CommandAction, CommandDestination, CommandExecutionState, CommandResolution, CommandStore,
     CommandUiState,
 };
+use crate::state::composer_queue::{ComposerQueue, enqueue_if_streaming};
 use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::input::InputState;
 use crate::state::pipeline::{PipelineStage, RoutingState};
@@ -655,6 +656,17 @@ pub(crate) fn Chat() -> Element {
     // during streaming without polling the DOM.
     let mut elapsed_tick = use_signal(|| 0u64);
 
+    // WHY(#7299): messages submitted while a turn is streaming queue here
+    // instead of being discarded; `send_message` dequeues and dispatches
+    // the front entry once the in-flight turn's terminal event lands.
+    let mut queued_messages = use_signal(ComposerQueue::default);
+    // WHY: a spawned turn task cannot call the `send_message` closure
+    // defined later in this same render (it does not exist yet when the
+    // task is spawned in an *earlier* render). It stashes the next queued
+    // message here instead; the `use_effect` below -- which captures
+    // *this* render's `send_message` -- dispatches it.
+    let mut pending_dispatch = use_signal(|| None::<String>);
+
     // WHY: Paginate message history so only the most recent PAGE_SIZE
     // messages are projected into ChatMessage structs. Scrolling up past
     // the LOAD_MORE_THRESHOLD loads the next page (#3321).
@@ -827,7 +839,17 @@ pub(crate) fn Chat() -> Element {
         .collect();
 
     let mut send_message = move |text: String, is_retry: bool| {
-        if text.is_empty() || is_streaming {
+        if text.is_empty() {
+            return;
+        }
+
+        // WHY(#7299): a retry always fires after streaming has already
+        // ended (from the error banner), never mid-turn, but guard it
+        // defensively rather than queueing a retry behind itself.
+        if is_streaming {
+            if !is_retry {
+                enqueue_if_streaming(&mut queued_messages.write(), is_streaming, text);
+            }
             return;
         }
 
@@ -1063,8 +1085,28 @@ pub(crate) fn Chat() -> Element {
                 &routing_agent_name,
                 &routing_agent_id,
             );
+
+            // WHY(#7299): the turn just ended (complete, aborted, or
+            // errored) -- dispatch whatever queued up behind it. Stashed
+            // in `pending_dispatch` rather than called directly: this
+            // spawned task cannot call `send_message` itself (see the
+            // signal's WHY comment above).
+            if let Some(next) = queued_messages.write().pop_front() {
+                pending_dispatch.set(Some(next));
+            }
         });
     };
+
+    // WHY(#7299): drives the queue: reads (so it re-runs whenever the
+    // spawned turn task above sets `pending_dispatch`), takes the pending
+    // text, and dispatches it through *this* render's `send_message`.
+    use_effect(move || {
+        let next = pending_dispatch.read().clone();
+        if let Some(text) = next {
+            pending_dispatch.set(None);
+            send_message(text, false);
+        }
+    });
 
     let command_runtime = CommandRuntime {
         command_ui,
@@ -1504,6 +1546,59 @@ pub(crate) fn Chat() -> Element {
                         ",
                         onclick: on_retry,
                         "Retry"
+                    }
+                }
+            }
+
+            // WHY(#7299): a message queued mid-turn must be visible, not
+            // silently held -- otherwise a reload or a distracted operator
+            // has no evidence it will still send once the turn ends.
+            if !queued_messages.read().is_empty() {
+                div {
+                    style: "
+                        display: flex;
+                        flex-direction: column;
+                        gap: var(--space-1);
+                        background: var(--bg-surface-dim);
+                        border: 1px solid var(--border-separator);
+                        border-radius: var(--radius-md);
+                        padding: var(--space-2) var(--space-3);
+                        margin: 0 var(--space-4) var(--space-2) var(--space-4);
+                        font-size: var(--text-sm);
+                        color: var(--text-muted);
+                    ",
+                    span {
+                        {
+                            let count = queued_messages.read().len();
+                            let noun = if count == 1 { "message" } else { "messages" };
+                            format!("{count} {noun} queued \u{2014} sends when this turn ends")
+                        }
+                    }
+                    for (idx , text) in queued_messages.read().iter().cloned().enumerate() {
+                        div {
+                            key: "{idx}",
+                            style: "
+                                display: flex;
+                                align-items: center;
+                                justify-content: space-between;
+                                gap: var(--space-2);
+                                overflow-wrap: anywhere;
+                            ",
+                            span { style: "color: var(--text-secondary);", "{text}" }
+                            button {
+                                style: "\
+                                    all: unset; \
+                                    cursor: pointer; \
+                                    color: var(--text-muted); \
+                                    font-size: var(--text-xs); \
+                                    flex-shrink: 0;\
+                                ",
+                                onclick: move |_| {
+                                    queued_messages.write().remove(&text);
+                                },
+                                "Remove"
+                            }
+                        }
                     }
                 }
             }
