@@ -322,8 +322,7 @@ pub struct LlmProviderConfig {
     #[serde(default)]
     pub models: Vec<String>,
     /// Optional per-provider admission bound (#7152). When omitted,
-    /// [`Self::effective_admission`] derives the default from
-    /// [`deployment_target`](Self::deployment_target).
+    /// `effective_admission` derives the default from `deployment_target`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admission: Option<ProviderAdmissionConfig>,
     /// Optional per-provider token-budget clamp (#7152). When omitted, this

@@ -1310,7 +1310,7 @@ LLM provider definitions (#3424, #3414). Ordered list of backends — the provid
 
 *(optional table)*
 
-Optional per-provider admission bound (#7152). When omitted, [`Self::effective_admission`] derives the default from [`deployment_target`](Self::deployment_target).
+Optional per-provider admission bound (#7152). When omitted, `effective_admission` derives the default from `deployment_target`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
