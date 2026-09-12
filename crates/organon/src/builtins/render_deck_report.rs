@@ -318,9 +318,10 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(clippy::indexing_slicing, reason = "test schema assertions")]
 mod tests {
+    use koina::id::ToolName;
+
     use super::*;
     use crate::types::ApprovalRequirement;
-    use koina::id::ToolName;
 
     #[test]
     fn schema_declares_format_enum_and_required_fields() {
@@ -434,17 +435,8 @@ mod tests {
         let registry =
             poiesis_core::embedded::extract_to(tempdir.path()).expect("extract components");
 
-        let aspect = poiesis_core::scalar::AspectRatio::WIDESCREEN_16_9;
-        let renderer = DeckRenderer::new(registry, &aspect);
-        let deck = Deck {
-            aspect,
-            slides: vec![poiesis_core::bodies::Slide {
-                component: poiesis_core::ids::ComponentId::new("title")
-                    .expect("valid component id"),
-                fields: serde_json::json!({"title": "Hello Deck", "subtitle": "A test slide"}),
-                notes: None,
-            }],
-        };
+        let deck = minimal_deck();
+        let renderer = DeckRenderer::new(registry, &deck.aspect);
         let meta = Meta::new("Test Deck").expect("valid meta");
 
         let html = renderer.render(&deck, &meta).expect("render deck");
@@ -456,5 +448,60 @@ mod tests {
             html.contains("A test slide"),
             "rendered HTML should contain the slide subtitle, got: {html}"
         );
+    }
+
+    /// A single-slide `Deck` shared by the render and PDF-path tests above
+    /// and below.
+    fn minimal_deck() -> Deck {
+        Deck {
+            aspect: poiesis_core::scalar::AspectRatio::WIDESCREEN_16_9,
+            slides: vec![poiesis_core::bodies::Slide {
+                component: poiesis_core::ids::ComponentId::new("title")
+                    .expect("valid component id"),
+                fields: serde_json::json!({"title": "Hello Deck", "subtitle": "A test slide"}),
+                notes: None,
+            }],
+        }
+    }
+
+    // WHY unconditional rather than `if !chromium_available { return; }`:
+    // mirrors the established crate idiom in
+    // `poiesis_doc::pandoc::tests::docx_format_without_pandoc_returns_not_installed_or_fails`
+    // -- run the real call on every host and match on whichever outcome the
+    // environment actually produces, instead of silently skipping. That
+    // keeps a host WITH chromium honest (it must produce real PDF bytes, not
+    // just `Ok(_)`) while a host WITHOUT it still drives
+    // `render_deck_to_bytes`'s `format: "pdf"` branch end-to-end -- the same
+    // path `RenderDeckReportExecutor::execute` uses -- and pins the failure
+    // to the one typed error that means "no chromium binary"
+    // (`poiesis_printer_chromium::PrinterError::ChromiumNotFound`), not any
+    // error.
+    #[tokio::test]
+    async fn render_deck_to_bytes_pdf_renders_or_reports_missing_chromium() {
+        let deck = minimal_deck();
+        let meta = Meta::new("Test Deck").expect("valid meta");
+
+        match render_deck_to_bytes(&deck, &meta, "pdf", false).await {
+            Ok((bytes, format)) => {
+                assert_eq!(format, "pdf");
+                assert!(
+                    bytes.starts_with(b"%PDF"),
+                    "chromium is present, so the PDF branch must produce a real \
+                     PDF; got {} byte(s) starting with {:?}",
+                    bytes.len(),
+                    &bytes[..bytes.len().min(16)]
+                );
+            }
+            Err(tool_result) => {
+                let message = tool_result.content.text_summary();
+                assert!(
+                    message.contains("Chromium binary not found"),
+                    "no chromium/chromium-browser/google-chrome(-stable) on PATH \
+                     and no CHROMIUM_PATH override means render_deck_to_bytes must \
+                     surface PrinterError::ChromiumNotFound's message verbatim, \
+                     got: {message}"
+                );
+            }
+        }
     }
 }
