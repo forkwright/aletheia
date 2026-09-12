@@ -248,4 +248,16 @@ cargo nextest list --message-format json --profile ci --workspace --features tes
 python3 scripts/check-krites-capability-matrix.py --nextest-list "$nextest_json"
 cargo nextest run --profile ci --workspace --features test-core,krites_sovereign_hnsw
 """
-timeout_secs = 5400
+# WHY 3600, not GitHub's 90m (5400s): archeion's ci_config.rs::MAX_TIMEOUT_SECS
+# is a hard, non-per-repo-configurable ceiling on any forge stage -- 5400
+# fails config validation outright ("exceeds the 3600s maximum"), confirmed
+# by a real `kanon ci run` attempt against this branch. GitHub's own comment
+# on the equivalent job explains the 90m was itself a raise from a 60m
+# ceiling that had become a standing deadlock on a cold cache (three
+# consecutive cold runs never finished a first cache-warming pass). This
+# stage is capped at the platform maximum instead; if a cold run on this box
+# also can't complete a first pass inside 3600s, the fix is either warming
+# the cache out-of-band before this stage runs or raising MAX_TIMEOUT_SECS
+# fleet-wide (crates/archeion/src/ci_config.rs) -- both out of this branch's
+# blast radius.
+timeout_secs = 3600
