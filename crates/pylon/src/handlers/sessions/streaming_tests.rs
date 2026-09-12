@@ -18,6 +18,7 @@ pub(super) fn claims(role: Role, nous_id: Option<&str>) -> Claims {
         sub: "alice".to_owned(),
         role,
         nous_id: nous_id.map(str::to_owned),
+        unauthenticated: false,
     }
 }
 
@@ -541,6 +542,7 @@ fn sse_event_message_complete_serializes_correctly() {
         provider: None,
         request_id: Some("req-456".to_owned()),
         error: None,
+        degraded_reason: None,
     };
     let result = sse_event_to_axum_with_id((3, event)).expect("infallible");
     drop(result);

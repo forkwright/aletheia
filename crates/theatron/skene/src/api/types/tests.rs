@@ -8,6 +8,8 @@ fn agent_display_name_uses_name_if_present() {
         model: None,
         emoji: None,
         status: None,
+        tools: Vec::new(),
+        enabled: None,
     };
     assert_eq!(agent.display_name(), "Syn");
 }
@@ -20,6 +22,8 @@ fn agent_display_name_falls_back_to_id() {
         model: None,
         emoji: None,
         status: None,
+        tools: Vec::new(),
+        enabled: None,
     };
     assert_eq!(agent.display_name(), "syn");
 }
@@ -32,6 +36,8 @@ fn agent_display_name_empty_string_uses_empty() {
         model: None,
         emoji: None,
         status: None,
+        tools: Vec::new(),
+        enabled: None,
     };
     // Empty string is still Some, so display_name returns it
     assert_eq!(agent.display_name(), "");
@@ -223,23 +229,6 @@ fn agents_response_accepts_both_keys() {
     assert_eq!(resp.nous.len(), 1);
 }
 
-#[test]
-fn login_response_debug_redacts_token() {
-    let lr = LoginResponse {
-        token: SecretString::from("secret-token-value"),
-    };
-    let debug = format!("{lr:?}");
-    assert!(!debug.contains("secret-token-value"));
-    assert!(debug.contains("REDACTED"));
-}
-
-#[test]
-fn auth_mode_deserialization() {
-    let json = r#"{"mode": "token"}"#;
-    let mode: AuthMode = serde_json::from_str(json).unwrap();
-    assert_eq!(mode.mode, "token");
-}
-
 fn make_session(key: &str) -> Session {
     Session {
         id: "s1".into(),
@@ -396,6 +385,75 @@ fn nous_tool_deserializes_risk_metadata() {
     assert!(tool.metadata_verified);
 }
 
+/// WHY(#4565): `NousStatus` carries no `rename_all` (mirrors
+/// `pylon::handlers::nous_dto::NousStatus` field-for-field), so a rename on
+/// either side would silently fail deserialization of required fields
+/// rather than producing a quietly-wrong value -- this pins the full wire
+/// shape, including the nested `address_mask`, against exactly that drift.
+#[test]
+fn nous_status_matches_server_field_names() {
+    let json = r#"{
+        "id": "scholiast",
+        "model": "claude-opus-5",
+        "provider": "anthropic-primary",
+        "fallback_models": ["claude-haiku-5"],
+        "fallback_providers": [null],
+        "retries_before_fallback": 2,
+        "complexity_routing_enabled": true,
+        "complexity_no_llm_threshold": 10,
+        "complexity_low_threshold": 1000,
+        "complexity_high_threshold": 5000,
+        "context_window": 200000,
+        "max_output_tokens": 64000,
+        "thinking_enabled": true,
+        "thinking_budget": 10000,
+        "max_tool_iterations": 25,
+        "status": "active",
+        "background_failure_total_count": 3,
+        "background_failure_recent_count": 1,
+        "background_failure_latest_message": "timeout",
+        "background_failure_latest_kind": "timeout",
+        "background_health_degraded": false,
+        "address_mask": {"kind": "public", "allowed_senders": []}
+    }"#;
+    let status: NousStatus = serde_json::from_str(json).unwrap();
+    assert_eq!(status.id, "scholiast");
+    assert_eq!(status.model, "claude-opus-5");
+    assert_eq!(status.provider.as_deref(), Some("anthropic-primary"));
+    assert_eq!(status.fallback_models, vec!["claude-haiku-5".to_string()]);
+    assert_eq!(status.fallback_providers, vec![None]);
+    assert_eq!(status.retries_before_fallback, 2);
+    assert!(status.complexity_routing_enabled);
+    assert_eq!(status.complexity_no_llm_threshold, 10);
+    assert_eq!(status.complexity_low_threshold, 1000);
+    assert_eq!(status.complexity_high_threshold, 5000);
+    assert_eq!(status.context_window, 200_000, "context_window must map");
+    assert_eq!(
+        status.max_output_tokens, 64_000,
+        "max_output_tokens must map"
+    );
+    assert!(status.thinking_enabled, "thinking_enabled must map");
+    assert_eq!(status.thinking_budget, 10_000, "thinking_budget must map");
+    assert_eq!(
+        status.max_tool_iterations, 25,
+        "max_tool_iterations must map"
+    );
+    assert_eq!(status.status, "active");
+    assert_eq!(status.background_failure_total_count, 3);
+    assert_eq!(status.background_failure_recent_count, 1);
+    assert_eq!(
+        status.background_failure_latest_message.as_deref(),
+        Some("timeout")
+    );
+    assert_eq!(
+        status.background_failure_latest_kind.as_deref(),
+        Some("timeout")
+    );
+    assert!(!status.background_health_degraded);
+    assert_eq!(status.address_mask.kind, "public");
+    assert!(status.address_mask.allowed_senders.is_empty());
+}
+
 #[test]
 fn nous_tools_response_deserialization() {
     let json = r#"{"tools": [{"name": "read_file", "enabled": true}, {"name": "bash", "enabled": false}]}"#;
@@ -447,4 +505,39 @@ fn paginated_sessions_response_accepts_items_alias() {
     assert_eq!(resp.items.len(), 1);
     assert!(!resp.has_more);
     assert!(resp.next_cursor.is_none());
+}
+
+/// Mirrors pylon's `DaemonTaskListResponse` wire shape (#7206): a disabled
+/// task carries a `cause`, an enabled one omits it entirely.
+#[test]
+fn daemon_task_list_response_deserializes_pylon_shape() {
+    let json = r#"{
+        "tasks": [
+            {
+                "runner": "system",
+                "task_id": "routing-store-refresh",
+                "name": "Routing after-action store refresh",
+                "enabled": false,
+                "cause": "auto_failure",
+                "consecutive_failures": 3,
+                "last_error": "ENOENT",
+                "last_outcome": "failed",
+                "last_run": "2026-09-04T12:00:00Z",
+                "backoff_until": null
+            },
+            {
+                "runner": "system",
+                "task_id": "trace-rotation",
+                "name": "Trace rotation",
+                "enabled": true,
+                "consecutive_failures": 0
+            }
+        ]
+    }"#;
+    let resp: DaemonTaskListResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(resp.tasks.len(), 2);
+    assert_eq!(resp.tasks[0].cause.as_deref(), Some("auto_failure"));
+    assert!(!resp.tasks[0].enabled);
+    assert!(resp.tasks[1].cause.is_none());
+    assert!(resp.tasks[1].enabled);
 }

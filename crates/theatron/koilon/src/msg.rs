@@ -1,7 +1,7 @@
 use koina::secret::SecretString;
 
 use crate::api::types::*;
-use crate::id::{ApiNousId, ApiSessionId, PlanId, ToolId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, ToolId, TurnId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -136,6 +136,10 @@ pub enum Msg {
 
     OverlayUp,
     OverlayDown,
+    /// Page-scroll a scroll-offset-carrying overlay (Help, Notification
+    /// History) up/down by a fixed step (#7221).
+    OverlayPageUp,
+    OverlayPageDown,
     OverlaySelect,
     OverlayFilter(char),
     OverlayFilterBackspace,
@@ -258,25 +262,6 @@ pub enum Msg {
         #[expect(dead_code, reason = "planned TUI feature")]
         decision: String,
     },
-    StreamPlanProposed {
-        plan: Plan,
-    },
-    StreamPlanStepStart {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        plan_id: PlanId,
-        step_id: u32,
-    },
-    StreamPlanStepComplete {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        plan_id: PlanId,
-        step_id: u32,
-        status: String,
-    },
-    StreamPlanComplete {
-        #[expect(dead_code, reason = "planned TUI feature")]
-        plan_id: PlanId,
-        status: String,
-    },
     StreamTurnComplete {
         outcome: TurnOutcome,
     },
@@ -338,10 +323,6 @@ pub enum Msg {
     MemoryConfidenceBackspace,
     MemoryConfidenceSubmit,
     MemoryConfidenceCancel,
-    #[expect(
-        dead_code,
-        reason = "WHY(#5815): `/` is unbound until the pylon semantic-recall endpoint exists; the overlay scaffolding is retained for that wiring"
-    )]
     MemorySearchOpen,
     MemorySearchInput(char),
     MemorySearchBackspace,
@@ -500,16 +481,6 @@ pub enum Msg {
         path: String,
         old_content: String,
         new_content: String,
-    },
-
-    #[expect(dead_code, reason = "planned TUI feature: key bindings not yet wired")]
-    DecisionCardNextField,
-    #[expect(dead_code, reason = "planned TUI feature: key bindings not yet wired")]
-    DecisionCardPrevField,
-    #[expect(dead_code, reason = "planned TUI feature")]
-    StreamDecisionRequired {
-        question: String,
-        options: Vec<(String, Option<String>, bool)>,
     },
 
     Tick,

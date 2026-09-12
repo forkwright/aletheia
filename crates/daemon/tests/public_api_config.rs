@@ -468,6 +468,7 @@ fn task_status_serde_roundtrips_through_json() {
         last_errors: 0,
         available: true,
         reason: None,
+        disable_cause: None,
     };
     let json = serde_json::to_string(&original).expect("serialize TaskStatus");
     let back: TaskStatus = serde_json::from_str(&json).expect("deserialize TaskStatus");

@@ -8,14 +8,14 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use koina::id::NousId;
-use nous::config::NousConfig;
+use nous::config::{ModelRole, NousConfig};
 use nous::cross::AddressMask;
 use organon::surface::{DenialReason, SurfaceEntry, SurfaceEntryKind, SurfaceInputs};
 use symbolon::types::Role;
 use taxis::config::{AletheiaConfig, NousDefinition};
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::handlers::providers::resolve_model_route_readiness;
 use crate::state::NousState;
 
@@ -37,7 +37,10 @@ fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a Nous
 fn model_routes_for_config(config: &NousConfig) -> Vec<(String, Option<String>)> {
     let mut routes = Vec::with_capacity(config.generation.fallback_models.len() + 1);
     routes.push((
-        config.generation.model.clone(),
+        config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
         config.generation.provider.clone(),
     ));
     routes.extend(
@@ -219,10 +222,19 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
     responses(
         (status = 200, description = "List of nous agents", body = NousListResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
+pub async fn list(
+    State(state): State<NousState>,
+    claims: Claims,
+) -> Result<Json<NousListResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only (symbolon::types::Role
+    // doc); agent list/status/tools reads are Agent-or-above. Per-agent
+    // visibility (own nous scope, private-flag Operator gate) is enforced
+    // separately via `nous_visible_to_claims`/`require_visible_nous`.
+    require_read_role(&claims, Role::Agent)?;
     let config = state.config.read().await;
     let visible: Vec<&NousConfig> = state
         .nous_manager
@@ -242,7 +254,7 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
             id: c.id.to_string(),
             name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
             enabled,
-            model: c.generation.model.clone(),
+            model: c.generation.resolve_model(ModelRole::Generation).to_owned(),
             provider: c.generation.provider.clone(),
             fallback_models: c.generation.fallback_models.clone(),
             fallback_providers: c.generation.fallback_providers.clone(),
@@ -255,7 +267,7 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
             restart_required: None,
         });
     }
-    Json(NousListResponse { nous })
+    Ok(Json(NousListResponse { nous }))
 }
 
 /// Timeout for a single actor's status query when building the agent list.
@@ -296,6 +308,7 @@ async fn live_status_label(manager: &nous::manager::NousManager, agent_id: &str)
     responses(
         (status = 200, description = "Nous status", body = NousStatus),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -305,6 +318,10 @@ pub async fn get_status(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; agent status reads are
+    // Agent-or-above. Per-agent visibility is enforced below via
+    // `require_visible_nous`.
+    require_read_role(&claims, Role::Agent)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -342,7 +359,10 @@ pub async fn get_status(
 
     Ok(Json(NousStatus {
         id: config.id.to_string(),
-        model: config.generation.model.clone(),
+        model: config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
         provider: config.generation.provider.clone(),
         fallback_models: config.generation.fallback_models.clone(),
         fallback_providers: config.generation.fallback_providers.clone(),
@@ -385,6 +405,7 @@ pub async fn get_status(
     responses(
         (status = 200, description = "Available tools", body = ToolsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -394,6 +415,10 @@ pub async fn tools(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; agent tool-list reads are
+    // Agent-or-above. Per-agent visibility is enforced below via
+    // `require_visible_nous`.
+    require_read_role(&claims, Role::Agent)?;
     let runtime = state
         .nous_manager
         .get_config(&id)
@@ -426,6 +451,7 @@ pub async fn tools(
     responses(
         (status = 200, description = "Updated nous summary", body = NousSummary),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
     ),
@@ -514,7 +540,10 @@ pub async fn update_enabled(
             .clone()
             .unwrap_or_else(|| runtime.id.to_string()),
         enabled,
-        model: runtime.generation.model.clone(),
+        model: runtime
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned(),
         provider: runtime.generation.provider.clone(),
         fallback_models: runtime.generation.fallback_models.clone(),
         fallback_providers: runtime.generation.fallback_providers.clone(),
@@ -544,6 +573,7 @@ pub async fn update_enabled(
     responses(
         (status = 200, description = "Updated tool list", body = ToolsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
     ),
@@ -647,6 +677,7 @@ pub async fn update_tool(
     responses(
         (status = 200, description = "Recovery result", body = RecoverResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -699,6 +730,7 @@ pub async fn recover(
         (status = 201, description = "Agent created", body = CreateAgentResponse),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 409, description = "Conflict", body = ErrorResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
     ),

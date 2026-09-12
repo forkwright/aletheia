@@ -179,6 +179,24 @@ async fn discovery_returns_current_pylon_topics() {
     );
 }
 
+/// WHY(#7196): skene's `SUBSCRIBE_TOPICS` and pylon's `DISCOVERABLE_TOPICS`
+/// are two independent lists with no shared source of truth — that drift is
+/// exactly how `tool.approval_required`/`tool.approval_resolved` went
+/// unsubscribed for an entire release cycle despite pylon publishing and
+/// documenting both. This test cannot prevent a topic from being added only
+/// on the pylon side, but it does fail the moment skene's client subscribes
+/// to a topic pylon never discovers, catching the inverse drift.
+#[test]
+fn skene_subscribe_topics_are_all_discoverable_in_pylon() {
+    let discoverable: std::collections::HashSet<_> = DISCOVERABLE_TOPICS.iter().copied().collect();
+    for topic in skene::api::sse::SUBSCRIBE_TOPICS.split(',') {
+        assert!(
+            discoverable.contains(topic),
+            "skene subscribes to {topic:?}, which pylon does not advertise as discoverable"
+        );
+    }
+}
+
 #[tokio::test]
 async fn subscribe_surfaces_lag_as_sse_control_event() {
     let (state, _dir) = test_state().await;

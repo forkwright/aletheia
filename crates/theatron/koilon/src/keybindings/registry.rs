@@ -21,7 +21,6 @@ pub(crate) enum KeyContext {
     Input,
     Overlay,
     ToolApproval,
-    PlanApproval,
     Settings,
     Operations,
     MemoryInspector,
@@ -41,7 +40,6 @@ impl KeyContext {
             Self::Input => "Input",
             Self::Overlay => "Overlay",
             Self::ToolApproval => "Tool Approval",
-            Self::PlanApproval => "Plan Approval",
             Self::Settings => "Settings",
             Self::Operations => "Operations",
             Self::MemoryInspector => "Memory Inspector",
@@ -53,7 +51,6 @@ impl KeyContext {
     pub(super) fn display_order(self) -> u8 {
         match self {
             Self::ToolApproval
-            | Self::PlanApproval
             | Self::Selection
             | Self::Filter
             | Self::CommandPalette
@@ -422,13 +419,13 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
-            keys: "Ctrl+I",
+            keys: "F4",
             description: "System status",
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,
         },
         Keybinding {
-            keys: "Ctrl+M",
+            keys: "F3",
             description: "Memory inspector",
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,
@@ -515,24 +512,6 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
             keys: "D",
             description: "Deny tool",
             contexts: &[KeyContext::ToolApproval],
-            show_in_status_bar: true,
-        },
-        Keybinding {
-            keys: "Space",
-            description: "Toggle step",
-            contexts: &[KeyContext::PlanApproval],
-            show_in_status_bar: true,
-        },
-        Keybinding {
-            keys: "A",
-            description: "Approve all",
-            contexts: &[KeyContext::PlanApproval],
-            show_in_status_bar: true,
-        },
-        Keybinding {
-            keys: "C",
-            description: "Cancel plan",
-            contexts: &[KeyContext::PlanApproval],
             show_in_status_bar: true,
         },
         Keybinding {

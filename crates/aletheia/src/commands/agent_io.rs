@@ -107,6 +107,10 @@ pub(crate) struct ExportArgs {
     /// knowledge) cannot be enumerated. The output file is marked as partial.
     #[arg(long)]
     pub allow_partial: bool,
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    pub url: String,
 }
 
 #[expect(
@@ -139,6 +143,10 @@ pub(crate) struct ImportArgs {
     /// to be silently defaulted instead of failing the import.
     #[arg(long)]
     pub allow_unknown_values: bool,
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -155,6 +163,10 @@ pub(crate) struct SeedSkillsArgs {
     /// Show what would be seeded without writing
     #[arg(long)]
     pub dry_run: bool,
+    /// Server URL for lock detection
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -215,6 +227,10 @@ pub(crate) struct MigrateMemoryArgs {
     /// Report only, don't insert
     #[arg(long)]
     pub dry_run: bool,
+    /// Aletheia server URL for lock detection (distinct from --qdrant-url)
+    #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -588,11 +604,16 @@ fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
     clippy::too_many_lines,
     reason = "agent export assembles config, workspace, sessions, messages, and notes into one portability file"
 )]
-pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
+pub(crate) async fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     use mneme::portability::{
         AgentFile, ExportMetadata, ExportedMessage, ExportedNote, ExportedSession,
         ExportedUsageRecord, NousInfo, OmittedSection, TruncationRecord,
     };
+
+    // WHY(#7205): export opens SessionStore (and, under `recall`, KnowledgeStore)
+    // directly below — refuse up-front rather than crash with a confusing
+    // `FjallError::Locked` if the server holds the same lock.
+    guard_agent_io_lock(&args.url).await?;
 
     let oikos = super::resolve_oikos(instance_root)?;
     let config =
@@ -1333,7 +1354,14 @@ const IMPORT_RESUME_MARKER: &str = ".nous-import-in-progress";
     clippy::too_many_lines,
     reason = "import orchestrates config, workspace, and session store — sequential by nature"
 )]
-pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
+pub(crate) async fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
+    // WHY(#7205): import opens SessionStore (and, under `recall`,
+    // KnowledgeStore) directly below — refuse up-front rather than crash
+    // with a confusing `FjallError::Locked` if the server holds the same
+    // lock. Checked before dry-run too: a dry-run still opens the
+    // destination store to detect conflicts.
+    guard_agent_io_lock(&args.url).await?;
+
     validate_target_id(args.target_id.as_deref())?;
     let json = std::fs::read_to_string(&args.file)
         .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
@@ -1805,7 +1833,10 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     clippy::too_many_lines,
     reason = "CLI dispatch is inherently verbose — splitting would hurt readability"
 )]
-pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs) -> Result<()> {
+pub(crate) async fn seed_skills(
+    instance_root: Option<&PathBuf>,
+    args: &SeedSkillsArgs,
+) -> Result<()> {
     use mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
     let dir = &args.dir;
@@ -1858,6 +1889,11 @@ pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs
             default_stability_hours,
         };
         use mneme::knowledge_store::KnowledgeStore;
+
+        // WHY(#7205): seed-skills writes facts directly into the knowledge
+        // store, bypassing the running server's exclusive fjall lock exactly
+        // like `export-skills`/`review-skills` — apply the same guard.
+        guard_knowledge_lock(&args.url).await?;
 
         let oikos = super::resolve_oikos(instance_root)?;
         let knowledge_path = knowledge_path_for_nous(&oikos, nous_id);
@@ -2331,6 +2367,7 @@ pub(crate) async fn migrate_memory(
             args.knowledge_path.as_ref(),
             args.review_file.as_ref(),
             args.dry_run,
+            &args.url,
         )
         .await;
     }
@@ -2400,6 +2437,27 @@ const KNOWLEDGE_LOCK_KNOWN_ENDPOINTS: &[&str] = &["/api/v1/knowledge/facts"];
 /// "server not running" and let the caller proceed past the guard.
 pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
     crate::commands::guard_knowledge_lock(url, KNOWLEDGE_LOCK_KNOWN_ENDPOINTS).await
+}
+
+/// The REST routes `export`/`import` (`aletheia session-export`/`import`'s
+/// whole-agent portability format) can be routed through instead — no single
+/// endpoint round-trips the whole `.agent.json` bundle, so this names the
+/// per-domain routes a caller would otherwise reassemble by hand (#7205).
+const AGENT_IO_LOCK_KNOWN_ENDPOINTS: &[&str] = &[
+    "/api/v1/sessions",
+    "/api/v1/knowledge/facts",
+    "/api/v1/knowledge/entities",
+];
+
+/// Check if the server is running and holding the lock on the stores
+/// `export_agent`/`import_agent` open directly (sessions plus, when built
+/// with `recall`, the knowledge store).
+///
+/// WHY(#7205): both commands previously opened `SessionStore` (and, under
+/// `recall`, `KnowledgeStore`) with no liveness check at all, unlike every
+/// other direct-store command in this module.
+pub(crate) async fn guard_agent_io_lock(url: &str) -> Result<()> {
+    crate::commands::guard_knowledge_lock(url, AGENT_IO_LOCK_KNOWN_ENDPOINTS).await
 }
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
@@ -2668,8 +2726,43 @@ workspace = "nous/{agent_id}"
         std::fs::write(config_path, config).unwrap();
     }
 
-    #[test]
-    fn export_agent_writes_portable_file_from_fjall_sessions() {
+    /// Regression for #7205: `export-agent` opened `SessionStore` (and, under
+    /// `recall`, `KnowledgeStore`) directly with no liveness check, unlike
+    /// `export-skills`/`review-skills` in the same module.
+    #[tokio::test]
+    async fn export_agent_refuses_when_server_holds_the_lock() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_config(dir.path(), "alice", "Alice");
+
+        let args = ExportArgs {
+            nous_id: NousId::new("alice").expect("valid fixture nous id"),
+            output: Some(dir.path().join("out.agent.json")),
+            archived: false,
+            max_messages: 0,
+            compact: false,
+            force: false,
+            allow_partial: false,
+            url: stub_url,
+        };
+
+        let result = export_agent(Some(&dir.path().to_path_buf()), &args).await;
+        server.await.unwrap();
+
+        assert!(result.is_err(), "must refuse while the stub server is up");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("holds an exclusive lock"), "got: {msg}");
+        assert!(
+            !dir.path().join("out.agent.json").exists(),
+            "export must not write output when the server holds the lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_agent_writes_portable_file_from_fjall_sessions() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -2718,8 +2811,11 @@ workspace = "nous/{agent_id}"
             compact: false,
             force: false,
             allow_partial: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        export_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
         let exported: AgentFile =
             serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
@@ -2756,8 +2852,43 @@ workspace = "nous/{agent_id}"
         assert_eq!(exported.sessions[0].notes.len(), 1);
     }
 
-    #[test]
-    fn export_agent_output_round_trips_through_import() {
+    /// Regression for #7205: `import-agent` opened `SessionStore` (and,
+    /// under `recall`, `KnowledgeStore`) directly with no liveness check.
+    #[tokio::test]
+    async fn import_agent_refuses_when_server_holds_the_lock() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let dest = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dest.path().join("config")).unwrap();
+        std::fs::create_dir_all(dest.path().join("data")).unwrap();
+
+        let bogus_file = dest.path().join("nonexistent.agent.json");
+        let result = import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: bogus_file.clone(),
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                skip_knowledge: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+                url: stub_url,
+            },
+        )
+        .await;
+        server.await.unwrap();
+
+        assert!(result.is_err(), "must refuse while the stub server is up");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("holds an exclusive lock"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn export_agent_output_round_trips_through_import() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -2789,8 +2920,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
         let exported: AgentFile =
             serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
@@ -2819,8 +2952,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
@@ -2835,8 +2970,9 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    #[test]
-    fn import_agent_rejects_reserved_cross_session_key_without_persisting() {
+    #[tokio::test]
+    async fn import_agent_rejects_reserved_cross_session_key_without_persisting() {
+        organon::testing::install_crypto_provider();
         let dest = tempfile::tempdir().unwrap();
         let dest_oikos = Oikos::from_root(dest.path());
         std::fs::create_dir_all(dest_oikos.config()).unwrap();
@@ -2862,8 +2998,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
-        );
+        )
+        .await;
 
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
@@ -2881,8 +3019,9 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#4163): import preserves session status, timestamps, and metrics
     /// via [`import_session`].
-    #[test]
-    fn import_preserves_session_status_4163_c() {
+    #[tokio::test]
+    async fn import_preserves_session_status_4163_c() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -2924,8 +3063,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest = tempfile::tempdir().unwrap();
@@ -2943,8 +3084,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
@@ -2981,12 +3124,13 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#4163): import preserves per-message `seq`, `is_distilled`, and
     /// `created_at` via [`insert_message_raw`].
-    #[test]
+    #[tokio::test]
     #[expect(
         clippy::too_many_lines,
         reason = "regression test exercises full export/import metadata fidelity"
     )]
-    fn import_preserves_message_metadata_4163_d() {
+    async fn import_preserves_message_metadata_4163_d() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -3045,8 +3189,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest = tempfile::tempdir().unwrap();
@@ -3064,8 +3210,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
@@ -3127,8 +3275,9 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#4163): regression — `export_agent` must read session history via
     /// `get_history_raw` so distilled messages survive the export.
-    #[test]
-    fn export_preserves_distilled_messages_4163_a() {
+    #[tokio::test]
+    async fn export_preserves_distilled_messages_4163_a() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -3165,8 +3314,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -3199,8 +3350,9 @@ workspace = "nous/{agent_id}"
     /// state from the durable `FjallWorkingCheckpointStore` and serializes it
     /// into the `workingState` slot; a hardcoded `None` here silently drops
     /// agent-curated `<key_info>` checkpoints on round-trip.
-    #[test]
-    fn export_preserves_working_state_4588() {
+    #[tokio::test]
+    async fn export_preserves_working_state_4588() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -3237,8 +3389,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -3262,8 +3416,59 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    #[test]
-    fn seed_skills_persists_to_fjall_store() {
+    /// Regression for #7205: `seed-skills` opened `KnowledgeStore` directly
+    /// with no liveness check, unlike `export-skills`/`review-skills` which
+    /// write the same store through the same guard.
+    #[tokio::test]
+    async fn seed_skills_refuses_when_server_holds_the_lock() {
+        organon::testing::install_crypto_provider();
+        let (stub_url, server) = crate::commands::test_support::spawn_stub_running_server().await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+
+        let skills_dir = dir.path().join("skills");
+        let skill_path = skills_dir.join("rust-errors");
+        std::fs::create_dir_all(&skill_path).unwrap();
+        std::fs::write(
+            skill_path.join("SKILL.md"),
+            "# Rust Errors\n\nUse this when diagnosing Rust errors.\n\n## Steps\n1. Read the compiler output\n",
+        )
+        .unwrap();
+
+        let result = seed_skills(
+            Some(&dir.path().to_path_buf()),
+            &SeedSkillsArgs {
+                dir: skills_dir,
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
+                force: false,
+                dry_run: false,
+                url: stub_url,
+            },
+        )
+        .await;
+        server.await.unwrap();
+
+        assert!(result.is_err(), "must refuse while the stub server is up");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("holds an exclusive lock"), "got: {msg}");
+
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            oikos.knowledge_cohort_db("shared"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .unwrap();
+        let facts = store.find_skills_for_nous("alice", 10).unwrap();
+        assert!(
+            facts.is_empty(),
+            "seed-skills must not persist facts when the server holds the lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn seed_skills_persists_to_fjall_store() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -3284,8 +3489,10 @@ workspace = "nous/{agent_id}"
                 nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 force: false,
                 dry_run: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
@@ -3300,8 +3507,9 @@ workspace = "nous/{agent_id}"
         assert_eq!(persisted.name, "rust-errors");
     }
 
-    #[test]
-    fn import_agent_writes_config_and_sessions() {
+    #[tokio::test]
+    async fn import_agent_writes_config_and_sessions() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3321,9 +3529,12 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
         // Verify config was written.
         let config = std::fs::read_to_string(oikos.config().join("aletheia.toml")).unwrap();
@@ -3351,8 +3562,9 @@ workspace = "nous/{agent_id}"
         assert_eq!(history[1].content, "tool output");
     }
 
-    #[test]
-    fn import_agent_skips_sessions_when_flagged() {
+    #[tokio::test]
+    async fn import_agent_skips_sessions_when_flagged() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3376,9 +3588,12 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
         let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
@@ -3393,8 +3608,9 @@ workspace = "nous/{agent_id}"
     }
 
     #[cfg(feature = "recall")]
-    #[test]
-    fn import_agent_retargets_fact_nous_id_to_target_id() {
+    #[tokio::test]
+    async fn import_agent_retargets_fact_nous_id_to_target_id() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3427,9 +3643,12 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
         let facts = imported_facts(&oikos, "dest-nous");
         assert_eq!(facts.len(), 2, "all facts should import for target nous");
@@ -3442,8 +3661,9 @@ workspace = "nous/{agent_id}"
     /// Regression for #4241: a `.agent.json` whose `nous.id` contains
     /// a traversal pattern must be rejected before any I/O. `NousInfo.id`
     /// is a validated `NousId`, so rejection happens at parse time.
-    #[test]
-    fn import_agent_rejects_traversal_nous_id() {
+    #[tokio::test]
+    async fn import_agent_rejects_traversal_nous_id() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3474,16 +3694,20 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("failed to parse agent file"), "got: {msg}");
     }
 
     /// Regression for #4241: a workspace file path with `..` must be
     /// rejected before any file is written.
-    #[test]
-    fn import_agent_rejects_traversal_workspace_filename() {
+    #[tokio::test]
+    async fn import_agent_rejects_traversal_workspace_filename() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3507,16 +3731,20 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("workspace file path"), "got: {msg}");
     }
 
     /// Regression for #4241: `--target-id ../escaped` must be rejected
     /// before any file is written, regardless of the file contents.
-    #[test]
-    fn import_agent_rejects_traversal_target_id() {
+    #[tokio::test]
+    async fn import_agent_rejects_traversal_target_id() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3536,8 +3764,11 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("--target-id") && msg.contains("alphanumeric"),
@@ -3545,8 +3776,9 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    #[test]
-    fn import_agent_rejects_duplicate_without_force() {
+    #[tokio::test]
+    async fn import_agent_rejects_duplicate_without_force() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3566,11 +3798,14 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
 
-        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
-        let result = import_agent(Some(&dir.path().to_path_buf()), &args);
+        let result = import_agent(Some(&dir.path().to_path_buf()), &args).await;
         assert!(
             result.is_err(),
             "duplicate import without force should fail"
@@ -3714,8 +3949,9 @@ workspace = "nous/{agent_id}"
     /// WHY(#4163): typed knowledge (Fact, Entity, Relationship) round-trips
     /// through export → import.
     #[cfg(feature = "recall")]
-    #[test]
-    fn roundtrip_preserves_typed_knowledge_4163() {
+    #[tokio::test]
+    async fn roundtrip_preserves_typed_knowledge_4163() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -3734,8 +3970,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest = tempfile::tempdir().unwrap();
@@ -3753,8 +3991,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let knowledge_path = knowledge_path_for_nous(&dest_oikos, "alice");
@@ -3822,8 +4062,9 @@ workspace = "nous/{agent_id}"
     }
 
     #[cfg(feature = "recall")]
-    #[test]
-    fn export_agent_scopes_knowledge_graph_to_exported_facts() {
+    #[tokio::test]
+    async fn export_agent_scopes_knowledge_graph_to_exported_facts() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -3879,8 +4120,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -3916,9 +4159,11 @@ workspace = "nous/{agent_id}"
 
     /// #4399 / ADR-006 v2 — import must rebuild the HNSW index from restored facts.
     #[cfg(feature = "recall")]
-    #[test]
-    fn import_rebuilds_fact_embeddings_4399() {
+    #[tokio::test]
+    async fn import_rebuilds_fact_embeddings_4399() {
         use mneme::embedding::{EmbeddingConfig, create_provider};
+
+        organon::testing::install_crypto_provider();
 
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
@@ -3938,8 +4183,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest = tempfile::tempdir().unwrap();
@@ -3962,8 +4209,10 @@ workspace = "nous/{agent_id}"
                 force: true,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let knowledge_path = knowledge_path_for_nous(&dest_oikos, "alice");
@@ -4001,8 +4250,8 @@ workspace = "nous/{agent_id}"
         clippy::too_many_lines,
         reason = "test needs full source setup, export, import, re-export, and assertion"
     )]
-    #[test]
-    fn roundtrip_is_byte_stable_4163() {
+    #[tokio::test]
+    async fn roundtrip_is_byte_stable_4163() {
         // WHY(#4588): a checkpoint's `created_at` is stamped fresh by the
         // store at write time (`FjallWorkingCheckpointStore::write_checkpoint`
         // has no "preserve the original timestamp" input), so import
@@ -4029,6 +4278,8 @@ workspace = "nous/{agent_id}"
                 }
             }
         }
+
+        organon::testing::install_crypto_provider();
 
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
@@ -4112,8 +4363,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest = tempfile::tempdir().unwrap();
@@ -4131,8 +4384,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let export2 = dest.path().join("export2.agent.json");
@@ -4146,8 +4401,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let mut v1: serde_json::Value =
@@ -4231,8 +4488,9 @@ workspace = "nous/{agent_id}"
         file
     }
 
-    #[test]
-    fn import_rejects_future_version() {
+    #[tokio::test]
+    async fn import_rejects_future_version() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4253,15 +4511,19 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("agent file is version"), "got: {msg}");
         assert!(msg.contains("requires v"), "got: {msg}");
     }
 
-    #[test]
-    fn import_accepts_older_agent_file() {
+    #[tokio::test]
+    async fn import_accepts_older_agent_file() {
+        organon::testing::install_crypto_provider();
         // WHY(#5782): an older-version file must upgrade transparently rather than
         // hard-reject — additive fields carry serde(default).
         let dir = tempfile::tempdir().unwrap();
@@ -4284,13 +4546,16 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
         import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
             .expect("older-version agent file should import after transparent upgrade");
     }
 
-    #[test]
-    fn import_rejects_unknown_session_status() {
+    #[tokio::test]
+    async fn import_rejects_unknown_session_status() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4310,14 +4575,18 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("unknown session_status"), "got: {msg}");
     }
 
-    #[test]
-    fn import_rejects_unknown_session_type() {
+    #[tokio::test]
+    async fn import_rejects_unknown_session_type() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4337,14 +4606,18 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("unknown session_type"), "got: {msg}");
     }
 
-    #[test]
-    fn import_rejects_unknown_message_role() {
+    #[tokio::test]
+    async fn import_rejects_unknown_message_role() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4364,14 +4637,18 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("unknown message_role"), "got: {msg}");
     }
 
-    #[test]
-    fn import_accepts_unknown_values_with_flag() {
+    #[tokio::test]
+    async fn import_accepts_unknown_values_with_flag() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4391,8 +4668,11 @@ workspace = "nous/{agent_id}"
             force: false,
             dry_run: false,
             allow_unknown_values: true,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        import_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
         let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
@@ -4408,8 +4688,9 @@ workspace = "nous/{agent_id}"
     /// fail the export by default; the operator can opt into a partial export
     /// with `--allow-partial`.
     #[cfg(feature = "recall")]
-    #[test]
-    fn export_fails_on_unopenable_knowledge_store_by_default() {
+    #[tokio::test]
+    async fn export_fails_on_unopenable_knowledge_store_by_default() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4431,8 +4712,10 @@ workspace = "nous/{agent_id}"
                 compact: false,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
-        );
+        )
+        .await;
 
         assert!(
             result.is_err(),
@@ -4452,8 +4735,9 @@ workspace = "nous/{agent_id}"
     /// WHY(#5102/#4965): `--allow-partial` lets the export succeed and records
     /// the knowledge omission in machine-readable metadata.
     #[cfg(feature = "recall")]
-    #[test]
-    fn export_allows_partial_for_unopenable_knowledge_store() {
+    #[tokio::test]
+    async fn export_allows_partial_for_unopenable_knowledge_store() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4474,8 +4758,10 @@ workspace = "nous/{agent_id}"
                 compact: false,
                 force: false,
                 allow_partial: true,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -4497,8 +4783,9 @@ workspace = "nous/{agent_id}"
     /// WHY(#5102/#4965): a missing knowledge store is different from an
     /// unopenable store. It produces no knowledge slot but is still lossless.
     #[cfg(feature = "recall")]
-    #[test]
-    fn export_succeeds_when_knowledge_store_missing() {
+    #[tokio::test]
+    async fn export_succeeds_when_knowledge_store_missing() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4515,8 +4802,10 @@ workspace = "nous/{agent_id}"
                 compact: false,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -4537,8 +4826,9 @@ workspace = "nous/{agent_id}"
     /// an empty object so consumers can distinguish "present but empty" from
     /// "never configured".
     #[cfg(feature = "recall")]
-    #[test]
-    fn export_succeeds_when_knowledge_store_empty() {
+    #[tokio::test]
+    async fn export_succeeds_when_knowledge_store_empty() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4563,8 +4853,10 @@ workspace = "nous/{agent_id}"
                 compact: false,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -4582,8 +4874,9 @@ workspace = "nous/{agent_id}"
     /// WHY(#5102/#4965): a populated knowledge store is exported with counts
     /// and marked lossless.
     #[cfg(feature = "recall")]
-    #[test]
-    fn export_records_typed_knowledge_counts() {
+    #[tokio::test]
+    async fn export_records_typed_knowledge_counts() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -4601,8 +4894,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -4616,8 +4911,9 @@ workspace = "nous/{agent_id}"
     }
 
     /// WHY(#5102/#4965): `--max-messages` truncation is recorded in metadata.
-    #[test]
-    fn export_records_message_truncation_metadata() {
+    #[tokio::test]
+    async fn export_records_message_truncation_metadata() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4644,8 +4940,10 @@ workspace = "nous/{agent_id}"
                 compact: false,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -4664,8 +4962,9 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#5102/#4965): excluding archived sessions is no longer silent; the
     /// export metadata records the omission.
-    #[test]
-    fn export_records_archived_session_omission() {
+    #[tokio::test]
+    async fn export_records_archived_session_omission() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4705,8 +5004,10 @@ workspace = "nous/{agent_id}"
                 compact: false,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let exported: AgentFile =
@@ -4725,8 +5026,9 @@ workspace = "nous/{agent_id}"
     /// WHY(#5102/#4965): import validates and reports partial exports before
     /// mutating the destination instance, while preserving the existing import
     /// behavior for the data that is present.
-    #[test]
-    fn import_reports_partial_export_metadata_before_mutation() {
+    #[tokio::test]
+    async fn import_reports_partial_export_metadata_before_mutation() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4758,8 +5060,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         // Existing behavior: config entry is written even for a partial export.
@@ -4888,8 +5192,9 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#4590): binary workspace files must carry payload bytes, not just
     /// path names, so an export/import round-trip can restore them.
-    #[test]
-    fn export_records_binary_workspace_file_payloads_4590() {
+    #[tokio::test]
+    async fn export_records_binary_workspace_file_payloads_4590() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
@@ -4908,8 +5213,11 @@ workspace = "nous/{agent_id}"
             compact: false,
             force: false,
             allow_partial: false,
+            url: "http://127.0.0.1:1".to_owned(),
         };
-        export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+        export_agent(Some(&dir.path().to_path_buf()), &args)
+            .await
+            .unwrap();
 
         let exported: AgentFile =
             serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
@@ -5007,8 +5315,9 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#4590): importers must not silently drop path-only binary entries
     /// from older or malformed exports.
-    #[test]
-    fn import_rejects_path_only_binary_workspace_files_4590() {
+    #[tokio::test]
+    async fn import_rejects_path_only_binary_workspace_files_4590() {
+        organon::testing::install_crypto_provider();
         let dest = tempfile::tempdir().unwrap();
         let dest_oikos = Oikos::from_root(dest.path());
         std::fs::create_dir_all(dest_oikos.config()).unwrap();
@@ -5034,8 +5343,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("has no serialized contents"), "got: {msg}");
@@ -5047,8 +5358,9 @@ workspace = "nous/{agent_id}"
 
     /// WHY(#5102): session and knowledge skipping must be independent flags.
     #[cfg(feature = "recall")]
-    #[test]
-    fn import_skip_knowledge_flag_omits_typed_knowledge_5102() {
+    #[tokio::test]
+    async fn import_skip_knowledge_flag_omits_typed_knowledge_5102() {
+        organon::testing::install_crypto_provider();
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -5066,8 +5378,10 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         let dest = tempfile::tempdir().unwrap();
@@ -5085,8 +5399,10 @@ workspace = "nous/{agent_id}"
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
+                url: "http://127.0.0.1:1".to_owned(),
             },
         )
+        .await
         .unwrap();
 
         assert!(

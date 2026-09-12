@@ -46,6 +46,7 @@ fn require_stored_fact_access(
     responses(
         (status = 204, description = "Fact marked forgotten"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -104,6 +105,7 @@ pub async fn forget_fact(
     responses(
         (status = 204, description = "Fact restored"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -163,6 +165,7 @@ pub async fn restore_fact(
         (status = 200, description = "Confidence updated"),
         (status = 400, description = "Confidence out of range", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -238,6 +241,7 @@ pub async fn update_confidence(
         (status = 200, description = "Sensitivity updated"),
         (status = 400, description = "Invalid sensitivity value", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Fact not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

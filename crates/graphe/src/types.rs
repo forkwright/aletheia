@@ -367,13 +367,36 @@ pub struct ToolAuditRecord {
     ///
     /// WHY required, not `Option` (#4835): the write boundary
     /// ([`FinalizeToolAuditRecord`](crate::store::fjall_store::FinalizeToolAuditRecord))
-    /// no longer accepts `None`. `#[serde(default)]` keeps rows persisted
-    /// before this change (genuinely missing the field) reading back as an
-    /// empty string rather than failing to deserialize.
-    #[serde(default)]
+    /// no longer accepts `None`. `#[serde(default)]` alone only covers a row
+    /// that is missing the field entirely; it does NOT cover a row that
+    /// carries the field with a literal JSON `null`. Every row persisted
+    /// under the pre-#4835 `Option<String>` schema has exactly that shape —
+    /// plain `#[derive(Serialize)]` with no `skip_serializing_if` writes
+    /// `None` as `"receipt":null`, never as an absent key — so
+    /// `#[serde(default)]` alone left those rows permanently
+    /// undeserializable (`invalid type: null, expected a string`,
+    /// aletheia#7217) the moment this field's type changed out from under
+    /// them. `deserialize_receipt` accepts both a missing key (via
+    /// `#[serde(default)]`) and an explicit `null` (via the `Option<String>`
+    /// round-trip below), collapsing either legacy shape to the same empty
+    /// string this type already uses for "no receipt was ever issued".
+    #[serde(default, deserialize_with = "deserialize_receipt")]
     pub receipt: String,
     /// ISO 8601 timestamp when this audit row was written.
     pub created_at: String,
+}
+
+/// Deserialize [`ToolAuditRecord::receipt`], tolerating both a missing key
+/// and a present-but-`null` one as "no receipt" (aletheia#7217).
+///
+/// Deserializing straight into `String` rejects `null` outright; going
+/// through `Option<String>` first accepts it, matching how every row
+/// written before aletheia#4835 actually looks on disk.
+fn deserialize_receipt<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// Lifecycle status of a durable [`TurnRecord`] (aletheia#5267).
@@ -881,5 +904,81 @@ mod tests {
         assert!(record.usage.is_none());
         assert!(record.tool_audit_ids.is_empty());
         assert!(!record.reconstructed);
+    }
+
+    /// A minimal, otherwise-valid `ToolAuditRecord` JSON object.
+    fn base_tool_audit_json() -> serde_json::Value {
+        serde_json::json!({
+            "id": 1,
+            "session_id": "ses-1",
+            "nous_id": "alice",
+            "turn_seq": 1,
+            "tool_call_id": "call-1",
+            "tool_name": "read_file",
+            "duration_ms": 5,
+            "is_error": false,
+            "outcome": "success",
+            "result": null,
+            "approval": null,
+            "receipt": "receipt-token",
+            "created_at": "2026-09-06T00:00:00.000Z",
+        })
+    }
+
+    #[test]
+    fn tool_audit_record_receipt_defaults_when_field_missing() {
+        // WHY(#4835): the pre-existing contract -- a row written before
+        // `receipt` existed at all must still deserialize.
+        let mut json = base_tool_audit_json();
+        json.as_object_mut()
+            .expect("object")
+            .remove("receipt")
+            .expect("fixture has a receipt key to remove");
+        let record: ToolAuditRecord =
+            serde_json::from_value(json).expect("row missing `receipt` must deserialize");
+        assert_eq!(record.receipt, "");
+    }
+
+    #[test]
+    fn tool_audit_record_receipt_defaults_when_field_null() {
+        // WHY(#7217): the actual on-disk shape of every row written under
+        // the pre-#4835 `Option<String>` schema -- plain `#[derive(Serialize)]`
+        // writes `None` as a literal `"receipt":null`, never as an absent
+        // key, so this is the case that broke every reader instance-wide the
+        // moment `receipt` became a required `String`.
+        let mut json = base_tool_audit_json();
+        json.as_object_mut()
+            .expect("object")
+            .insert("receipt".to_owned(), serde_json::Value::Null);
+        let record: ToolAuditRecord =
+            serde_json::from_value(json).expect("row with `\"receipt\":null` must deserialize");
+        assert_eq!(record.receipt, "");
+    }
+
+    #[test]
+    fn tool_audit_record_receipt_round_trips_when_present() {
+        let json = base_tool_audit_json();
+        let record: ToolAuditRecord =
+            serde_json::from_value(json).expect("row with a real receipt must deserialize");
+        assert_eq!(record.receipt, "receipt-token");
+    }
+
+    #[test]
+    fn tool_audit_record_rejects_null_tool_call_id() {
+        // WHY: `deserialize_receipt`'s null tolerance is specific to
+        // `receipt` (documented, pre-existing legacy shape) -- a null in a
+        // field with no such history (e.g. `tool_call_id`, never `Option` in
+        // this type's lifetime) must still fail loudly rather than silently
+        // becoming an empty string, or a genuinely-corrupt row would go
+        // undetected instead of landing in `ToolAuditScan::corrupt`.
+        let mut json = base_tool_audit_json();
+        json.as_object_mut()
+            .expect("object")
+            .insert("tool_call_id".to_owned(), serde_json::Value::Null);
+        let result = serde_json::from_value::<ToolAuditRecord>(json);
+        assert!(
+            result.is_err(),
+            "a null tool_call_id must still fail to deserialize"
+        );
     }
 }

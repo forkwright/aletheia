@@ -1,89 +1,17 @@
 //! Goal-backward verification state for the planning project detail view.
+//!
+//! WHY(#4565): the wire types (`VerificationStatus`, `RequirementPriority`,
+//! `RequirementVerification`, `ProjectVerificationResult`) used to be
+//! duplicated here rather than sourced from skene -- the desktop client's
+//! own `GET`/`POST /api/v1/planning/projects/{id}/verification` caller now
+//! goes through `skene::api::client::ApiClient`, whose methods already
+//! return skene's typed `ProjectVerificationResult`, so this module keeps
+//! only the view-local `VerificationStore` wrapper and its coverage math.
 
-use serde::Deserialize;
-
-/// Verification status for a single requirement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub(crate) enum VerificationStatus {
-    /// Requirement fully demonstrated.
-    Verified,
-    /// Some but not all criteria demonstrated.
-    PartiallyVerified,
-    /// No verification evidence found.
-    Unverified,
-    /// Verification attempted but explicitly failed.
-    Failed,
-}
-
-/// Priority tier for a requirement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub(crate) enum RequirementPriority {
-    /// Blocking -- must be verified before release.
-    P0,
-    /// High priority.
-    P1,
-    /// Medium priority.
-    P2,
-    /// Low or nice-to-have.
-    P3,
-}
-
-/// A piece of evidence demonstrating a requirement.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub(crate) struct VerificationEvidence {
-    pub(crate) label: String,
-    pub(crate) artifact: String,
-}
-
-/// A criterion not yet satisfied.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub(crate) struct VerificationGap {
-    pub(crate) missing_criteria: String,
-    pub(crate) suggested_action: String,
-}
-
-/// Verification result for a single requirement.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub(crate) struct RequirementVerification {
-    // kanon:ignore RUST/primitive-for-domain-id — Verification state mirrors server-side string IDs from the planning API
-    pub(crate) id: String,
-    pub(crate) title: String,
-    /// Version tier (e.g., `"v1"`, `"v2"`).
-    pub(crate) tier: String,
-    pub(crate) priority: RequirementPriority,
-    pub(crate) status: VerificationStatus,
-    /// Coverage percentage 0--100.
-    pub(crate) coverage_pct: u8,
-    pub(crate) evidence: Vec<VerificationEvidence>,
-    pub(crate) gaps: Vec<VerificationGap>,
-}
-
-/// Full verification result for a project.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub(crate) struct VerificationResult {
-    // kanon:ignore RUST/primitive-for-domain-id — Verification state mirrors server-side string IDs from the planning API
-    pub(crate) project_id: String,
-    pub(crate) requirements: Vec<RequirementVerification>,
-    pub(crate) last_verified_at: String,
-    #[serde(default = "default_visibility")]
-    pub(crate) visibility: String,
-    #[serde(default = "default_classification")]
-    pub(crate) classification: String,
-    #[serde(default)]
-    pub(crate) redacted: bool,
-}
-
-fn default_visibility() -> String {
-    "private".to_string()
-}
-
-fn default_classification() -> String {
-    "restricted".to_string()
-}
+pub(crate) use skene::api::types::{
+    ProjectVerificationResult as VerificationResult, RequirementPriority, RequirementVerification,
+    VerificationStatus,
+};
 
 /// Store for verification results of the active project.
 #[derive(Debug, Clone, Default)]

@@ -27,6 +27,10 @@ fn snapshot_task_state(
         backoff_until_ts,
         last_error: task.last_error.clone(),
         last_outcome: Some(last_outcome.to_owned()),
+        // WHY(#7206): `disable_cause` is only meaningful while `!enabled`;
+        // an enabled task persists `None` so a stale cause from a previous
+        // disable never survives a later success.
+        disable_cause: (!task.def.enabled).then_some(task.disable_cause).flatten(),
     }
 }
 
@@ -48,6 +52,11 @@ impl TaskRunner {
         task.backoff_until = None;
         task.last_error = None;
         task.last_errors = errors;
+        // WHY(#7206): a completed run is real, evidence-based proof the task
+        // is no longer disabled for any reason; clear a stale cause left over
+        // from a prior disable (including a hydration retry -- see
+        // `runner::persistence::apply_saved_state`) rather than let it linger.
+        task.disable_cause = None;
 
         // WHY: apply jitter to the next scheduled run to maintain spread.
         let base_next = task.def.schedule.next_run().unwrap_or(None);
@@ -121,6 +130,12 @@ impl TaskRunner {
 
         if task.consecutive_failures >= 3 {
             task.def.enabled = false;
+            // WHY(#7206): the runner's own auto-disable policy is always
+            // `AutoFailure` -- an `Operator` disable can only come from the
+            // admin API/CLI, never from this path. This is what makes the
+            // hydration retry in `runner::persistence::apply_saved_state`
+            // safe: it only ever re-arms a cause this exact branch set.
+            task.disable_cause = Some(crate::state::DisableCause::AutoFailure);
             tracing::warn!(
                 task_id = %task.def.id,
                 task_name = %task.def.name,

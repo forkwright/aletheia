@@ -1,6 +1,5 @@
-# kanon:ignore NAMING/no-owner-prefix -- WHY: crate/binary name is the existing MCP package surface; tracked in aletheia#5584, removed when the GNOMON naming review assigns this binary's name (candidates on kanon#540).
 [package]
-name = "aletheia-memory-mcp"
+name = "xenodocheion"
 version.workspace = true
 description = "Standalone stdio MCP server exposing identity-scoped Aletheia memory tools to external agents"
 edition.workspace = true
@@ -10,7 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [[bin]]
-name = "aletheia-memory-mcp"
+name = "xenodocheion"
 path = "src/main.rs"
 
 [dependencies]
@@ -35,7 +34,7 @@ snafu = { workspace = true }
 
 # Observability
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+koinon = { workspace = true }
 
 # Time
 jiff = { workspace = true }

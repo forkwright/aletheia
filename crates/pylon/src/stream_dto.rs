@@ -4,6 +4,20 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 /// SSE event emitted to the client during message streaming.
+///
+/// Boundary: the pipeline's continuous execution state — a streaming
+/// provider response arriving as incremental deltas, a tool call's live
+/// process, an in-flight session's accumulating usage — collapses to this
+/// fixed set of discrete, serialized events. Each variant preserves only
+/// the fields listed on it (e.g. `ToolResult` keeps `content`, `is_error`,
+/// and a stable `outcome` label, but not `ToolDiagnostics`' exit code,
+/// stderr, or sandbox violations; `MessageComplete` keeps `usage` totals,
+/// not the per-delta token trace that produced them). A client that
+/// reconnects mid-turn via `Last-Event-ID` recovers exactly the events
+/// retained in the in-memory turn buffer (see `ReplayGap` for what happens
+/// when that buffer has already dropped events) — never the provider's
+/// live internal state. This is intentional: SSE is a wire replay of
+/// discrete milestones, not a mirror of continuous pipeline state.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "type")]
 #[non_exhaustive]
@@ -82,6 +96,13 @@ pub(crate) enum SseEvent {
         /// Failure message when this turn ended in error. `None` on success.
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+        /// Human-readable reason the turn completed in some degraded mode
+        /// (aletheia#7218), e.g. a best-effort pipeline stage like recall
+        /// timing out and being skipped. `None` on an ordinary turn.
+        /// Additive/backward-compatible: absent on legacy senders, so
+        /// clients must treat it as optional.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        degraded_reason: Option<String>,
     },
 
     /// An error occurred during the turn.
@@ -312,4 +333,10 @@ pub(crate) struct TurnOutcome {
     pub stop_reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Human-readable reason the turn completed in some degraded mode
+    /// (aletheia#7218). `None` on an ordinary turn.
+    /// Additive/backward-compatible: absent on legacy senders, so clients
+    /// must treat it as optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
 }

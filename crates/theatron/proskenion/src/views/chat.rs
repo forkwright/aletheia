@@ -44,8 +44,8 @@ use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::chat_helpers::{format_tool_call, render_approval};
 use crate::views::chat_selection::{
-    activate_chat_selection, history_messages_to_legacy, oldest_history_seq,
-    parse_history_messages, resolve_chat_session_key,
+    activate_chat_selection, canonical_agent_selection, history_messages_to_legacy,
+    oldest_history_seq, resolve_chat_session_key,
 };
 
 /// Estimated message height in pixels for virtual scroll calculations.
@@ -162,22 +162,6 @@ fn history_total_count(selection: &ChatSelection) -> Option<usize> {
 fn active_session_matches(state: &ChatState, selection: &ChatSelection) -> bool {
     state.agent_id.as_ref() == Some(&selection.agent_id)
         && state.session_key.as_deref() == Some(selection.session_key.as_str())
-}
-
-fn chat_history_url(
-    base_url: &str,
-    session_id: &skene::id::ApiSessionId,
-    before: Option<i64>,
-) -> String {
-    let base = base_url.trim_end_matches('/');
-    let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
-    let mut url =
-        format!("{base}/api/v1/sessions/{encoded}/history?limit={HISTORY_PAGE_SIZE_QUERY}");
-    if let Some(before_seq) = before {
-        url.push_str("&before=");
-        url.push_str(&before_seq.to_string());
-    }
-    url
 }
 
 fn route_for_command_destination(destination: CommandDestination) -> Route {
@@ -380,27 +364,23 @@ fn fetch_chat_history_page(
     }
 
     spawn(async move {
-        let client = match crate::api::client::authenticated_client(&cfg) {
-            Ok(client) => client,
-            Err(err) => {
-                history_state.set(ChatHistoryState::failed(
-                    err.to_string(),
-                    total_count,
-                    before,
-                ));
-                return;
-            }
-        };
-        let url = chat_history_url(&cfg.server_url, &session_id, before);
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    history_state.set(ChatHistoryState::failed(
+                        err.to_string(),
+                        total_count,
+                        before,
+                    ));
+                    return;
+                }
+            };
 
-        let result = match client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => match resp.text().await {
-                Ok(text) => parse_history_messages(&text),
-                Err(e) => Err(format!("read history: {e}")),
-            },
-            Ok(resp) => Err(format!("history request failed: {}", resp.status())),
-            Err(e) => Err(format!("history connection error: {e}")),
-        };
+        let result = client
+            .history(session_id.as_ref(), Some(HISTORY_PAGE_SIZE_QUERY), before)
+            .await
+            .map_err(|err| err.to_string());
 
         if !active_session_matches(&legacy_state.read(), &selection) {
             return;
@@ -438,11 +418,78 @@ fn fetch_chat_history_page(
     });
 }
 
+/// Resolve the durable session for a keyless selection server-side, then load
+/// its history.
+///
+/// WHY: entering a nous's chat must attach to that nous's one ongoing
+/// conversation and always reload its history. The app knows only the stable
+/// session key (`{nous}:default`); the key→session binding is owned by the
+/// server (`POST /api/v1/sessions/resolve`), so the client resolves rather
+/// than guessing — this is also what keeps a remounted Chat view pointed at
+/// the same conversation instead of an empty pane.
+fn resolve_and_fetch_history(
+    cfg: ConnectionConfig,
+    selection: ChatSelection,
+    legacy_state: Signal<ChatState>,
+    mut history_state: Signal<ChatHistoryState>,
+    mut tab_bar: Signal<TabBar>,
+) {
+    debug_assert!(selection.session_id.is_none());
+    history_state.set(ChatHistoryState::loading_initial(None));
+    spawn(async move {
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    history_state.set(ChatHistoryState::failed(err.to_string(), None, None));
+                    return;
+                }
+            };
+
+        let resolved = client
+            .resolve_session(selection.agent_id.as_ref(), &selection.session_key)
+            .await;
+
+        // WHY: the operator may have switched conversations while the resolve
+        // was in flight; only apply the result to the session still on screen.
+        if !active_session_matches(&legacy_state.read(), &selection) {
+            return;
+        }
+
+        match resolved {
+            Ok(session) => {
+                tab_bar.write().stamp_session_identity(
+                    &selection.agent_id,
+                    &selection.session_key,
+                    session.id.clone(),
+                    Some(session.message_count),
+                );
+                let resolved_selection = ChatSelection {
+                    session_id: Some(session.id),
+                    message_count: Some(session.message_count),
+                    ..selection
+                };
+                fetch_chat_history_page(
+                    cfg,
+                    resolved_selection,
+                    None,
+                    true,
+                    legacy_state,
+                    history_state,
+                );
+            }
+            Err(err) => {
+                history_state.set(ChatHistoryState::failed(err.to_string(), None, None));
+            }
+        }
+    });
+}
+
 /// Chat view with virtualized scrolling, markdown rendering, and agent switching.
 #[component]
 pub(crate) fn Chat() -> Element {
     let mut legacy_state = use_signal(ChatState::default);
-    let mut history_state = use_signal(ChatHistoryState::default);
+    let history_state = use_signal(ChatHistoryState::default);
     let mut input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
     let config: Signal<ConnectionConfig> = use_context();
@@ -529,10 +576,50 @@ pub(crate) fn Chat() -> Element {
                     history_state,
                 );
             } else {
-                history_state.set(ChatHistoryState::default());
+                resolve_and_fetch_history(
+                    config.read().clone(),
+                    selection,
+                    legacy_state,
+                    history_state,
+                    tab_bar,
+                );
             }
         }
         pending_chat_selection.set(None);
+    });
+
+    // WHY: entering a nous's chat from the sidebar (or landing on Chat with an
+    // active agent and no explicit session pick) must open that nous's one
+    // ongoing conversation, not an empty pane. Drive the canonical selection
+    // through the same pending-selection path the pickers use; the server
+    // resolves the stable per-nous key to the durable session.
+    let mut driven_canonical = use_signal(|| None::<(skene::id::ApiNousId, String)>);
+    use_effect(move || {
+        if pending_chat_selection.read().is_some() {
+            return;
+        }
+        let Some(agent_id) = agent_store.read().active_id.clone() else {
+            return;
+        };
+        let canonical_key = resolve_chat_session_key(&agent_id, None);
+        {
+            let state = legacy_state.read();
+            let showing_canonical = state.agent_id.as_ref() == Some(&agent_id)
+                && state.session_key.as_deref() == Some(canonical_key.as_str());
+            if showing_canonical {
+                return;
+            }
+        }
+        if driven_canonical.read().as_ref() == Some(&(agent_id.clone(), canonical_key.clone())) {
+            return;
+        }
+        driven_canonical.set(Some((agent_id.clone(), canonical_key)));
+        let title = agent_store
+            .read()
+            .get(&agent_id)
+            .map(|r| r.display_name().to_string())
+            .unwrap_or_else(|| agent_id.to_string());
+        pending_chat_selection.set(Some(canonical_agent_selection(&agent_id, title)));
     });
 
     let active_nous_id = agent_store.read().active_id.clone();

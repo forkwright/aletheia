@@ -1,9 +1,7 @@
 //! Verification view: goal-backward requirement verification results.
 
 use dioxus::prelude::*;
-use skene::api::routes::planning::{project_verification_refresh_url, project_verification_url};
 
-use crate::api::client::authenticated_client;
 use crate::components::coverage_bar::{CoverageBar, coverage_color};
 use crate::state::connection::ConnectionConfig;
 use crate::state::toasts::{ToastSeverity, ToastStore};
@@ -156,38 +154,27 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    fetch_state.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let url = project_verification_url(&cfg.server_url, &pid);
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<VerificationResult>().await {
-                        Ok(result) => {
-                            fetch_state.set(FetchState::Loaded(VerificationStore {
-                                result: Some(result),
-                            }));
-                        }
-                        Err(e) => {
-                            fetch_state.set(FetchState::Error(format!("parse error: {e}")));
-                        }
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        fetch_state.set(FetchState::Error(err.to_string()));
+                        return;
                     }
+                };
+
+            match client.project_verification(&pid).await {
+                Ok(result) => {
+                    fetch_state.set(FetchState::Loaded(VerificationStore {
+                        result: Some(result),
+                    }));
                 }
                 // WHY: 404 means verification endpoint not yet on this pylon version.
-                Ok(resp) if resp.status().as_u16() == 404 => {
+                Err(err) if err.status_code() == Some(404) => {
                     fetch_state.set(FetchState::NotAvailable);
                 }
-                Ok(resp) => {
-                    let message = crate::api::error::decode_error_response(resp).await;
-                    fetch_state.set(FetchState::Error(message));
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
+                Err(err) => {
+                    fetch_state.set(FetchState::Error(err.to_string()));
                 }
             }
         });
@@ -201,52 +188,37 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
         reverifying.set(true);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    if let Some(mut store) = toast_store {
-                        store.write().push_full(
-                            ToastSeverity::Error,
-                            "Re-verify failed".to_owned(),
-                            Some(err.to_string()),
-                            None,
-                        );
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        if let Some(mut store) = toast_store {
+                            store.write().push_full(
+                                ToastSeverity::Error,
+                                "Re-verify failed".to_owned(),
+                                Some(err.to_string()),
+                                None,
+                            );
+                        }
+                        reverifying.set(false);
+                        return;
                     }
-                    reverifying.set(false);
-                    return;
-                }
-            };
-            let url = project_verification_refresh_url(&cfg.server_url, &pid);
+                };
 
-            match client.post(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
+            match client.refresh_project_verification(&pid).await {
+                Ok(_) => {
                     reverifying.set(false);
                     let next = *fetch_trigger.peek() + 1;
                     fetch_trigger.set(next);
                 }
-                Ok(resp) => {
-                    let status = resp.status();
-                    tracing::warn!("re-verify returned {status}");
+                Err(err) => {
+                    tracing::warn!("re-verify error: {err}");
                     if let Some(mut store) = toast_store {
-                        let (title, body) = reverify_failure_message(status.as_u16());
+                        let (title, body) = reverify_failure_message(&err);
                         store.write().push_full(
                             ToastSeverity::Error,
                             title.to_owned(),
-                            Some(body.to_owned()),
-                            None,
-                        );
-                    }
-                    reverifying.set(false);
-                }
-                Err(e) => {
-                    tracing::warn!("re-verify error: {e}");
-                    if let Some(mut store) = toast_store {
-                        store.write().push_full(
-                            ToastSeverity::Error,
-                            "Re-verify failed".to_owned(),
-                            Some(format!(
-                                "Could not reach the verification refresh endpoint: {e}"
-                            )),
+                            Some(body),
                             None,
                         );
                     }
@@ -417,8 +389,10 @@ fn req_status_color(status: crate::state::verification::VerificationStatus) -> &
     match status {
         VerificationStatus::Verified => "var(--status-success)",
         VerificationStatus::PartiallyVerified => "var(--status-warning)",
-        VerificationStatus::Unverified => "var(--text-secondary)",
         VerificationStatus::Failed => "var(--status-error)",
+        // WHY: skene's `VerificationStatus` is `#[non_exhaustive]`; an
+        // unrecognized future variant renders the same as `Unverified`.
+        VerificationStatus::Unverified | _ => "var(--text-secondary)",
     }
 }
 
@@ -429,18 +403,33 @@ fn req_status_label(status: crate::state::verification::VerificationStatus) -> &
         VerificationStatus::PartiallyVerified => "Partial",
         VerificationStatus::Unverified => "Unverified",
         VerificationStatus::Failed => "Failed",
+        _ => "Unknown",
     }
 }
 
-fn reverify_failure_message(status: u16) -> (&'static str, &'static str) {
-    match status {
-        404 | 501 => (
+/// Render a re-verify failure for the toast surface.
+///
+/// WHY(#4565): `skene::api::error::ApiError` folds "server responded
+/// non-2xx" and "never got a response" into distinct variants -- a 404/501
+/// (endpoint not on this pylon version yet) gets the same "unavailable"
+/// copy it always has, any other HTTP status gets the generic failure
+/// copy, and a transport-level error (no `status_code()`) keeps the raw
+/// error text so the operator isn't left guessing why the request never
+/// landed.
+fn reverify_failure_message(err: &skene::api::error::ApiError) -> (&'static str, String) {
+    match err.status_code() {
+        Some(404 | 501) => (
             "Re-verify unavailable",
-            "This pylon instance does not expose the verification refresh endpoint.",
+            "This pylon instance does not expose the verification refresh endpoint.".to_string(),
         ),
-        _ => (
+        Some(_) => (
             "Re-verify failed",
-            "The verification refresh request returned an error. Try Refresh or check the server logs.",
+            "The verification refresh request returned an error. Try Refresh or check the server logs."
+                .to_string(),
+        ),
+        None => (
+            "Re-verify failed",
+            format!("Could not reach the verification refresh endpoint: {err}"),
         ),
     }
 }
@@ -468,23 +457,44 @@ fn redaction_label(redacted: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use skene::api::error::ApiError;
+
     use super::{redaction_label, reverify_failure_message, verification_privacy};
+
+    fn server_error(status: u16) -> ApiError {
+        ApiError::Server {
+            operation: "test",
+            status,
+            message: "boom".to_string(),
+        }
+    }
 
     #[test]
     fn reverify_failure_message_marks_missing_endpoint_unavailable() {
-        let (not_found_title, not_found_body) = reverify_failure_message(404);
+        let (not_found_title, not_found_body) = reverify_failure_message(&server_error(404));
         assert_eq!(not_found_title, "Re-verify unavailable");
         assert!(not_found_body.contains("does not expose"));
 
-        let (not_implemented_title, _) = reverify_failure_message(501);
+        let (not_implemented_title, _) = reverify_failure_message(&server_error(501));
         assert_eq!(not_implemented_title, "Re-verify unavailable");
     }
 
     #[test]
     fn reverify_failure_message_marks_other_statuses_failed() {
-        let (title, body) = reverify_failure_message(500);
+        let (title, body) = reverify_failure_message(&server_error(500));
         assert_eq!(title, "Re-verify failed");
         assert!(body.contains("returned an error"));
+    }
+
+    #[test]
+    fn reverify_failure_message_keeps_the_raw_error_for_transport_failures() {
+        let err = ApiError::Auth;
+        let (title, body) = reverify_failure_message(&err);
+        assert_eq!(title, "Re-verify failed");
+        assert!(
+            body.contains("Could not reach"),
+            "a status-less error must keep its own detail, not the generic status copy"
+        );
     }
 
     #[test]

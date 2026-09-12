@@ -5,12 +5,10 @@ mod keymap;
 mod registry;
 
 pub(crate) use helpers::{context_label, current_contexts, grouped_keybindings, status_bar_hints};
-pub(crate) use keymap::KeyMap;
+pub(crate) use keymap::{Action, KeyMap};
 
 #[cfg(test)]
 pub(crate) use helpers::parse_key_combo;
-#[cfg(test)]
-pub(crate) use keymap::Action;
 #[cfg(test)]
 pub(crate) use registry::{KeyContext, all_keybindings};
 
@@ -54,7 +52,6 @@ mod tests {
             KeyContext::Input,
             KeyContext::Overlay,
             KeyContext::ToolApproval,
-            KeyContext::PlanApproval,
             KeyContext::Settings,
         ];
         for ctx in contexts {
@@ -119,6 +116,7 @@ mod tests {
     fn current_contexts_tool_approval_overlay() {
         let mut app = test_app();
         app.layout.overlay = Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+            session_id: Some("s1".into()),
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "test_tool".to_string(),
@@ -158,7 +156,7 @@ mod tests {
     #[test]
     fn context_label_overlay_variants() {
         let mut app = test_app();
-        app.layout.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         // Help overlay is transparent: shows underlying context
         assert_eq!(context_label(&app), "Chat");
 
@@ -376,6 +374,59 @@ mod tests {
                 "action {action:?} is bound to {combos:?} by the default keymap but has \
                  no registry entry -- the binding is invisible in Help/F1 and the status bar"
             );
+        }
+    }
+
+    /// Regression for #7220: `crossterm`'s legacy (non-Kitty-protocol) raw
+    /// terminal parser decodes a handful of control bytes as a *named* key
+    /// before it ever considers them a `(CONTROL, Char(_))` combo --
+    /// `crossterm-0.29.0/src/event/sys/unix/parse.rs` matches `b'\r'` (0x0D),
+    /// `b'\t'` (0x09), `b'\x1B'` (0x1B) and `b'\x7F'` (0x7F) as `Enter`/`Tab`/
+    /// `Esc`/`Backspace` ahead of the generic `0x01..=0x1A` control-letter
+    /// range. A default binding on `Ctrl+<letter>` whose control byte lands in
+    /// that reserved set (M -> CR, I -> HT) can *never* be distinguished from
+    /// the named key in a standard terminal: koilon never enables the Kitty
+    /// keyboard-enhancement protocol that would disambiguate them. This was
+    /// exactly the #7220 bug -- `Ctrl+M` never fired (Enter's own arm
+    /// intercepted the byte first) and `Ctrl+I` silently fell through to
+    /// plain Tab's `NextAgent` binding, switching the focused agent as a side
+    /// effect of trying to open System Status.
+    #[test]
+    fn no_registered_control_chord_aliases_a_reserved_key() {
+        /// Bytes crossterm's raw-mode parser reports as a named key
+        /// (Enter/Tab/Escape/Backspace) rather than `(CONTROL, Char(_))`,
+        /// even though they fall within the 7-bit control-code range that
+        /// `Ctrl+<letter>` combos otherwise decode into.
+        const RESERVED_CONTROL_BYTES: [u32; 4] = [
+            0x09, // HT  -- Ctrl+I, aliases Tab
+            0x0D, // CR  -- Ctrl+M, aliases Enter
+            0x1B, // ESC -- Ctrl+[, aliases Escape
+            0x7F, // DEL -- aliases Backspace
+        ];
+
+        for (action, keys) in keymap::KeyMap::defaults() {
+            for (modifiers, code) in keys {
+                if modifiers != KeyModifiers::CONTROL {
+                    continue;
+                }
+                let KeyCode::Char(c) = code else { continue };
+                if !c.is_ascii_lowercase() {
+                    continue;
+                }
+                // WHY: crossterm's unix parser reports Ctrl+<letter> as
+                // `(c - 0x1 + b'a') as char` for raw bytes 0x01..=0x1A -- the
+                // inverse gives the raw control byte a real terminal would
+                // send for this combo. Widening to u32 (not `as u8`) avoids
+                // a truncating cast for a value that's provably 1..=26.
+                let control_byte = u32::from(c) - u32::from(b'a') + 1;
+                assert!(
+                    !RESERVED_CONTROL_BYTES.contains(&control_byte),
+                    "action {action:?} is bound to Ctrl+{c} (raw byte {control_byte:#04x}), \
+                     which a standard terminal reports identically to a named key \
+                     (Enter/Tab/Escape/Backspace) -- this chord can never fire as documented; \
+                     pick a collision-free default (an F-key, like OpenHelp's F1, or a `:` command)"
+                );
+            }
         }
     }
 }

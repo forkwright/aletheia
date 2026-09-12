@@ -17,6 +17,7 @@ use tracing::Instrument as _;
 
 use koina::id::SessionId;
 use mneme::types::parse_session_or_agent_id;
+use nous::config::ModelRole;
 use organon::surface::{SurfaceAvailability, SurfaceInputs};
 use organon::types::BlackboardViewer;
 use symbolon::types::Role;
@@ -592,7 +593,10 @@ impl DiaporeiaServer {
                 id: params.nous_id.clone(),
             })
             .map_err(rmcp::ErrorData::from)?;
-        let model = nous_config.generation.model.clone();
+        let model = nous_config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned();
 
         // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
         // 'invalid SessionId' when nous parsed the stored ID back (#2349).

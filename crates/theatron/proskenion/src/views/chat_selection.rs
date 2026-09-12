@@ -1,6 +1,6 @@
 //! Shared chat activation helpers for cross-view navigation.
 
-use skene::api::types::{HistoryMessage, HistoryResponse};
+use skene::api::types::HistoryMessage;
 use skene::id::ApiNousId;
 
 use crate::components::chat::ChatState;
@@ -23,6 +23,20 @@ pub(crate) struct ChatActivation {
 /// active agent instead of sharing one process-wide fallback.
 pub(crate) fn resolve_chat_session_key(nous_id: &ApiNousId, session_key: Option<&str>) -> String {
     session_key.map_or_else(|| format!("{nous_id}:default"), str::to_owned)
+}
+
+/// Build the selection for a nous's canonical ongoing conversation — the
+/// single continuous chat the desktop app attaches to when the operator
+/// enters a nous without picking a specific session.
+///
+/// The returned selection has no server session id yet; the caller resolves
+/// it through `POST /api/v1/sessions/resolve` before fetching history.
+pub(crate) fn canonical_agent_selection(agent_id: &ApiNousId, title: String) -> ChatSelection {
+    ChatSelection::new(
+        agent_id.clone(),
+        resolve_chat_session_key(agent_id, None),
+        title,
+    )
 }
 
 pub(crate) fn activate_chat_selection(
@@ -85,18 +99,6 @@ pub(crate) fn activate_chat_selection(
     ChatActivation { session_changed }
 }
 
-pub(crate) fn parse_history_messages(text: &str) -> Result<Vec<HistoryMessage>, String> {
-    match serde_json::from_str::<HistoryResponse>(text) {
-        Ok(wrapper) => Ok(wrapper.messages),
-        Err(wrapper_err) => match serde_json::from_str::<Vec<HistoryMessage>>(text) {
-            Ok(messages) => Ok(messages),
-            Err(list_err) => Err(format!(
-                "parse history response: wrapper error: {wrapper_err}; list error: {list_err}"
-            )),
-        },
-    }
-}
-
 pub(crate) fn history_messages_to_legacy(messages: &[HistoryMessage]) -> Vec<LegacyChatMessage> {
     messages
         .iter()
@@ -157,7 +159,7 @@ fn history_content_to_string(content: Option<&serde_json::Value>) -> String {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
-    use skene::api::types::Agent;
+    use skene::api::types::{Agent, HistoryResponse};
     use skene::id::{ApiNousId, ApiSessionId};
 
     use super::*;
@@ -169,6 +171,8 @@ mod tests {
             model: None,
             emoji: None,
             status: None,
+            tools: Vec::new(),
+            enabled: None,
         }
     }
 
@@ -203,6 +207,19 @@ mod tests {
         let key = resolve_chat_session_key(&ApiNousId::from("syn"), Some("incident-review"));
 
         assert_eq!(key, "incident-review");
+    }
+
+    #[test]
+    fn canonical_agent_selection_uses_stable_default_key_without_session_id() {
+        let selection = canonical_agent_selection(&ApiNousId::from("syn"), "Syn".to_string());
+
+        assert_eq!(selection.agent_id.as_ref(), "syn");
+        assert_eq!(selection.session_key, "syn:default");
+        assert!(
+            selection.session_id.is_none(),
+            "canonical selection carries no server id until resolve answers"
+        );
+        assert_eq!(selection.title, "Syn");
     }
 
     #[test]
@@ -349,7 +366,9 @@ mod tests {
             &mut tab_bar,
             &mut window_state,
         );
-        let messages = parse_history_messages(json).unwrap();
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
         chat_state.messages = history_messages_to_legacy(&messages);
 
         assert_eq!(oldest_history_seq(&messages), Some(1));

@@ -55,6 +55,8 @@
 #[cfg(feature = "mneme-engine")]
 mod causal;
 #[cfg(feature = "mneme-engine")]
+mod consolidation_commit;
+#[cfg(feature = "mneme-engine")]
 pub(crate) mod derived_rules;
 #[cfg(feature = "mneme-engine")]
 mod entity;
@@ -95,6 +97,12 @@ pub use marshal::scoped_visibility_rules;
 /// be named outside this module.
 #[cfg(feature = "mneme-engine")]
 pub(crate) use persist_batch::FactInsert;
+
+/// Failure-injection seam and write-step labels for the consolidation
+/// commit's atomicity tests (#5311), re-exported so consolidation engine
+/// tests can arm each write step.
+#[cfg(all(test, feature = "mneme-engine"))]
+pub(crate) use consolidation_commit::{WriteStep, failpoint};
 
 #[cfg(test)]
 mod tests;
@@ -659,6 +667,18 @@ const FJALL_INTERNAL_DIR_NAME: &str = "keyspaces";
 /// shared definition existed. This function is that definition; every
 /// current and future caller should ask it rather than re-deriving the
 /// answer from a naming convention.
+///
+/// [`KnowledgeStore::protect_pre_migration`] no longer places a snapshot as
+/// a root-level sibling at all (aletheia#7162 —
+/// [`KnowledgeStore::pre_migration_snapshot_dir`] nests it under
+/// `.pre-migration-snapshots` instead), so the scenario above can no
+/// longer occur for a snapshot this module takes. This predicate stays the
+/// required check regardless: it is the one place a synthetic root-level
+/// `*.pre-migration-snapshot` sibling (e.g. one dragged forward from an
+/// older on-disk layout, or fabricated in a test — see
+/// `aletheia::commands::memory::tests::recovery_store_paths_excludes_snapshot_between_two_real_cohorts`)
+/// is still refused correctly rather than relying on the new placement
+/// alone.
 #[cfg(feature = "storage-fjall")]
 #[must_use]
 pub fn is_cohort_dir(path: &std::path::Path) -> bool {
@@ -995,6 +1015,34 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    /// Where [`Self::protect_pre_migration`] puts the snapshot for the
+    /// cohort at `path`.
+    ///
+    /// aletheia#7162: the prior scheme (`path.with_extension(...)`) put the
+    /// snapshot at `<root>/<cohort>.pre-migration-snapshot` — a *sibling*
+    /// of `path` inside the very root that every cohort-directory walker
+    /// (`is_cohort_dir`, `aletheia memory reembed`, the recall recovery
+    /// walk) enumerates. That the walk still skips it today depends
+    /// entirely on every such walker remembering to call `is_cohort_dir`
+    /// / `is_snapshot_dir` rather than deriving cohort-ness some other way
+    /// (exactly the drift two independently written enumerators already
+    /// hit once, per `is_cohort_dir`'s doc comment) — a fragile invariant
+    /// to lean on for the one copy standing between an operator and their
+    /// only pre-migration rollback. Nesting every snapshot instead under
+    /// one nested, non-cohort-shaped container (`<root>/.pre-migration-snapshots/<cohort>`)
+    /// removes the hazard structurally: `.pre-migration-snapshots` itself
+    /// carries no fjall `version` marker directly inside it, so it fails
+    /// *any* reasonable cohort predicate — present or future — without
+    /// that predicate needing to know this module exists.
+    #[cfg(feature = "storage-fjall")]
+    fn pre_migration_snapshot_dir(path: &std::path::Path) -> std::path::PathBuf {
+        let cohort_name = path.file_name().unwrap_or_default();
+        path.parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join(".pre-migration-snapshots")
+            .join(cohort_name)
+    }
+
     /// Take a verified pre-migration snapshot of `path` if — and only if —
     /// a schema migration might actually run against it this boot
     /// (aletheia#5779 F3: the prior shape paid a full store copy plus full
@@ -1021,7 +1069,7 @@ impl KnowledgeStore {
         if probe == MigrationProbe::NoneNeeded {
             return Ok(None);
         }
-        let snapshot_dir = path.with_extension("pre-migration-snapshot");
+        let snapshot_dir = Self::pre_migration_snapshot_dir(path);
         let path = crate::knowledge_store::snapshot::pre_migration_snapshot(path, &snapshot_dir)?;
         Ok(Some(TakenSnapshot {
             path,

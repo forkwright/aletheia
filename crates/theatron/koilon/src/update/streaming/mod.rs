@@ -1,6 +1,6 @@
 use skene::text::append_terminal_notice;
 
-use crate::api::types::{Plan, TurnOutcome};
+use crate::api::types::TurnOutcome;
 use crate::app::App;
 use crate::id::{ApiNousId, ToolId, TurnId};
 use crate::msg::ErrorToast;
@@ -8,8 +8,7 @@ use crate::sanitize::sanitize_for_display;
 use crate::state::ops::OpsToolStatus;
 use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{
-    ActiveTool, AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    ToolApprovalOverlay, ToolCallInfo,
+    ActiveTool, AgentStatus, ChatMessage, Overlay, ToolApprovalOverlay, ToolCallInfo,
 };
 
 /// Context window size in tokens for the given model.
@@ -252,6 +251,7 @@ pub(crate) fn handle_stream_tool_approval_required(
     }
 
     app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+        session_id: app.dashboard.focused_session_id.clone(),
         turn_id,
         tool_id,
         tool_name: sanitize_for_display(&tool_name).into_owned(),
@@ -267,48 +267,6 @@ pub(crate) fn handle_stream_tool_approval_resolved(app: &mut App) {
     if app.is_tool_approval_overlay() {
         app.layout.overlay = None;
     }
-}
-
-#[tracing::instrument(skip_all, fields(step_id))]
-pub(crate) fn handle_stream_plan_step_start(app: &mut App, step_id: u32) {
-    app.layout
-        .ops
-        .push_tool_start(format!("plan step {step_id}"), None);
-}
-
-#[tracing::instrument(skip_all, fields(step_id, %status))]
-pub(crate) fn handle_stream_plan_step_complete(app: &mut App, step_id: u32, status: String) {
-    let name = format!("plan step {step_id}");
-    let is_error = matches!(status.as_str(), "failed" | "error");
-    app.layout.ops.complete_tool(&name, is_error, 0, None);
-}
-
-#[tracing::instrument(skip_all, fields(%status))]
-pub(crate) fn handle_stream_plan_complete(app: &mut App, status: String) {
-    let is_error = matches!(status.as_str(), "failed" | "error");
-    let label = format!("plan: {status}");
-    app.layout.ops.push_tool_start(label.clone(), None);
-    app.layout.ops.complete_tool(&label, is_error, 0, None);
-}
-
-#[tracing::instrument(skip_all)]
-// SAFETY: sanitized at ingestion: plan step labels and roles from stream API.
-pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
-    app.layout.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
-        total_cost_cents: plan.total_estimated_cost_cents,
-        cursor: 0,
-        status: crate::state::ControlMutationStatus::Idle,
-        steps: plan
-            .steps
-            .into_iter()
-            .map(|s| PlanStepApproval {
-                id: s.id,
-                label: sanitize_for_display(&s.label).into_owned(),
-                role: sanitize_for_display(&s.role).into_owned(),
-                checked: true,
-            })
-            .collect(),
-    }));
 }
 
 #[tracing::instrument(skip_all)]
@@ -382,8 +340,8 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
 }
 
-// WHY: Mirrors the completion path handle_stream_tool_result/handle_stream_plan_complete
-// already use (OpsState::complete_tool / complete_tool_by_id) so error/abort paths leave
+// WHY: Mirrors the completion path handle_stream_tool_result already uses
+// (OpsState::complete_tool / complete_tool_by_id) so error/abort paths leave
 // a truthful terminal state instead of a stale "running" spinner in the ops pane.
 fn fail_running_ops_tools(app: &mut App, reason: &str) {
     let running: Vec<(Option<ToolId>, String, u64)> = app

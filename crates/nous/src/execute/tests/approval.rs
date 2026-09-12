@@ -12,10 +12,11 @@ use organon::types::Reversibility;
 use tokio::sync::mpsc;
 
 use super::*;
-use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
+use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate, ApprovalPostures};
 use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
 use crate::pipeline::LoopDetector;
 use crate::stream::TurnStreamEvent;
+use taxis::config::ApprovalPosture;
 
 fn allow_active_for_tests(
     registry: &ToolRegistry,
@@ -299,15 +300,13 @@ async fn mandatory_without_gate_defaults_to_denial() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    // approval_required → approval_resolved(denied) → tool_result(denial)
-    assert_event_kinds(
-        &events,
-        &["approval_required", "approval_resolved", "tool_result"],
-    );
-    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+    // WHY(#7252): no gate means no approver exists, so no `approval_required`
+    // request is ever emitted — the typed denial is the whole signal.
+    assert_event_kinds(&events, &["approval_resolved", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "no_gate_denied");
     } else {
-        panic!("expected ToolApprovalResolved at idx 1");
+        panic!("expected ToolApprovalResolved at idx 0");
     }
 }
 
@@ -359,14 +358,12 @@ async fn required_without_gate_defaults_to_denial() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    assert_event_kinds(
-        &events,
-        &["approval_required", "approval_resolved", "tool_result"],
-    );
-    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+    // WHY(#7252): no gate ⇒ no request event — see mandatory_without_gate.
+    assert_event_kinds(&events, &["approval_resolved", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "no_gate_denied");
     } else {
-        panic!("expected ToolApprovalResolved at idx 1");
+        panic!("expected ToolApprovalResolved at idx 0");
     }
 }
 
@@ -412,14 +409,12 @@ async fn sessions_spawn_without_gate_defaults_to_denial() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    assert_event_kinds(
-        &events,
-        &["approval_required", "approval_resolved", "tool_result"],
-    );
-    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+    // WHY(#7252): no gate ⇒ no request event — see mandatory_without_gate.
+    assert_event_kinds(&events, &["approval_resolved", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "no_gate_denied");
     } else {
-        panic!("expected ToolApprovalResolved at idx 1");
+        panic!("expected ToolApprovalResolved at idx 0");
     }
 }
 
@@ -550,6 +545,60 @@ async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record()
     assert_eq!(batch_calls[0].input, streaming_calls[0].input);
     assert_eq!(batch_calls[0].is_error, streaming_calls[0].is_error);
     assert_eq!(batch_calls[0].result, streaming_calls[0].result);
+}
+
+/// WHY(#7252): the daemon's turn shape — no stream, no gate (`NousMessage::Turn`
+/// carries neither). An approval-required call must produce the typed
+/// `no_gate_denied` refusal as its whole signal: no request event can exist
+/// because no approver does, and the refusal rides back into the turn so the
+/// agent can adapt instead of the call dangling.
+#[tokio::test]
+async fn daemon_shaped_turn_denies_without_any_approval_request() {
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "exec".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut loop_detector = LoopDetector::new(3);
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        None,
+        None,
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    assert_eq!(result.blocks.len(), 1);
+    assert_eq!(all_calls.len(), 1);
+    assert!(all_calls[0].is_error, "no-gate mandatory call must deny");
+    assert_eq!(
+        all_calls[0].approval.as_deref(),
+        Some("no_gate_denied"),
+        "the typed refusal must be recorded on the call"
+    );
+    assert!(
+        all_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("approval policy"),
+        "the refusal text must reach the turn, got: {:?}",
+        all_calls[0].result
+    );
 }
 
 #[tokio::test]
@@ -683,4 +732,259 @@ async fn gate_timeout_denies_mandatory_call() {
     } else {
         panic!("expected approval_resolved at idx 1");
     }
+}
+
+// ── Config-driven approval posture (toolApproval*Policy) ────────────────
+//
+// `dispatch_tools` always passes `ApprovalPostures::default()`; exercising
+// the relaxed posture requires the real dispatch boundary, so these tests
+// call `dispatch_tool_items` directly with an explicit posture pair.
+async fn dispatch_with_postures(
+    tool_uses: &[(String, String, serde_json::Value)],
+    tools: &ToolRegistry,
+    approval_gate: Option<&ApprovalGate>,
+    postures: ApprovalPostures,
+    policy: &ToolDispatchPolicy,
+    all_calls: &mut Vec<crate::pipeline::ToolCall>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+) -> crate::execute::dispatch::DispatchResult {
+    let items: Vec<_> = tool_uses
+        .iter()
+        .cloned()
+        .map(crate::execute::dispatch::ToolDispatchItem::from)
+        .collect();
+    let identity = crate::stream::TurnEventIdentity {
+        turn_id: koina::ulid::Ulid::new(),
+        session_id: "test-session".to_owned(),
+        request_id: None,
+        turn_number: 0,
+        client_turn_id: None,
+    };
+    let signer = organon::receipts::ReceiptSigner::new_session();
+    let mut loop_detector = LoopDetector::new(3);
+    crate::execute::dispatch::dispatch_tool_items(
+        &items,
+        tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        all_calls,
+        1,
+        stream_tx,
+        approval_gate,
+        postures,
+        policy,
+        0,
+        &signer,
+        None,
+        &identity,
+    )
+    .await
+    .expect("dispatch ok")
+}
+
+#[tokio::test]
+async fn policy_auto_approve_executes_mandatory_tool_without_gate() {
+    // The daemon/REST shape: no approval gate is attached to the turn. With
+    // the mandatory tier configured `auto_approve`, a critical-risk tool must
+    // execute instead of failing closed — and the execution must still carry
+    // its audit record.
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+    let (event_tx, mut event_rx) = mpsc::channel::<TurnStreamEvent>(64);
+    let postures = ApprovalPostures {
+        required: ApprovalPosture::Gate,
+        mandatory: ApprovalPosture::AutoApprove,
+    };
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "exec".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_with_postures(
+        &tool_uses,
+        &tools,
+        None,
+        postures,
+        &policy,
+        &mut all_calls,
+        Some(&event_tx),
+    )
+    .await;
+
+    assert_eq!(result.blocks.len(), 1);
+    assert_eq!(all_calls.len(), 1);
+    assert!(
+        !all_calls[0].is_error,
+        "auto-approved mandatory call must execute, got: {:?}",
+        all_calls[0].result
+    );
+    assert!(
+        all_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("executed: exec"),
+        "the real executor must have run: {:?}",
+        all_calls[0].result
+    );
+    assert!(
+        result.unexecuted.is_empty(),
+        "an auto-approved call must not be reported as unexecuted"
+    );
+
+    // The audit trail: durable approval outcome + HMAC receipt on the
+    // persisted tool call.
+    assert_eq!(
+        all_calls[0].approval.as_deref(),
+        Some("policy_auto_approved"),
+        "the durable record must mark this call as policy-auto-approved"
+    );
+    assert!(
+        all_calls[0].receipt.is_some(),
+        "auto-approved execution must still be attested by a receipt"
+    );
+
+    drop(event_tx);
+    let events = drain_events(&mut event_rx);
+    // No approval_required: there was never a decision to ask for. The
+    // resolution is still surfaced so a watching client sees the policy
+    // outcome rather than silence.
+    assert_event_kinds(&events, &["approval_resolved", "tool_start", "tool_result"]);
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
+        assert_eq!(decision, "policy_auto_approved");
+    } else {
+        panic!("expected policy_auto_approved resolution");
+    }
+}
+
+#[tokio::test]
+async fn policy_auto_approve_executes_required_tool_without_gate() {
+    let tools = make_registry_rev("write_file", Reversibility::PartiallyReversible);
+    let postures = ApprovalPostures {
+        required: ApprovalPosture::AutoApprove,
+        mandatory: ApprovalPosture::Gate,
+    };
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "write_file".to_owned(),
+        serde_json::json!({"path": "notes.md"}),
+    )];
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_with_postures(
+        &tool_uses,
+        &tools,
+        None,
+        postures,
+        &policy,
+        &mut all_calls,
+        None,
+    )
+    .await;
+
+    assert_eq!(all_calls.len(), 1);
+    assert!(
+        !all_calls[0].is_error,
+        "auto-approved required call must execute"
+    );
+    assert_eq!(
+        all_calls[0].approval.as_deref(),
+        Some("policy_auto_approved")
+    );
+    assert!(result.unexecuted.is_empty());
+}
+
+#[tokio::test]
+async fn required_tier_relaxation_does_not_relax_mandatory() {
+    // Per-tier independence: relaxing the required tier must leave a
+    // mandatory call fail-closed when no gate is wired.
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+    let postures = ApprovalPostures {
+        required: ApprovalPosture::AutoApprove,
+        mandatory: ApprovalPosture::Gate,
+    };
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "exec".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_with_postures(
+        &tool_uses,
+        &tools,
+        None,
+        postures,
+        &policy,
+        &mut all_calls,
+        None,
+    )
+    .await;
+
+    assert_eq!(all_calls.len(), 1);
+    assert!(
+        all_calls[0].is_error,
+        "a gated mandatory call with no gate must still deny"
+    );
+    assert_eq!(
+        all_calls[0].approval.as_deref(),
+        Some("no_gate_denied"),
+        "the denial must record the no-gate outcome, not the posture"
+    );
+    assert_eq!(result.unexecuted, vec!["tool-1".to_owned()]);
+}
+
+#[tokio::test]
+async fn auto_approve_short_circuits_even_when_gate_wired() {
+    // The streaming/desktop shape: a gate IS attached, but the configured
+    // posture is consulted first — the gate must never be awaited. A gate
+    // that no one answers would deny after its timeout; the auto path must
+    // resolve immediately without consulting it.
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+    let (event_tx, mut event_rx) = mpsc::channel::<TurnStreamEvent>(64);
+    let (_decision_tx, decision_rx) = mpsc::channel::<ApprovalDecision>(4);
+    let gate = ApprovalGate::new(decision_rx, Duration::from_millis(50));
+    let postures = ApprovalPostures {
+        required: ApprovalPosture::Gate,
+        mandatory: ApprovalPosture::AutoApprove,
+    };
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "exec".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_with_postures(
+        &tool_uses,
+        &tools,
+        Some(&gate),
+        postures,
+        &policy,
+        &mut all_calls,
+        Some(&event_tx),
+    )
+    .await;
+
+    assert!(
+        !all_calls[0].is_error,
+        "auto-approved call must execute without awaiting the gate"
+    );
+    assert_eq!(
+        all_calls[0].approval.as_deref(),
+        Some("policy_auto_approved")
+    );
+
+    drop(event_tx);
+    let events = drain_events(&mut event_rx);
+    assert_event_kinds(&events, &["approval_resolved", "tool_start", "tool_result"]);
+    assert!(
+        matches!(result.blocks.len(), 1),
+        "one tool result block expected"
+    );
 }

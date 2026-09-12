@@ -2,6 +2,8 @@ use crate::app::{self, App};
 use crate::command::build_suggestions;
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
+use crate::state::memory::MemoryTab;
+use crate::state::view_stack::View;
 use crate::state::{Overlay, SessionPickerOverlay};
 
 #[tracing::instrument(skip_all)]
@@ -246,7 +248,7 @@ pub(crate) async fn execute_command(app: &mut App) {
     match cmd_name {
         "quit" | "q" => app.should_quit = true,
         "help" | "?" => {
-            app.layout.overlay = Some(Overlay::Help);
+            app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         }
         "agents" | "a" => {
             app.layout.overlay = Some(Overlay::AgentPicker { cursor: 0 });
@@ -295,14 +297,11 @@ pub(crate) async fn execute_command(app: &mut App) {
             app.connection.streaming_tool_calls.clear();
             app.scroll_to_bottom();
         }
-        "compact" => {
-            execute_compact(app);
-        }
         "recall" | "r" => {
             if args.is_empty() {
                 app.viewport.error_toast = Some(ErrorToast::new("Usage: :recall <query>".into()));
             } else {
-                execute_recall(app, args);
+                execute_recall(app, args).await;
             }
         }
         "model" => {
@@ -416,16 +415,20 @@ fn execute_model(app: &mut App) {
     }
 }
 
-fn execute_compact(app: &mut App) {
-    app.viewport.error_toast = Some(ErrorToast::new(
-        "Session distillation API not available - pending pylon support.".into(),
-    ));
-}
-
-fn execute_recall(app: &mut App, _query: &str) {
-    app.viewport.error_toast = Some(ErrorToast::new(
-        "Semantic recall API not available - pending pylon support.".into(),
-    ));
+/// `:recall <query>` (#7197): run the same knowledge search the memory
+/// inspector's `/` overlay runs (`update::memory::run_search`), opening the
+/// inspector on the Facts tab first if it is not already showing so the
+/// results this populates are visible immediately.
+async fn execute_recall(app: &mut App, query: &str) {
+    if !matches!(
+        app.layout.view_stack.current(),
+        View::MemoryInspector | View::FactDetail { .. } | View::EntityDetail { .. }
+    ) {
+        super::memory::handle_open(app);
+    }
+    app.layout.memory.tab = MemoryTab::Facts;
+    app.layout.memory.search.search_query = query.to_string();
+    super::memory::run_search(app, query).await;
 }
 
 /// Handle `:reauth <token>` (#6818): replace the running session's
@@ -896,6 +899,7 @@ mod tests {
                 "approval": "auto",
                 "createdAt": "2026-01-01T00:00:00Z"
             }],
+            "toolAuditCorruptCount": 0,
             "turnAttempts": []
         }"#;
 
@@ -1070,6 +1074,76 @@ mod tests {
             app.viewport.success_toast.is_some(),
             "a successful retry must confirm visibly"
         );
+    }
+
+    /// Regression for #7197: `:recall <query>` previously always toasted
+    /// "Semantic recall API not available", regardless of args. Now that
+    /// `ApiClient::knowledge_search` exists, it must open the memory
+    /// inspector (if not already showing) on the Facts tab and populate
+    /// real search results.
+    #[tokio::test]
+    async fn recall_command_opens_memory_inspector_and_populates_results() {
+        let (url, _server) = routing_server(vec![(
+            "/api/v1/knowledge/search".into(),
+            r#"{"results":[{"id":"f-1","content":"hello world","confidence":0.9,"tier":"verified","fact_type":"knowledge","score":1.5}]}"#.into(),
+        )])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.interaction.command_palette.active = true;
+        app.interaction.command_palette.input = "recall hello".into();
+
+        execute_command(&mut app).await;
+
+        assert_eq!(app.layout.view_stack.current(), &View::MemoryInspector);
+        assert_eq!(app.layout.memory.tab, MemoryTab::Facts);
+        assert_eq!(app.layout.memory.search.search_results.len(), 1);
+        assert_eq!(app.layout.memory.search.search_results[0].id, "f-1");
+    }
+
+    /// `:recall` with no query must not hit the network at all -- it should
+    /// show usage and leave any existing search results untouched.
+    #[tokio::test]
+    async fn recall_command_without_args_shows_usage() {
+        let mut app = test_app();
+        app.interaction.command_palette.active = true;
+        app.interaction.command_palette.input = "recall".into();
+
+        execute_command(&mut app).await;
+
+        let toast = app
+            .viewport
+            .error_toast
+            .as_ref()
+            .map(|t| t.message.clone())
+            .unwrap_or_default();
+        assert_eq!(toast, "Usage: :recall <query>");
+    }
+
+    /// Regression for #7197: the old stub is deleted, not merely rerouted --
+    /// a search failure must surface the real error, not the previous
+    /// hard-coded "pending pylon support" text.
+    #[tokio::test]
+    async fn recall_command_search_failure_toasts_the_real_error() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.interaction.command_palette.active = true;
+        app.interaction.command_palette.input = "recall hello".into();
+
+        execute_command(&mut app).await;
+
+        let toast = app
+            .viewport
+            .error_toast
+            .as_ref()
+            .map(|t| t.message.clone())
+            .unwrap_or_default();
+        assert!(
+            toast.starts_with("Search failed:"),
+            "must surface the real search error, got: {toast}"
+        );
+        assert!(!toast.contains("pending pylon support"));
     }
 
     /// Regression for #6819: the ContextBudget overlay existed with no way to

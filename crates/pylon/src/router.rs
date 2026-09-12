@@ -19,8 +19,8 @@ use taxis::config::MetricsMode;
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse, classify_by_status};
 use crate::handlers::{
-    config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
-    providers, sessions, workspace,
+    config, credentials, daemon_tasks, events, health, insights, knowledge, metrics, nous, ops,
+    planning, providers, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -124,6 +124,10 @@ pub fn build_router_with(
             "/sessions",
             get(sessions::list_sessions).post(sessions::create),
         )
+        // WHY: static segment must be registered alongside (and wins over)
+        // `/sessions/{id}` — resolve is the idempotent get-or-create used by
+        // interactive clients entering a nous's canonical conversation.
+        .route("/sessions/resolve", post(sessions::resolve))
         .route("/sessions/stream", post(sessions::stream_turn))
         .route(
             "/sessions/{id}",
@@ -139,7 +143,15 @@ pub fn build_router_with(
         .route("/sessions/{id}/name", axum::routing::put(sessions::rename))
         .route("/sessions/{id}/messages", post(sessions::send_message))
         // WHY(#3958, ADR-005): operator-decision pass-through for the approval gate.
-        .route("/sessions/{id}/approvals", post(sessions::resolve_approval))
+        // WHY(#7207): GET is the reconciliation read — the same route, the
+        // read half of the same model as the POST beside it.
+        .route(
+            "/sessions/{id}/approvals",
+            get(sessions::list_session_pending).post(sessions::resolve_approval),
+        )
+        // WHY(#7207): the nous-scoped listing for a caller holding only a
+        // scoped token, which has no session id to enumerate against.
+        .route("/approvals", get(sessions::list_nous_pending))
         .route(
             "/turns/{turn_id}/tools/{tool_id}/approve",
             post(sessions::approve_tool),
@@ -166,6 +178,22 @@ pub fn build_router_with(
         // WHY(#5313): authoritative subsystem-status API — the canonical
         // backend source for desktop/TUI control-plane status views.
         .route("/system/status", get(health::system_status))
+        // WHY(#7206): daemon-task admin — list every registered daemon task
+        // with its persisted state and disable cause, and enable/disable/
+        // retry one, without hand-editing persisted state or restarting.
+        .route("/system/daemon/tasks", get(daemon_tasks::list_tasks))
+        .route(
+            "/system/daemon/tasks/{runner}/{task_id}/enable",
+            post(daemon_tasks::enable_task),
+        )
+        .route(
+            "/system/daemon/tasks/{runner}/{task_id}/disable",
+            post(daemon_tasks::disable_task),
+        )
+        .route(
+            "/system/daemon/tasks/{runner}/{task_id}/retry",
+            post(daemon_tasks::retry_task),
+        )
         .route(
             "/system/credentials/rotate",
             post(credentials::rotate_credentials),

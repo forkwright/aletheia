@@ -87,6 +87,7 @@ fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
     responses(
         (status = 200, description = "Ops tool registry summary", body = OpsToolsResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -121,18 +122,26 @@ pub async fn tools(
             .map_err(ApiError::from)
     })
     .await;
-    let (history, history_unavailable) = match history_result {
-        Ok(Ok(records)) => (
-            records.into_iter().map(history_entry).collect::<Vec<_>>(),
+    // WHY(#7217): `history_unavailable` stays reserved for a genuine read
+    // failure (the store couldn't be scanned at all); a single malformed row
+    // is disclosed instead via `tool_audit_corrupt_count`, not by discarding
+    // the rest of the history.
+    let (history, tool_audit_corrupt_count, history_unavailable) = match history_result {
+        Ok(Ok(scan)) => (
+            scan.records
+                .into_iter()
+                .map(history_entry)
+                .collect::<Vec<_>>(),
+            scan.corrupt.len(),
             false,
         ),
         Ok(Err(err)) => {
             warn!(error = %err, "failed to read tool audit history");
-            (Vec::new(), true)
+            (Vec::new(), 0, true)
         }
         Err(err) => {
             warn!(error = %err, "tool audit history task failed");
-            (Vec::new(), true)
+            (Vec::new(), 0, true)
         }
     };
 
@@ -143,5 +152,6 @@ pub async fn tools(
         total_calls,
         total_errors,
         history_unavailable,
+        tool_audit_corrupt_count,
     }))
 }

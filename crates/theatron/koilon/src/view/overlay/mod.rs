@@ -40,7 +40,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(Clear, popup_area);
 
     match overlay {
-        Overlay::Help => render_help(app, frame, popup_area, theme),
+        Overlay::Help { scroll } => render_help(app, frame, popup_area, *scroll, theme),
         Overlay::AgentPicker { cursor } => {
             pickers::render_agent_picker(app, frame, popup_area, *cursor, theme)
         }
@@ -48,7 +48,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             pickers::render_session_picker(app, frame, popup_area, picker, theme)
         }
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
-        Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         Overlay::ContextActions(ctx) => {
             let compact_area =
                 centered_rect(COMPACT_POPUP_WIDTH_PCT, COMPACT_POPUP_HEIGHT_PCT, area);
@@ -66,7 +65,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             frame.render_widget(Clear, diff_area);
             render_diff_view(diff_state, frame, diff_area, theme);
         }
-        Overlay::DecisionCard(card) => render_decision_card(frame, popup_area, card, theme),
         Overlay::NotificationHistory { scroll } => {
             super::notification::render_history(app, frame, area, *scroll, theme);
         }
@@ -105,14 +103,21 @@ fn overlay_block_accent(
 
 /// Margin around the help overlay in columns.
 const HELP_OVERLAY_MARGIN: u16 = 4; // 2 chars each side
-/// Width reserved for the key column in the help overlay.
-const HELP_KEY_COLUMN_WIDTH: usize = 13;
+/// Minimum gap (in columns) reserved between the key column and the
+/// description, no matter how long the longest key label is (#7221: the old
+/// fixed `HELP_KEY_COLUMN_WIDTH = 13` was shorter than several real compound
+/// labels -- e.g. `"Ctrl+E / Ctrl+G"` at 16 chars -- so Rust's `{:<13}`
+/// padding, which pads but never truncates, ran the key straight into the
+/// description with zero separator: `"Ctrl+GOpen $EDITOR"`).
+const HELP_COLUMN_GAP: usize = 2;
+/// Rows reserved for the overlay's own border (top + bottom).
+const HELP_BORDER_ROWS: u16 = 2;
 
 #[expect(
     clippy::string_slice,
     reason = "desc_max_width < description.len() checked before slicing"
 )]
-fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
+fn render_help(app: &App, frame: &mut Frame, area: Rect, scroll: usize, theme: &Theme) {
     let key_style = Style::default()
         .fg(theme.colors.accent)
         .add_modifier(Modifier::BOLD);
@@ -124,10 +129,23 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let contexts = keybindings::current_contexts(app);
     let groups = keybindings::grouped_keybindings(&contexts);
 
+    // WHY(#7221): computed from the longest label actually being rendered
+    // (not a hand-picked constant that silently falls behind a new,
+    // longer registry entry) plus a fixed gap, so the description can never
+    // collide with the key column regardless of what `all_keybindings()`
+    // grows to contain.
+    let key_col_width = groups
+        .iter()
+        .flat_map(|(_, bindings)| bindings.iter())
+        .map(|kb| kb.keys.chars().count())
+        .max()
+        .unwrap_or(0);
+    let key_column_total_width = key_col_width + HELP_COLUMN_GAP;
+
     let mut lines: Vec<Line> = Vec::new();
 
     let max_width = usize::from(area.width.saturating_sub(HELP_OVERLAY_MARGIN).max(1));
-    let desc_max_width = max_width.saturating_sub(HELP_KEY_COLUMN_WIDTH + 2); // +2 for padding
+    let desc_max_width = max_width.saturating_sub(key_column_total_width + 2); // +2 for leading indent
 
     for (section_label, bindings) in &groups {
         lines.push(Line::raw(""));
@@ -138,7 +156,7 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::raw(""));
         for kb in bindings {
             let key_span =
-                Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
+                Span::styled(format!("  {:<key_column_total_width$}", kb.keys), key_style);
             let desc = if kb.description.len() > desc_max_width && desc_max_width > 3 {
                 // kanon:ignore RUST/indexing-slicing — slice end is clamped and guarded by len() > desc_max_width > 3
                 // kanon:ignore RUST/string-slice — slice end is clamped and guarded by len() > desc_max_width > 3
@@ -152,12 +170,22 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     lines.push(Line::raw(""));
 
+    // WHY(#7221): clamp at render time so `scroll` (a raw line offset that
+    // Up/Down/PageUp/PageDown only ever increment/decrement, mirroring
+    // `render_diff_view`'s pattern) can never scroll past the point where
+    // the last line is still visible -- the same trick used there to avoid
+    // needing the line count inside the update handler.
+    let total_lines = lines.len();
+    let visible_height = usize::from(area.height.saturating_sub(HELP_BORDER_ROWS));
+    let clamped_scroll = scroll.min(total_lines.saturating_sub(visible_height));
+
     let label = keybindings::context_label(app);
     let title = format!("Help — {label}");
     let block = overlay_block(&title, theme);
     let paragraph = Paragraph::new(lines)
         .block(block)
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((u16::try_from(clamped_scroll).unwrap_or(u16::MAX), 0));
     frame.render_widget(paragraph, area);
 }
 
@@ -273,67 +301,6 @@ fn render_tool_approval(
     frame.render_widget(paragraph, area);
 }
 
-fn render_plan_approval(
-    frame: &mut Frame,
-    area: Rect,
-    plan: &crate::app::PlanApprovalOverlay,
-    theme: &Theme,
-) {
-    let cost = format!("${:.2}", f64::from(plan.total_cost_cents) / 100.0);
-    let title = format!("Plan ({} steps, ~{})", plan.steps.len(), cost);
-
-    let mut lines = vec![Line::raw("")];
-
-    for (i, step) in plan.steps.iter().enumerate() {
-        let selected = i == plan.cursor;
-        let check = if step.checked { "✓" } else { " " };
-        let marker = if selected { "▸" } else { " " };
-
-        let check_style = if step.checked {
-            theme.style_success()
-        } else {
-            theme.style_dim()
-        };
-
-        let style = if selected {
-            Style::default()
-                .fg(theme.colors.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            theme.style_fg()
-        };
-
-        lines.push(Line::from(vec![
-            Span::raw(format!("  {} ", marker)),
-            Span::styled(format!("[{}]", check), check_style),
-            Span::styled(format!(" {}. ", step.id), theme.style_dim()),
-            Span::styled(&step.label, style),
-            Span::styled(format!(" ({})", step.role), theme.style_dim()),
-        ]));
-    }
-
-    lines.push(Line::raw(""));
-    push_mutation_status(&mut lines, &plan.status, theme);
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("[A]", theme.style_success_bold()),
-        Span::styled("pprove all  ", theme.style_muted()),
-        Span::styled(
-            "[Space]",
-            Style::default()
-                .fg(theme.colors.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" toggle  ", theme.style_muted()),
-        Span::styled("[C]", theme.style_error_bold()),
-        Span::styled("ancel", theme.style_muted()),
-    ]));
-
-    let block = overlay_block_accent(&title, theme.colors.accent, theme);
-    let paragraph = Paragraph::new(lines).block(block);
-    frame.render_widget(paragraph, area);
-}
-
 fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines = vec![Line::raw("")];
     let section_style = Style::default()
@@ -443,7 +410,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
         Span::styled(" close", theme.style_muted()),
     ]));
 
-    let block = overlay_block("System Status — Ctrl+I", theme);
+    let block = overlay_block("System Status — F4", theme);
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
@@ -599,110 +566,5 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
     let para = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .style(ratatui::style::Style::default());
-    frame.render_widget(para, inner);
-}
-
-fn render_decision_card(
-    frame: &mut Frame,
-    area: Rect,
-    card: &crate::state::DecisionCardOverlay,
-    theme: &Theme,
-) {
-    let block = overlay_block("decision", theme);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            card.question.clone(),
-            Style::default()
-                .fg(theme.text.fg)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
-    lines.push(Line::raw(""));
-
-    for (i, opt) in card.options.iter().enumerate() {
-        let selected =
-            i == card.cursor && card.focused_field == crate::state::DecisionField::Options;
-        let cursor_str = if selected { "▸" } else { " " };
-        let cursor_style = if selected {
-            Style::default().fg(theme.borders.selected)
-        } else {
-            Style::default()
-        };
-        let mut spans = vec![
-            Span::styled(format!("  {cursor_str} "), cursor_style),
-            Span::styled(
-                opt.label.clone(),
-                if selected {
-                    theme.style_accent_bold()
-                } else {
-                    theme.style_fg()
-                },
-            ),
-        ];
-        if opt.is_recommendation {
-            spans.push(Span::styled(" ★ recommended", theme.style_dim()));
-        }
-        lines.push(Line::from(spans));
-        if let Some(ref desc) = opt.description {
-            lines.push(Line::from(vec![
-                Span::raw("      "),
-                Span::styled(desc.clone(), theme.style_muted()),
-            ]));
-        }
-    }
-    lines.push(Line::raw(""));
-
-    let custom_focused = card.focused_field == crate::state::DecisionField::CustomAnswer;
-    let custom_label_style = if custom_focused {
-        theme.style_accent_bold()
-    } else {
-        theme.style_dim()
-    };
-    let custom_display = if card.custom_answer.is_empty() && !custom_focused {
-        "─".to_string()
-    } else {
-        format!("{}_", card.custom_answer)
-    };
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("custom: ", custom_label_style),
-        Span::styled(custom_display, theme.style_fg()),
-    ]));
-    lines.push(Line::raw(""));
-
-    let notes_focused = card.focused_field == crate::state::DecisionField::Notes;
-    let notes_label_style = if notes_focused {
-        theme.style_accent_bold()
-    } else {
-        theme.style_dim()
-    };
-    let notes_display = if card.notes.is_empty() && !notes_focused {
-        "─".to_string()
-    } else {
-        format!("{}_", card.notes)
-    };
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("notes:  ", notes_label_style),
-        Span::styled(notes_display, theme.style_fg()),
-    ]));
-    lines.push(Line::raw(""));
-
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("[Enter] submit", theme.style_muted()),
-        Span::raw("  "),
-        Span::styled("[Tab] next field", theme.style_muted()),
-        Span::raw("  "),
-        Span::styled("[Esc] skip", theme.style_muted()),
-    ]));
-
-    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
     frame.render_widget(para, inner);
 }

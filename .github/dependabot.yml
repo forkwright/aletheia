@@ -25,6 +25,29 @@ updates:
         update-types: [patch]
       minor-updates:
         update-types: [minor]
+    # WHY(2026-09-08): the platform-default cooldown holds a git dependency's
+    # freshest tag back from consideration for a few days -- 2026-09-07's
+    # "Dependabot" run (job_1562352864) crashed processing koinon because its
+    # v0.3.0 tag (already the version pinned in Cargo.toml/Cargo.lock) was
+    # inside cooldown, and the updater's fallback wrote a temp manifest that
+    # still required "^0.3.0" against the older v0.2.1 tag it fell back to --
+    # `error: failed to select a version for the requirement koinon = "^0.3.0"`.
+    # Cooldown exists to let a brand-new THIRD-PARTY release prove itself
+    # before we pick it up; these nine `[workspace.dependencies.*]` entries
+    # (see Cargo.toml) are our own forkwright/* fleet repos, each already
+    # gated by its own release pipeline before it tags, so there is no
+    # freshness risk to protect against here -- only the crash to avoid.
+    cooldown:
+      exclude:
+        - epitelesis
+        - heurema
+        - koinon
+        - parodos
+        - themelion
+        - skeue
+        - gramma
+        - bathron
+        - keryx
     reviewers:
       - forkwright
 

@@ -4,7 +4,7 @@
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use sha2::{Digest as _, Sha256};
 use snafu::ResultExt;
@@ -28,7 +28,7 @@ use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint};
 use crate::compact::{CompactConfig, CompactReason, map_strategy, select_prompt};
-use crate::config::{NousConfig, PipelineConfig};
+use crate::config::{ModelRole, NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
 use crate::hooks::registry::HookRegistry;
@@ -46,13 +46,53 @@ struct CachedDistillation {
     source_id: Option<String>,
 }
 
+/// Maximum tokens requested for a recall-enhancement completion (query-rewrite
+/// variants, or side-query memory-id ranking).
+///
+/// Both tasks return a short, bounded JSON list. A generous ceiling here only
+/// inflates worst-case latency: the small local models these calls typically
+/// hit do not reliably honor "respond with ONLY a JSON array" and can ramble
+/// for the full token budget instead of stopping early (aletheia#7218).
+const RECALL_ENHANCEMENT_MAX_TOKENS: u32 = 128;
+
+/// Reserve, out of the recall stage's own time budget, for the non-LLM work
+/// (embedding, vector/BM25 search, scoring, formatting) that always runs
+/// alongside the optional enhancement calls.
+const RECALL_NON_LLM_RESERVE_SECS: u32 = 2;
+
+/// Floor for a single recall-enhancement call's budget, even when the
+/// configured recall-stage budget is small.
+const RECALL_ENHANCEMENT_MIN_CALL_SECS: u64 = 3;
+
+/// Per-call time budget for a recall-enhancement LLM round trip, derived from
+/// the recall stage's own configured budget so that neither call alone can
+/// exhaust it (aletheia#7218).
+///
+/// Up to two sequential enhancement calls can run within one recall
+/// invocation — query-rewrite escalation in [`crate::recall`]'s tiered search,
+/// then side-query ranking — so the usable budget (stage budget minus the
+/// non-LLM reserve) is split between them.
+fn recall_enhancement_call_budget(recall_stage_secs: u32) -> Duration {
+    let usable = recall_stage_secs.saturating_sub(RECALL_NON_LLM_RESERVE_SECS);
+    let per_call = u64::from(usable) / 2;
+    Duration::from_secs(per_call.max(RECALL_ENHANCEMENT_MIN_CALL_SECS))
+}
+
 struct ProviderRecallBridge<'a> {
     providers: &'a ProviderRegistry,
     model: &'a str,
+    /// Per-call budget enforced around the provider round trip. See
+    /// [`recall_enhancement_call_budget`].
+    call_budget: Duration,
 }
 
 impl ProviderRecallBridge<'_> {
-    fn complete_blocking(&self, system: &str, user_message: &str) -> Result<String, String> {
+    fn complete_blocking(
+        &self,
+        component: &str,
+        system: &str,
+        user_message: &str,
+    ) -> Result<String, String> {
         let provider = self
             .providers
             .find_provider(self.model)
@@ -65,7 +105,7 @@ impl ProviderRecallBridge<'_> {
                 content: Content::Text(user_message.to_owned()),
                 cache_breakpoint: false,
             }],
-            max_tokens: 512,
+            max_tokens: RECALL_ENHANCEMENT_MAX_TOKENS,
             temperature: Some(0.0),
             ..CompletionRequest::default()
         };
@@ -73,8 +113,30 @@ impl ProviderRecallBridge<'_> {
         // that now runs inside `tokio::task::spawn_blocking`. Blocking on the
         // returned future is safe there and avoids pinning a Tokio worker
         // thread for the full LLM round-trip. (#5665)
+        //
+        // WHY(#7218): wrap the awaited future in `tokio::time::timeout` rather
+        // than relying solely on the recall pipeline stage's own budget.
+        // Without an inner deadline, a slow or verbose completion from the
+        // model configured for this nous can by itself exceed the whole
+        // stage budget — and because a `tokio::time::timeout` wrapped around
+        // the *outer* `spawn_blocking` join (see `run_recall_stage`) does not
+        // cancel an already-running blocking closure, the abandoned call
+        // would keep running and holding the (often single-slot local)
+        // provider's capacity even after the turn had already timed out.
+        // Timing out here instead drops the `provider.complete` future
+        // itself, which actually cancels the in-flight request.
         let response = Handle::current()
-            .block_on(provider.complete(&request))
+            .block_on(tokio::time::timeout(
+                self.call_budget,
+                provider.complete(&request),
+            ))
+            .map_err(|_elapsed| {
+                format!(
+                    "recall {component} call to model '{}' exceeded its {}s budget",
+                    self.model,
+                    self.call_budget.as_secs()
+                )
+            })?
             .map_err(|e| e.to_string())?;
         let text = response
             .content
@@ -99,7 +161,7 @@ impl mneme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
         system: &str,
         user_message: &str,
     ) -> Result<String, mneme::query_rewrite::RewriteError> {
-        self.complete_blocking(system, user_message)
+        self.complete_blocking("query rewrite", system, user_message)
             .map_err(mneme::query_rewrite::RewriteError::LlmCall)
     }
 }
@@ -116,7 +178,7 @@ impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
         );
         let user = format!("Query: {query}\n\nMemory manifest:\n{manifest_text}");
         let text = self
-            .complete_blocking(&system, &user)
+            .complete_blocking("side-query ranking", &system, &user)
             .map_err(|message| mneme::side_query::RankerFailedSnafu { message }.build())?;
         let ids: Vec<String> = serde_json::from_str(text.trim()).map_err(|e| {
             mneme::side_query::RankerFailedSnafu {
@@ -266,7 +328,7 @@ pub(super) async fn run_recall_stage(
     // WHY(#3404, #3413): resolve deployment target so the sovereignty filter drops facts the provider
     // cannot receive; unregistered models default to Cloud (Public-only) rather than leaking Internal data.
     let deployment_target = providers
-        .find_provider(&config.generation.model)
+        .find_provider(config.generation.resolve_model(ModelRole::Generation))
         .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
             p.deployment_target()
         });
@@ -328,11 +390,15 @@ pub(super) async fn run_recall_stage(
         // whole path onto a blocking thread and release the worker. (#5665)
         let content = content.to_owned();
         let nous_id = config.id.clone();
-        let model = config.generation.model.clone();
+        let model = config
+            .generation
+            .resolve_model(ModelRole::Generation)
+            .to_owned();
         let recall_config = config.recall.clone();
         let project_scope = project_recall_scope(pipeline_config);
         let surprise_calc = surprise_calc.clone();
         let providers = Arc::clone(&providers);
+        let call_budget = recall_enhancement_call_budget(pipeline_config.stage_budget.recall_secs);
         let result = task::spawn_blocking(move || {
             let recall_stage = crate::recall::RecallStage::new(recall_config)
                 .with_deployment_target(deployment_target)
@@ -341,6 +407,7 @@ pub(super) async fn run_recall_stage(
             let recall_bridge = ProviderRecallBridge {
                 providers: &providers,
                 model: model.as_str(),
+                call_budget,
             };
             recall_stage.run_with_recall_enhancements(
                 &content,
@@ -639,27 +706,22 @@ async fn compact_with_llm(
     providers: &ProviderRegistry,
     request_text: String,
 ) -> error::Result<String> {
-    // WHY distillation_model, not generation.model (#4797): full
+    // WHY ModelRole::Distillation, not ModelRole::Generation (#4797): full
     // compaction is exactly the "fast tier" summarization workload
-    // `distillation_model`'s own doc comment names (see
-    // `NousGenerationConfig::distillation_model`) -- falling back to the
-    // turn model when unset preserves existing behaviour for configs that
-    // never opted in.
-    let model = config
-        .generation
-        .distillation_model
-        .as_ref()
-        .unwrap_or(&config.generation.model);
+    // `ModelRole::Distillation`'s own doc comment names -- falling back to
+    // the turn model when unset preserves existing behaviour for configs
+    // that never opted in.
+    let model = config.generation.resolve_model(ModelRole::Distillation);
     let Some(provider) = providers.find_provider(model) else {
         return Err(hermeneus::error::UnsupportedModelSnafu {
-            model: model.clone(),
+            model: model.to_owned(),
         }
         .build())
         .context(error::LlmSnafu);
     };
 
     let request = CompletionRequest {
-        model: model.clone(),
+        model: model.to_owned(),
         system: Some("Summarize this conversation for context compaction. Preserve decisions, open tasks, file paths, and unresolved risks.".to_owned()),
         messages: vec![Message {
             role: Role::User,
@@ -939,7 +1001,10 @@ pub(super) async fn run_execute_stage(
             let routed_model = crate::execute::routed_model_for_turn(ctx, config, providers, tools);
             let attempt = crate::degraded_mode::DegradedAttemptContext {
                 attempted_provider: provider_name_for_model(providers, &routed_model),
-                configured_model: config.generation.model.clone(),
+                configured_model: config
+                    .generation
+                    .resolve_model(ModelRole::Generation)
+                    .to_owned(),
                 routed_model,
                 source_id: recent_distillation
                     .as_ref()

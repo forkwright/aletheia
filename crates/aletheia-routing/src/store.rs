@@ -582,6 +582,24 @@ impl AfterActionStore {
     }
 
     /// Build a fresh cache by scanning all dispatch JSONL files in `dir`.
+    ///
+    /// WHY(#7206): `dir` (`logs/after-actions`) used to be created lazily by
+    /// the first durable after-action write, which can land long after the
+    /// maintenance scheduler's first refresh tick on a fresh instance. A
+    /// missing directory means zero after-action records exist yet -- the
+    /// same benign case [`Self::merge_interactive_log`] already tolerates
+    /// for `interactive_dir` -- not a hard failure. Before this, `ENOENT`
+    /// here propagated as a real error on every tick, which after three
+    /// consecutive ticks auto-disabled the `routing-store-refresh` task
+    /// permanently (persistence intentionally keeps an auto-disable sticky
+    /// across restarts, see `oikonomos::runner::persistence`), even once
+    /// the directory existed again. On `NotFound` this now also creates
+    /// `dir` (mirroring [`append_interactive_outcome`]'s existing
+    /// create-on-first-use for `interactive_dir`), so the directory exists
+    /// promptly at the first tick rather than up to a full refresh window
+    /// later whenever the first write happens to land; creation failure is
+    /// itself tolerated (best-effort) since a still-missing directory is
+    /// exactly the already-handled zero-records case.
     async fn build_cache(
         &self,
         dir: &Path,
@@ -589,7 +607,22 @@ impl AfterActionStore {
     ) -> Result<HashMap<(ProviderId, TaskCategory), RollingStats>, AfterActionStoreError> {
         let mut map: HashMap<(ProviderId, TaskCategory), RollingStats> = HashMap::new();
 
-        for path in jsonl_paths_in_window(dir, window).await? {
+        let paths = match jsonl_paths_in_window(dir, window).await {
+            Ok(paths) => paths,
+            Err(AfterActionStoreError::Io { source, .. })
+                if source.kind() == std::io::ErrorKind::NotFound =>
+            {
+                // WHY: best-effort -- if this fails (e.g. a race with the
+                // lazy writer, or a permissions issue), the zero-records
+                // return below still holds; nothing here can regress into
+                // the hard-failure behavior this fix removes.
+                let _ = tokio::fs::create_dir_all(dir).await;
+                return Ok(map);
+            }
+            Err(e) => return Err(e),
+        };
+
+        for path in paths {
             self.scan_file(&path, &mut map).await?;
         }
 
@@ -1012,6 +1045,46 @@ mod tests {
         assert_eq!(stats.total, 2);
     }
 
+    /// WHY(#7206): `dir` did not exist at boot in the field incident this
+    /// regresses -- created later by a lazy writer -- and `read_dir` on it
+    /// returned `ENOENT`, which used to propagate as a hard refresh error.
+    /// Three consecutive ticks against an untouched tree then auto-disabled
+    /// the daemon's `routing-store-refresh` task permanently. A missing
+    /// directory must read as "zero after-action records yet", matching how
+    /// [`AfterActionStore::refresh`] already treats a missing
+    /// `interactive/` subdirectory -- and the directory itself must now get
+    /// created promptly (mirroring `append_interactive_outcome`'s existing
+    /// create-on-first-use for `interactive_dir`) instead of waiting for
+    /// whatever lazy writer happens to touch it next.
+    #[tokio::test]
+    async fn refresh_tolerates_missing_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing_dir = tmp.path().join("does-not-exist-yet");
+
+        let store = AfterActionStore::new(missing_dir.clone());
+        // WHY: a missing after-action directory must not be a hard refresh
+        // failure -- `unwrap` panics with the underlying error otherwise.
+        store.refresh().await.unwrap();
+
+        assert!(
+            missing_dir.is_dir(),
+            "the missing directory must be created on first refresh, not just tolerated"
+        );
+
+        let stats = store
+            .rolling_stats(
+                &ProviderId::new("anyone"),
+                &TaskCategory::Feature,
+                Duration::from_hours(168),
+            )
+            .await
+            .unwrap();
+        assert!(
+            stats.is_none(),
+            "no records exist yet, so there must be no stats -- not an error"
+        );
+    }
+
     #[tokio::test]
     async fn refresh_scans_only_latest_files_in_window() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1114,13 +1187,13 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn missing_dir_returns_error() {
-        let store = AfterActionStore::new(std::path::PathBuf::from(
-            "/tmp/nonexistent-xyz-routing-test",
-        ));
-        assert!(store.refresh().await.is_err());
-    }
+    // WHY(#7206): a missing `dir` used to be a hard refresh error (asserted
+    // by this test's prior body: `store.refresh().await.is_err()`). That was
+    // the exact defect this issue fixes -- see
+    // `refresh_tolerates_missing_directory` above, which supersedes this
+    // test with the corrected behavior (a missing directory means zero
+    // records, not a failure) and asserts the downstream `rolling_stats`
+    // consequence too.
 
     // --- Interactive path (record_outcome) ---
 

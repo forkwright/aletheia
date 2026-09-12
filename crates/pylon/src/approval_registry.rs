@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use jiff::{SignedDuration, Timestamp};
 use nous::approval::{ApprovalChoice, ApprovalDecision};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -44,6 +45,52 @@ struct ApprovalKey {
 struct ApprovalEntry {
     session_id: String,
     sender: mpsc::Sender<ApprovalDecision>,
+    nous_id: String,
+    tool_name: String,
+    risk: String,
+    requested_at: Timestamp,
+    deadline: Timestamp,
+}
+
+/// Metadata captured when a tool call blocks on approval (#7207): held
+/// alongside the decision sender so the pending-approval reconciliation
+/// read (`GET .../approvals`) can report a tool's declared effect scope,
+/// requested-at time, and deadline to a client that never saw the live
+/// `tool_approval_required` event, or reconnects after missing it.
+pub struct PendingApprovalMeta {
+    /// Agent this approval belongs to, for the nous-scoped listing route.
+    pub nous_id: String,
+    /// Display name of the tool awaiting approval.
+    pub tool_name: String,
+    /// Declared effect scope (e.g. `"critical"`), mirroring the live
+    /// `tool_approval_required` stream event's `risk` field.
+    pub risk: String,
+    /// Approval-gate timeout in effect for this turn
+    /// (`timeouts.approval_timeout_secs`), used to compute `deadline` at
+    /// registration time.
+    pub timeout_secs: u32,
+}
+
+/// One pending tool approval, as reported by the reconciliation read
+/// (#7207): everything a reconnecting client needs to rebuild what the
+/// live `tool_approval_required` event would have told it.
+#[derive(Debug, Clone)]
+pub struct PendingApproval {
+    /// Session that owns the blocked turn.
+    pub session_id: String,
+    /// Turn the tool call belongs to.
+    pub turn_id: String,
+    /// Identifier of the blocked tool call.
+    pub tool_id: String,
+    /// Display name of the tool awaiting approval.
+    pub tool_name: String,
+    /// Declared effect scope (e.g. `"critical"`).
+    pub risk: String,
+    /// When the approval was registered.
+    pub requested_at: Timestamp,
+    /// When the approval gate's own timeout will default-deny this call,
+    /// if it has not been resolved before then.
+    pub deadline: Timestamp,
 }
 
 /// Why a previously pending approval is no longer routable (#6822).
@@ -150,10 +197,27 @@ impl ApprovalRegistry {
 
     /// Create a guard for a streaming turn.
     pub fn register_turn(self: &Arc<Self>, session_id: String, turn_id: String) -> Guard {
+        self.register_turn_with_turn_ended_hook(session_id, turn_id, None)
+    }
+
+    /// Create a guard for a streaming turn, with a hook fired once from
+    /// [`Guard::drop`] when the turn ends with approvals still pending
+    /// (#7252): the removals alone keep the pending read honest, but the
+    /// hook lets the caller publish the cancellation on the domain bus so
+    /// subscribers and reconnect replay see the request closed rather than
+    /// unanswered forever. The hook runs synchronously inside `Drop`; async
+    /// publication is the hook's own concern.
+    pub fn register_turn_with_turn_ended_hook(
+        self: &Arc<Self>,
+        session_id: String,
+        turn_id: String,
+        on_turn_ended: Option<Box<dyn FnOnce(Vec<PendingApproval>) + Send>>,
+    ) -> Guard {
         Guard {
             registry: Arc::clone(self),
             session_id: Some(session_id),
             turn_id: Some(turn_id),
+            on_turn_ended,
         }
     }
 
@@ -168,11 +232,21 @@ impl ApprovalRegistry {
         turn_id: &str,
         tool_id: String,
         sender: mpsc::Sender<ApprovalDecision>,
+        meta: PendingApprovalMeta,
     ) {
         let key = ApprovalKey {
             turn_id: turn_id.to_owned(),
             tool_id,
         };
+        let requested_at = Timestamp::now();
+        // WHY(#7207): approximates the nous-side gate's own timeout clock,
+        // which starts when dispatch calls `ApprovalGate::await_decision` for
+        // this tool — structurally just before this registration — rather
+        // than threading the gate's own `tokio::time::Instant` across the
+        // process boundary between nous and pylon.
+        let deadline = requested_at
+            .checked_add(SignedDuration::from_secs(i64::from(meta.timeout_secs)))
+            .unwrap_or(requested_at);
         let mut inner = self
             .inner
             .lock()
@@ -185,8 +259,71 @@ impl ApprovalRegistry {
             ApprovalEntry {
                 session_id: session_id.to_owned(),
                 sender,
+                nous_id: meta.nous_id,
+                tool_name: meta.tool_name,
+                risk: meta.risk,
+                requested_at,
+                deadline,
             },
         );
+    }
+
+    /// List every pending approval for `session_id`, oldest first (#7207).
+    ///
+    /// Ownership must already be verified by the caller — mirrors
+    /// [`Self::try_send`]'s session-scoping — this returns whatever is
+    /// registered under the id with no further checks.
+    #[expect(
+        clippy::unused_async,
+        reason = "synchronous std::sync::Mutex critical section; kept async to preserve the registry API"
+    )]
+    pub async fn pending_for_session(&self, session_id: &str) -> Vec<PendingApproval> {
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self::collect_pending(&inner, |entry| entry.session_id == session_id)
+    }
+
+    /// List every pending approval belonging to `nous_id`, across every
+    /// session that agent owns, oldest first (#7207): the scoped-token
+    /// shape, so a caller holding only a nous-scoped token can reconcile
+    /// without enumerating session ids first.
+    ///
+    /// Ownership must already be verified by the caller.
+    #[expect(
+        clippy::unused_async,
+        reason = "synchronous std::sync::Mutex critical section; kept async to preserve the registry API"
+    )]
+    pub async fn pending_for_nous(&self, nous_id: &str) -> Vec<PendingApproval> {
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self::collect_pending(&inner, |entry| entry.nous_id == nous_id)
+    }
+
+    /// Shared filter/convert/sort step behind the two listing methods above.
+    fn collect_pending(
+        inner: &Inner,
+        filter: impl Fn(&ApprovalEntry) -> bool,
+    ) -> Vec<PendingApproval> {
+        let mut out: Vec<PendingApproval> = inner
+            .pending
+            .iter()
+            .filter(|(_, entry)| filter(entry))
+            .map(|(key, entry)| PendingApproval {
+                session_id: entry.session_id.clone(),
+                turn_id: key.turn_id.clone(),
+                tool_id: key.tool_id.clone(),
+                tool_name: entry.tool_name.clone(),
+                risk: entry.risk.clone(),
+                requested_at: entry.requested_at,
+                deadline: entry.deadline,
+            })
+            .collect();
+        out.sort_by_key(|p| p.requested_at);
+        out
     }
 
     /// Look up the sender for `(turn_id, tool_id)` and send a decision.
@@ -280,7 +417,12 @@ impl ApprovalRegistry {
         }
     }
 
-    fn remove_turn(&self, session_id: &str, turn_id: &str) {
+    /// Remove every pending approval for `(session_id, turn_id)`, burying
+    /// each as [`ApprovalDisposition::TurnEnded`], and return what was
+    /// removed (oldest first) so the caller can publish the cancellations
+    /// (#7252). Approvals already resolved or gate-resolved left the pending
+    /// map earlier and are not reported here.
+    fn remove_turn(&self, session_id: &str, turn_id: &str) -> Vec<PendingApproval> {
         let mut inner = self
             .inner
             .lock()
@@ -291,11 +433,23 @@ impl ApprovalRegistry {
             .filter(|(key, entry)| key.turn_id == turn_id && entry.session_id == session_id)
             .map(|(key, _)| key.clone())
             .collect();
+        let mut removed = Vec::with_capacity(keys.len());
         for key in keys {
             if let Some(entry) = inner.pending.remove(&key) {
+                removed.push(PendingApproval {
+                    session_id: entry.session_id.clone(),
+                    turn_id: key.turn_id.clone(),
+                    tool_id: key.tool_id.clone(),
+                    tool_name: entry.tool_name.clone(),
+                    risk: entry.risk.clone(),
+                    requested_at: entry.requested_at,
+                    deadline: entry.deadline,
+                });
                 inner.bury(key, entry.session_id, ApprovalDisposition::TurnEnded);
             }
         }
+        removed.sort_by_key(|approval| approval.requested_at);
+        removed
     }
 }
 
@@ -304,6 +458,9 @@ pub struct Guard {
     registry: Arc<ApprovalRegistry>,
     session_id: Option<String>,
     turn_id: Option<String>,
+    /// Fired once from `Drop` when the turn ended with approvals still
+    /// pending (#7252) — the turn-ended cancellations nobody answered.
+    on_turn_ended: Option<Box<dyn FnOnce(Vec<PendingApproval>) + Send>>,
 }
 
 impl Drop for Guard {
@@ -313,7 +470,14 @@ impl Drop for Guard {
         // runtime shutdown. The inner lock is a std::sync::Mutex, so Drop can
         // hold it without spawning.
         if let (Some(sid), Some(turn_id)) = (self.session_id.take(), self.turn_id.take()) {
-            self.registry.remove_turn(&sid, &turn_id);
+            let ended = self.registry.remove_turn(&sid, &turn_id);
+            // WHY(#7252): only unanswered approvals are reported — a resolved
+            // approval already published its own resolution when it routed.
+            if !ended.is_empty()
+                && let Some(hook) = self.on_turn_ended.take()
+            {
+                hook(ended);
+            }
         }
     }
 }
@@ -332,12 +496,24 @@ mod tests {
         }
     }
 
+    /// Arbitrary metadata for tests that only exercise routing (not the
+    /// reconciliation read's field content) -- see `pending_for_session`
+    /// and `pending_for_nous` below for tests that do care.
+    fn test_meta() -> PendingApprovalMeta {
+        PendingApprovalMeta {
+            nous_id: "nous-test".to_owned(),
+            tool_name: "test_tool".to_owned(),
+            risk: "moderate".to_owned(),
+            timeout_secs: 120,
+        }
+    }
+
     #[tokio::test]
     async fn register_send_remove_roundtrip() {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, mut rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess-1".to_owned(), "turn-1".to_owned());
-        reg.register_tool("sess-1", "turn-1", "t-1".to_owned(), tx)
+        reg.register_tool("sess-1", "turn-1", "t-1".to_owned(), tx, test_meta())
             .await;
 
         assert_eq!(
@@ -375,7 +551,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         {
             let _guard = reg.register_turn("sess-2".to_owned(), "turn-2".to_owned());
-            reg.register_tool("sess-2", "turn-2", "t-2".to_owned(), tx)
+            reg.register_tool("sess-2", "turn-2", "t-2".to_owned(), tx, test_meta())
                 .await;
             assert!(
                 reg.inner
@@ -409,7 +585,8 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
 
         assert_eq!(
             reg.try_send(
@@ -447,7 +624,8 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
 
         reg.mark_gate_resolved("sess", "turn", "t");
         assert_eq!(
@@ -467,7 +645,8 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
 
         assert_eq!(
             reg.try_send(
@@ -500,7 +679,8 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
         drop(rx);
 
         assert_eq!(
@@ -520,7 +700,8 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
         assert_eq!(
             reg.try_send(
                 Some("sess"),
@@ -558,7 +739,8 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
         assert_eq!(
             reg.try_send(
                 Some("sess"),
@@ -591,7 +773,7 @@ mod tests {
             let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
             for i in 0..=MAX_TOMBSTONES {
                 let (tx, _rx) = mpsc::channel::<ApprovalDecision>(1);
-                reg.register_tool("sess", "turn", format!("t-{i}"), tx)
+                reg.register_tool("sess", "turn", format!("t-{i}"), tx, test_meta())
                     .await;
             }
         }
@@ -607,11 +789,13 @@ mod tests {
         let reg = Arc::new(ApprovalRegistry::new());
         let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
         let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
-        reg.register_tool("sess", "turn", "t".to_owned(), tx).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
         reg.mark_gate_resolved("sess", "turn", "t");
 
         let (tx2, mut rx2) = mpsc::channel::<ApprovalDecision>(4);
-        reg.register_tool("sess", "turn", "t".to_owned(), tx2).await;
+        reg.register_tool("sess", "turn", "t".to_owned(), tx2, test_meta())
+            .await;
         assert_eq!(
             reg.try_send(
                 Some("sess"),
@@ -633,9 +817,9 @@ mod tests {
         let (tx_b, mut rx_b) = mpsc::channel::<ApprovalDecision>(4);
         let _guard_a = reg.register_turn("sess".to_owned(), "turn-a".to_owned());
         let _guard_b = reg.register_turn("sess".to_owned(), "turn-b".to_owned());
-        reg.register_tool("sess", "turn-a", "tool-a".to_owned(), tx_a)
+        reg.register_tool("sess", "turn-a", "tool-a".to_owned(), tx_a, test_meta())
             .await;
-        reg.register_tool("sess", "turn-b", "tool-b".to_owned(), tx_b)
+        reg.register_tool("sess", "turn-b", "tool-b".to_owned(), tx_b, test_meta())
             .await;
 
         assert_eq!(
@@ -673,9 +857,9 @@ mod tests {
         let (tx_b, _rx_b) = mpsc::channel::<ApprovalDecision>(4);
         let guard_a = reg.register_turn("sess".to_owned(), "turn-a".to_owned());
         let _guard_b = reg.register_turn("sess".to_owned(), "turn-b".to_owned());
-        reg.register_tool("sess", "turn-a", "tool-a".to_owned(), tx_a)
+        reg.register_tool("sess", "turn-a", "tool-a".to_owned(), tx_a, test_meta())
             .await;
-        reg.register_tool("sess", "turn-b", "tool-b".to_owned(), tx_b)
+        reg.register_tool("sess", "turn-b", "tool-b".to_owned(), tx_b, test_meta())
             .await;
 
         drop(guard_a);
@@ -691,5 +875,300 @@ mod tests {
             turn_id: "turn-b".to_owned(),
             tool_id: "tool-b".to_owned(),
         }));
+    }
+
+    // ── #7207: pending-approval reconciliation read ──
+
+    #[tokio::test]
+    async fn pending_for_session_reports_registered_metadata() {
+        let reg = Arc::new(ApprovalRegistry::new());
+        let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
+        let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
+        reg.register_tool(
+            "sess",
+            "turn",
+            "t-1".to_owned(),
+            tx,
+            PendingApprovalMeta {
+                nous_id: "syn".to_owned(),
+                tool_name: "shell_execute".to_owned(),
+                risk: "critical".to_owned(),
+                timeout_secs: 120,
+            },
+        )
+        .await;
+
+        let pending = reg.pending_for_session("sess").await;
+        assert_eq!(pending.len(), 1);
+        let approval = pending.first().expect("checked len() == 1 above");
+        assert_eq!(approval.session_id, "sess");
+        assert_eq!(approval.turn_id, "turn");
+        assert_eq!(approval.tool_id, "t-1");
+        assert_eq!(approval.tool_name, "shell_execute");
+        assert_eq!(approval.risk, "critical");
+        assert!(
+            approval.deadline > approval.requested_at,
+            "deadline must be after requested_at"
+        );
+        let window = approval
+            .deadline
+            .duration_since(approval.requested_at)
+            .as_secs();
+        assert_eq!(window, 120, "deadline must reflect the gate's own timeout");
+    }
+
+    #[tokio::test]
+    async fn pending_for_session_excludes_other_sessions() {
+        let reg = Arc::new(ApprovalRegistry::new());
+        let (tx_a, _rx_a) = mpsc::channel::<ApprovalDecision>(4);
+        let (tx_b, _rx_b) = mpsc::channel::<ApprovalDecision>(4);
+        let _guard_a = reg.register_turn("sess-a".to_owned(), "turn-a".to_owned());
+        let _guard_b = reg.register_turn("sess-b".to_owned(), "turn-b".to_owned());
+        reg.register_tool("sess-a", "turn-a", "t-a".to_owned(), tx_a, test_meta())
+            .await;
+        reg.register_tool("sess-b", "turn-b", "t-b".to_owned(), tx_b, test_meta())
+            .await;
+
+        let pending = reg.pending_for_session("sess-a").await;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            pending.first().expect("checked len() == 1 above").tool_id,
+            "t-a"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_for_session_omits_resolved_approvals() {
+        let reg = Arc::new(ApprovalRegistry::new());
+        let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
+        let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
+        reg.register_tool("sess", "turn", "t".to_owned(), tx, test_meta())
+            .await;
+        assert_eq!(reg.pending_for_session("sess").await.len(), 1);
+
+        assert_eq!(
+            reg.try_send(
+                Some("sess"),
+                "turn",
+                "t",
+                decision("t", ApprovalChoice::Approved)
+            )
+            .await,
+            RouteOutcome::Routed
+        );
+
+        assert!(
+            reg.pending_for_session("sess").await.is_empty(),
+            "a resolved approval must not be reported as pending"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_for_nous_lists_across_that_agents_sessions_only() {
+        let reg = Arc::new(ApprovalRegistry::new());
+        let (tx_a, _rx_a) = mpsc::channel::<ApprovalDecision>(4);
+        let (tx_b, _rx_b) = mpsc::channel::<ApprovalDecision>(4);
+        let (tx_other, _rx_other) = mpsc::channel::<ApprovalDecision>(4);
+        let _guard_a = reg.register_turn("sess-a".to_owned(), "turn-a".to_owned());
+        let _guard_b = reg.register_turn("sess-b".to_owned(), "turn-b".to_owned());
+        let _guard_other = reg.register_turn("sess-other".to_owned(), "turn-other".to_owned());
+
+        let meta_for = |nous_id: &str| PendingApprovalMeta {
+            nous_id: nous_id.to_owned(),
+            tool_name: "test_tool".to_owned(),
+            risk: "moderate".to_owned(),
+            timeout_secs: 120,
+        };
+        // Two sessions belonging to the same agent...
+        reg.register_tool("sess-a", "turn-a", "t-a".to_owned(), tx_a, meta_for("syn"))
+            .await;
+        reg.register_tool("sess-b", "turn-b", "t-b".to_owned(), tx_b, meta_for("syn"))
+            .await;
+        // ...and one belonging to a different agent, which must not appear.
+        reg.register_tool(
+            "sess-other",
+            "turn-other",
+            "t-other".to_owned(),
+            tx_other,
+            meta_for("other-agent"),
+        )
+        .await;
+
+        let pending = reg.pending_for_nous("syn").await;
+        let mut tool_ids: Vec<&str> = pending.iter().map(|p| p.tool_id.as_str()).collect();
+        tool_ids.sort_unstable();
+        assert_eq!(tool_ids, vec!["t-a", "t-b"]);
+    }
+
+    #[tokio::test]
+    async fn pending_approvals_are_ordered_oldest_first() {
+        let reg = Arc::new(ApprovalRegistry::new());
+        let (tx_first, _rx_first) = mpsc::channel::<ApprovalDecision>(4);
+        let (tx_second, _rx_second) = mpsc::channel::<ApprovalDecision>(4);
+        let _guard = reg.register_turn("sess".to_owned(), "turn".to_owned());
+        reg.register_tool("sess", "turn", "first".to_owned(), tx_first, test_meta())
+            .await;
+        // WHY: a small real sleep (not `tokio::time::pause`) guarantees a
+        // measurable `requested_at` gap, since registration stamps
+        // `Timestamp::now()` from the real wall clock regardless of the
+        // tokio test clock.
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        reg.register_tool("sess", "turn", "second".to_owned(), tx_second, test_meta())
+            .await;
+
+        let pending = reg.pending_for_session("sess").await;
+        let tool_ids: Vec<&str> = pending.iter().map(|p| p.tool_id.as_str()).collect();
+        assert_eq!(tool_ids, vec!["first", "second"]);
+    }
+
+    // ── #7252: turn-ended cancellation hook ──
+
+    /// WHY(#7252): a turn that dies mid-approval-wait (client disconnect,
+    /// abort, shutdown) must hand its unanswered approvals to the turn-ended
+    /// hook so the caller can publish their cancellation — otherwise the
+    /// domain bus keeps an approval request nobody can ever answer.
+    #[tokio::test]
+    async fn guard_drop_fires_turn_ended_hook_with_unanswered_approvals() {
+        use std::sync::Mutex as StdMutex;
+
+        let reg = Arc::new(ApprovalRegistry::new());
+        let fired: Arc<StdMutex<Vec<Vec<String>>>> = Arc::new(StdMutex::new(Vec::new()));
+        let fired_into = Arc::clone(&fired);
+        let hook: Box<dyn FnOnce(Vec<PendingApproval>) + Send> = Box::new(move |ended| {
+            fired_into
+                .lock()
+                .expect("lock")
+                .push(ended.iter().map(|p| p.tool_id.clone()).collect());
+        });
+
+        {
+            let _guard = reg.register_turn_with_turn_ended_hook(
+                "sess".to_owned(),
+                "turn".to_owned(),
+                Some(hook),
+            );
+            let (tx_a, _rx_a) = mpsc::channel::<ApprovalDecision>(4);
+            let (tx_b, _rx_b) = mpsc::channel::<ApprovalDecision>(4);
+            reg.register_tool("sess", "turn", "t-a".to_owned(), tx_a, test_meta())
+                .await;
+            reg.register_tool("sess", "turn", "t-b".to_owned(), tx_b, test_meta())
+                .await;
+        }
+
+        let mut ended_ids = {
+            let calls = fired.lock().expect("lock");
+            assert_eq!(calls.len(), 1, "the hook fires exactly once on drop");
+            calls.first().expect("one call").clone()
+        };
+        ended_ids.sort_unstable();
+        assert_eq!(
+            ended_ids,
+            vec!["t-a", "t-b"],
+            "every unanswered approval is reported to the hook"
+        );
+        assert!(
+            reg.inner.lock().expect("lock").pending.is_empty(),
+            "the pending map is empty after the guard drops"
+        );
+
+        // The removed approvals keep their turn-ended tombstones, so a late
+        // resolve is answered 410/turn_ended rather than collapsing to 404.
+        assert_eq!(
+            reg.try_send(
+                Some("sess"),
+                "turn",
+                "t-a",
+                decision("t-a", ApprovalChoice::Approved)
+            )
+            .await,
+            RouteOutcome::Gone(ApprovalDisposition::TurnEnded)
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_drop_without_pending_does_not_fire_hook() {
+        use std::sync::Mutex as StdMutex;
+
+        let reg = Arc::new(ApprovalRegistry::new());
+        let fired = Arc::new(StdMutex::new(false));
+        let fired_into = Arc::clone(&fired);
+        let hook: Box<dyn FnOnce(Vec<PendingApproval>) + Send> = Box::new(move |_ended| {
+            *fired_into.lock().expect("lock") = true;
+        });
+
+        {
+            let _guard = reg.register_turn_with_turn_ended_hook(
+                "sess".to_owned(),
+                "turn".to_owned(),
+                Some(hook),
+            );
+        }
+
+        assert!(
+            !*fired.lock().expect("lock"),
+            "a turn with nothing pending has no cancellations to publish"
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_drop_reports_only_unanswered_approvals() {
+        use std::sync::Mutex as StdMutex;
+
+        let reg = Arc::new(ApprovalRegistry::new());
+        let fired: Arc<StdMutex<Vec<Vec<String>>>> = Arc::new(StdMutex::new(Vec::new()));
+        let fired_into = Arc::clone(&fired);
+        let hook: Box<dyn FnOnce(Vec<PendingApproval>) + Send> = Box::new(move |ended| {
+            fired_into
+                .lock()
+                .expect("lock")
+                .push(ended.iter().map(|p| p.tool_id.clone()).collect());
+        });
+
+        {
+            let _guard = reg.register_turn_with_turn_ended_hook(
+                "sess".to_owned(),
+                "turn".to_owned(),
+                Some(hook),
+            );
+            let (tx_answered, mut rx_answered) = mpsc::channel::<ApprovalDecision>(4);
+            let (tx_unanswered, _rx_unanswered) = mpsc::channel::<ApprovalDecision>(4);
+            reg.register_tool(
+                "sess",
+                "turn",
+                "answered".to_owned(),
+                tx_answered,
+                test_meta(),
+            )
+            .await;
+            reg.register_tool(
+                "sess",
+                "turn",
+                "unanswered".to_owned(),
+                tx_unanswered,
+                test_meta(),
+            )
+            .await;
+
+            // The operator answers one approval before the turn ends.
+            assert_eq!(
+                reg.try_send(
+                    Some("sess"),
+                    "turn",
+                    "answered",
+                    decision("answered", ApprovalChoice::Approved)
+                )
+                .await,
+                RouteOutcome::Routed
+            );
+            assert!(rx_answered.recv().await.is_some());
+        }
+
+        let calls = fired.lock().expect("lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls.first().expect("one call"),
+            &vec!["unanswered".to_owned()],
+            "an answered approval already published its resolution when it routed"
+        );
     }
 }

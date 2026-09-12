@@ -99,19 +99,48 @@ mod tests {
     }
 
     #[test]
-    fn slash_in_memory_inspector_is_unbound() {
-        // WHY(#5815): semantic recall has no pylon endpoint, so `/` must not
-        // offer a control whose only outcome is a failure toast. This asserts
-        // the binding is absent, not merely that the hint text changed.
+    fn slash_in_memory_inspector_opens_search() {
+        // WHY(#7197): `/` was previously unbound because the recall API was
+        // believed missing -- pylon's GET /api/v1/knowledge/search always
+        // existed; the gap was a missing skene client method. Now that
+        // `ApiClient::knowledge_search` exists, `/` must open the search
+        // overlay rather than doing nothing.
         let mut app = test_app();
         app.layout
             .view_stack
             .push(crate::state::view_stack::View::MemoryInspector);
         let event = Event::Terminal(key(KeyCode::Char('/')));
+        let msg = app.map_event(event);
         assert!(
-            app.map_event(event).is_none(),
-            "`/` must be unbound in the memory inspector while semantic recall is unavailable"
+            matches!(msg, Some(Msg::MemorySearchOpen)),
+            "`/` must open the memory search overlay, got: {msg:?}"
         );
+    }
+
+    #[test]
+    fn esc_with_search_results_clears_them_instead_of_closing_inspector() {
+        // WHY(#7197): search results replace the fact table in place; Esc
+        // must clear them back to the normal list, not pop the whole
+        // memory inspector view.
+        let mut app = test_app();
+        app.layout
+            .view_stack
+            .push(crate::state::view_stack::View::MemoryInspector);
+        app.layout
+            .memory
+            .search
+            .search_results
+            .push(crate::state::memory::MemorySearchResult {
+                id: "f-1".into(),
+                content: "hello".into(),
+                confidence: 0.9,
+                tier: "verified".into(),
+                fact_type: "knowledge".into(),
+                score: 1.0,
+            });
+        let event = Event::Terminal(key(KeyCode::Esc));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::MemorySearchClose)));
     }
 
     #[test]
@@ -196,6 +225,37 @@ mod tests {
         ));
     }
 
+    /// Regression for #7220: `map_selection_key` hardcodes its own copy of
+    /// the Global bindings rather than falling through to the shared
+    /// `KeyMap`, so its System Status chord needed the same F4 rebind as
+    /// Chat context's -- otherwise Selection mode would still carry a dead
+    /// `Ctrl+I` arm nothing else in this PR's fix or its regression test
+    /// would ever catch.
+    #[test]
+    fn selection_mode_f4_opens_system_status() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.interaction.selected_message = Some(0);
+        let event = Event::Terminal(key(KeyCode::F(4)));
+        let msg = app.map_event(event);
+        assert!(matches!(
+            msg,
+            Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
+        ));
+    }
+
+    #[test]
+    fn selection_mode_ctrl_i_no_longer_bound() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.interaction.selected_message = Some(0);
+        let event = Event::Terminal(key_mod(KeyCode::Char('i'), KeyModifiers::CONTROL));
+        let msg = app.map_event(event);
+        assert!(
+            msg.is_none(),
+            "Ctrl+I is a dead terminal-byte alias for Tab (#7220) -- it must not be \
+             bound to anything, in any context, or a real terminal can never fire it"
+        );
+    }
+
     #[test]
     fn palette_esc_closes() {
         let mut app = test_app();
@@ -267,7 +327,7 @@ mod tests {
     #[test]
     fn overlay_esc_closes() {
         let mut app = test_app();
-        app.layout.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CloseOverlay)));

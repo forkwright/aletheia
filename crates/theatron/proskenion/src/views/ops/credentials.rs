@@ -1,11 +1,7 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
 
 use dioxus::prelude::*;
-use skene::api::routes::system::{
-    credential_rotate_url, credential_url, credential_validate_url, credentials_url,
-};
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::credentials::{
     CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, can_manage_credentials,
@@ -14,118 +10,43 @@ use crate::state::credentials::{
 use crate::state::fetch::FetchState;
 
 // ── API types ──
+//
+// WHY(#4565, ruling B / aletheia#7187): this view previously built its own
+// request/response DTOs and issued raw `authenticated_client()` requests
+// against hand-built `/api/v1/system/credentials...` routes -- a second,
+// untyped protocol boundary alongside skene's. `skene::api::client::ApiClient`
+// now wraps all five credential routes (#4565), so every call site below
+// goes through it instead; the wire types come from `skene::api::types`
+// rather than being re-declared here.
 
-#[derive(Clone, serde::Deserialize)]
-struct CredentialsListResponse {
-    #[serde(default)]
-    credentials: Vec<CredentialApiEntry>,
-}
-
-#[derive(Clone, serde::Deserialize)]
-struct CredentialApiEntry {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    provider: String,
-    #[serde(default)]
-    role: String,
-    /// Key value from API. Must be canonicalized before use.
-    #[serde(default)]
-    masked_key: String, // kanon:ignore RUST/plain-string-secret -- transient API field is canonicalized before entering reactive CredentialEntry state (#4876); this type does not derive Debug
-    #[serde(default)]
-    status: String,
-    /// `true` when `status` reflects an actual provider round trip (#4875).
-    #[serde(default)]
-    provider_verified: bool,
-    #[serde(default)]
-    last_validated: Option<String>,
-    #[serde(default)]
-    requests_today: u64,
-    #[serde(default)]
-    tokens_today: u64,
-}
-
-/// Structured error envelope pylon returns for non-2xx responses.
+/// Convert skene's secret-safe wire type into local UI state.
 ///
-/// WHY(#4877): the backend already returns `{"error": {"code", "message"}}`
-/// on every failure; surfacing only the HTTP status code discarded that.
-#[derive(Clone, serde::Deserialize)]
-struct ApiErrorEnvelope {
-    error: ApiErrorBody,
-}
-
-#[derive(Clone, serde::Deserialize)]
-struct ApiErrorBody {
-    #[serde(default)]
-    code: String,
-    #[serde(default)]
-    message: String,
-}
-
-/// Build a user-facing error message for `action` from a non-2xx response,
-/// preferring the structured `{"error": {code, message}}` envelope pylon
-/// returns and falling back to the bare HTTP status when the body doesn't
-/// parse as that shape (e.g. a proxy-generated error page).
-async fn describe_error_response(action: &str, resp: reqwest::Response) -> String {
-    let status = resp.status();
-    match resp.json::<ApiErrorEnvelope>().await {
-        Ok(envelope) if !envelope.error.message.is_empty() => {
-            format!(
-                "{action} failed: {} ({})",
-                envelope.error.message, envelope.error.code
-            )
-        }
-        _ => format!("{action} failed: {status}"),
+/// WHY: `canonicalize_masked_key` still runs on the server's `masked_key`
+/// value as defense in depth -- a malformed or unexpectedly-raw preview
+/// must never reach rendered state unmasked, regardless of which layer
+/// deserialized it.
+fn into_credential_entry(resp: skene::api::types::CredentialResponse) -> CredentialEntry {
+    let role = if resp.role == "primary" {
+        CredentialRole::Primary
+    } else {
+        CredentialRole::Backup
+    };
+    let status = ValidationStatus::from_wire(&resp.status);
+    let masked_key = canonicalize_masked_key(&resp.redacted_preview);
+    let (requests_today, tokens_today) = resp.usage_counters.as_ref().map_or((0, 0), |counters| {
+        (counters.requests_today, counters.tokens_today)
+    });
+    CredentialEntry {
+        id: resp.id,
+        provider: resp.provider,
+        role,
+        masked_key,
+        status,
+        provider_verified: resp.provider_verified,
+        last_validated: resp.last_validated,
+        requests_today,
+        tokens_today,
     }
-}
-
-impl CredentialApiEntry {
-    fn into_entry(self) -> CredentialEntry {
-        let role = if self.role == "primary" {
-            CredentialRole::Primary
-        } else {
-            CredentialRole::Backup
-        };
-        let status = ValidationStatus::from_wire(&self.status);
-        let masked = canonicalize_masked_key(&self.masked_key);
-        CredentialEntry {
-            id: self.id,
-            provider: self.provider,
-            role,
-            masked_key: masked,
-            status,
-            provider_verified: self.provider_verified,
-            last_validated: self.last_validated,
-            requests_today: self.requests_today,
-            tokens_today: self.tokens_today,
-        }
-    }
-}
-
-/// Serialise a `SecretString` by exposing its inner value so the raw
-/// API key reaches the aletheia server during credential creation.
-///
-/// WHY: the HTTP body must carry the actual key; `SecretString`'s default
-/// `Serialize` would emit `"[REDACTED]"` and break the request. The
-/// secret is still zeroised on drop and redacted in `Debug`/`Display`.
-fn serialize_secret_expose<S: serde::Serializer>(
-    secret: &koina::secret::SecretString,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(secret.expose_secret())
-}
-
-#[derive(Clone, serde::Serialize)]
-struct AddCredentialRequest {
-    provider: String,
-    /// Raw key -- cleared from reactive state immediately after spawn.
-    ///
-    /// WHY: wrapped in `SecretString` so `Debug`/stray logging cannot
-    /// leak the plaintext API key; serialised via `expose_secret` so the
-    /// JSON body still reaches aletheia's credential endpoint intact.
-    #[serde(serialize_with = "serialize_secret_expose")]
-    key: koina::secret::SecretString,
-    role: String,
 }
 
 // ── Styles ──
@@ -364,36 +285,25 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        fetch_state.set(FetchState::Error(err.to_string()));
+                        return;
+                    }
+                };
+            match client.list_credentials().await {
+                Ok(data) => {
+                    let entries = data
+                        .credentials
+                        .into_iter()
+                        .map(into_credential_entry)
+                        .collect();
+                    fetch_state.set(FetchState::Loaded(CredentialStore { entries }));
+                }
                 Err(err) => {
                     fetch_state.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let url = credentials_url(&cfg.server_url);
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<CredentialsListResponse>().await {
-                        Ok(data) => {
-                            let entries = data
-                                .credentials
-                                .into_iter()
-                                .map(CredentialApiEntry::into_entry)
-                                .collect();
-                            fetch_state.set(FetchState::Loaded(CredentialStore { entries }));
-                        }
-                        Err(e) => {
-                            fetch_state.set(FetchState::Error(format!("parse error: {e}")));
-                        }
-                    }
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
                 }
             }
         });
@@ -431,13 +341,15 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
             CredentialRole::Primary => "primary".to_string(),
             CredentialRole::Backup => "backup".to_string(),
         };
-        let payload = AddCredentialRequest {
-            provider,
-            key: {
-                let key = add_key.read();
-                koina::secret::SecretString::from(key.expose_secret().trim().to_owned())
-            },
-            role: role_str,
+        // WHY: the raw key is handed straight to
+        // `skene::api::client::ApiClient::add_credential`, which builds and
+        // serializes `skene::api::types::AddCredentialRequest` itself (its
+        // `serialize_key` override is what puts the real secret on the wire
+        // instead of `SecretString`'s default `"[REDACTED]"`). This view
+        // never constructs that request type or re-serializes the secret.
+        let key = {
+            let key = add_key.read();
+            koina::secret::SecretString::from(key.expose_secret().trim().to_owned())
         };
         let cfg = config.read().clone();
 
@@ -448,30 +360,25 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
         is_adding.set(true);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    add_error.set(Some(err.to_string()));
-                    is_adding.set(false);
-                    return;
-                }
-            };
-            let url = credentials_url(&cfg.server_url);
-            match client.post(&url).json(&payload).send().await {
-                Ok(resp) if resp.status().is_success() => {
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        add_error.set(Some(err.to_string()));
+                        is_adding.set(false);
+                        return;
+                    }
+                };
+            match client.add_credential(&provider, key, &role_str).await {
+                Ok(_) => {
                     add_provider.set(String::new());
                     add_role.set(CredentialRole::Primary);
                     show_add.set(false);
                     is_adding.set(false);
                     fetch_trigger.set(fetch_trigger() + 1);
                 }
-                Ok(resp) => {
-                    let msg = describe_error_response("Add", resp).await;
-                    add_error.set(Some(msg));
-                    is_adding.set(false);
-                }
-                Err(e) => {
-                    add_error.set(Some(format!("Connection error: {e}")));
+                Err(err) => {
+                    add_error.set(Some(err.to_string()));
                     is_adding.set(false);
                 }
             }
@@ -706,7 +613,10 @@ fn CredentialCard(
             card_error.set(None);
 
             spawn(async move {
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
                         is_validating.set(false);
@@ -714,20 +624,14 @@ fn CredentialCard(
                         return;
                     }
                 };
-                let url = credential_validate_url(&cfg.server_url, &id_v);
-                match client.post(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
+                match client.validate_credential(&id_v).await {
+                    Ok(_) => {
                         is_validating.set(false);
                         on_change.call(());
                     }
-                    Ok(resp) => {
-                        let msg = describe_error_response("Validate", resp).await;
+                    Err(err) => {
                         is_validating.set(false);
-                        card_error.set(Some(msg));
-                    }
-                    Err(e) => {
-                        is_validating.set(false);
-                        card_error.set(Some(format!("Connection error: {e}")));
+                        card_error.set(Some(err.to_string()));
                     }
                 }
             });
@@ -752,7 +656,10 @@ fn CredentialCard(
             is_rotating.set(true);
 
             spawn(async move {
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
                         card_error.set(Some(err.to_string()));
@@ -760,20 +667,14 @@ fn CredentialCard(
                         return;
                     }
                 };
-                let url = credential_rotate_url(&cfg.server_url, &prov);
-                match client.post(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
+                match client.rotate_credentials(&prov).await {
+                    Ok(_) => {
                         is_rotating.set(false);
                         on_change.call(());
                     }
-                    Ok(resp) => {
-                        let msg = describe_error_response("Rotate", resp).await;
+                    Err(err) => {
                         is_rotating.set(false);
-                        card_error.set(Some(msg));
-                    }
-                    Err(e) => {
-                        is_rotating.set(false);
-                        card_error.set(Some(format!("Connection error: {e}")));
+                        card_error.set(Some(err.to_string()));
                     }
                 }
             });
@@ -793,7 +694,10 @@ fn CredentialCard(
             is_removing.set(true);
 
             spawn(async move {
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
                         card_error.set(Some(err.to_string()));
@@ -801,20 +705,14 @@ fn CredentialCard(
                         return;
                     }
                 };
-                let url = credential_url(&cfg.server_url, &id_r);
-                match client.delete(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
+                match client.remove_credential(&id_r).await {
+                    Ok(_) => {
                         is_removing.set(false);
                         on_change.call(());
                     }
-                    Ok(resp) => {
-                        let msg = describe_error_response("Remove", resp).await;
+                    Err(err) => {
                         is_removing.set(false);
-                        card_error.set(Some(msg));
-                    }
-                    Err(e) => {
-                        is_removing.set(false);
-                        card_error.set(Some(format!("Connection error: {e}")));
+                        card_error.set(Some(err.to_string()));
                     }
                 }
             });
@@ -1002,45 +900,31 @@ fn CredentialCard(
 mod tests {
     use super::*;
 
-    fn api_entry(masked_key: &str) -> CredentialApiEntry {
-        CredentialApiEntry {
+    // WHY: route-path encoding (including the `open ai/a?b#c:100%` rotate
+    // case) is now covered once, in skene, by
+    // `system::credential_routes_encode_path_and_query_inputs` -- this view
+    // no longer builds those paths itself, so re-asserting them here would
+    // just be a second copy of skene's own contract test.
+
+    fn api_entry(masked_key: &str) -> skene::api::types::CredentialResponse {
+        skene::api::types::CredentialResponse {
             id: "anthropic:primary".to_string(),
             provider: "anthropic".to_string(),
             role: "primary".to_string(),
-            masked_key: masked_key.to_string(),
+            redacted_preview: masked_key.to_string(),
             status: "valid".to_string(),
             provider_verified: false,
+            validation_state: None,
             last_validated: None,
-            requests_today: 0,
-            tokens_today: 0,
+            usage_counters_available: false,
+            usage_counters: None,
+            runtime_effect: None,
         }
     }
 
     #[test]
-    fn credentials_urls_use_versioned_system_api() {
-        let base = "http://localhost:8080/";
-
-        assert_eq!(
-            credentials_url(base),
-            "http://localhost:8080/api/v1/system/credentials"
-        );
-        assert_eq!(
-            credential_url(base, "anthropic:backup"),
-            "http://localhost:8080/api/v1/system/credentials/anthropic%3Abackup"
-        );
-        assert_eq!(
-            credential_validate_url(base, "anthropic:primary"),
-            "http://localhost:8080/api/v1/system/credentials/anthropic%3Aprimary/validate"
-        );
-        assert_eq!(
-            credential_rotate_url(base, "open ai/a?b#c:100%"),
-            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open+ai%2Fa%3Fb%23c%3A100%25"
-        );
-    }
-
-    #[test]
     fn api_entry_canonicalizes_malformed_prefixed_mask() {
-        let entry = api_entry("...raw-secret-material").into_entry();
+        let entry = into_credential_entry(api_entry("...raw-secret-material"));
 
         assert_eq!(entry.masked_key, "...????");
         assert!(!entry.masked_key.contains("raw"));
@@ -1049,9 +933,28 @@ mod tests {
 
     #[test]
     fn api_entry_masks_unprefixed_raw_key() {
-        let entry = api_entry("sk-test-secret-1234").into_entry();
+        let entry = into_credential_entry(api_entry("sk-test-secret-1234"));
 
         assert_eq!(entry.masked_key, "...1234");
         assert!(!entry.masked_key.contains("test-secret"));
+    }
+
+    #[test]
+    fn api_entry_carries_usage_counters_when_present() {
+        let mut entry = api_entry("sk-test-secret-1234");
+        entry.usage_counters_available = true;
+        entry.usage_counters = Some(skene::api::types::CredentialUsageCounters {
+            requests_today: 42,
+            tokens_today: 1_337,
+            source: "provider".to_string(),
+            freshness: "live".to_string(),
+            scope: "credential".to_string(),
+            state: "ok".to_string(),
+        });
+
+        let converted = into_credential_entry(entry);
+
+        assert_eq!(converted.requests_today, 42);
+        assert_eq!(converted.tokens_today, 1_337);
     }
 }

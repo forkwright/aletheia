@@ -17,7 +17,37 @@ use crate::error::Result;
 /// WHY(#5130): older records (written before the extra fields were added)
 /// deserialize with `schema_version == 0` via `#[serde(default)]`, letting the
 /// runner distinguish migrated-forward records from current ones.
-pub const TASK_STATE_SCHEMA_VERSION: u32 = 1;
+///
+/// WHY(#7206) bumped 1 -> 2: `disable_cause` was added. `#[serde(default)]`
+/// makes this backward compatible on its own; the bump exists only to keep
+/// the version number an honest marker of "this record predates `disable_cause`",
+/// consistent with the version's stated purpose above.
+pub const TASK_STATE_SCHEMA_VERSION: u32 = 2;
+
+/// Who or what disabled a task, persisted alongside `enabled: Some(false)`.
+///
+/// WHY(#7206): before this, every persisted disable meant exactly one thing
+/// -- the runner's own 3-consecutive-failure policy
+/// (`runner::tracking::record_task_failure`) -- because no other path could
+/// disable a task. The new daemon-task admin API (pylon `/system/daemon/tasks`)
+/// adds a second path: an operator or agent explicitly turning a task off.
+/// The two must not be treated alike on hydration: an automatic disable is a
+/// *symptom* the runner observed (and, per #5130, must not silently forget),
+/// often caused by an environmental condition (a missing directory, a
+/// transient network blip) that can already be resolved by the time the
+/// process restarts; an explicit disable is a *decision* a human or agent
+/// made and stated on purpose. See `runner::persistence::apply_saved_state`
+/// for the asymmetric hydration rule this distinction drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisableCause {
+    /// The runner auto-disabled the task after 3 consecutive failures.
+    AutoFailure,
+    /// An operator or agent explicitly disabled the task via the admin API
+    /// (or, historically, hand-edited the persisted state to the same
+    /// effect).
+    Operator,
+}
 
 /// Persisted execution state for a single registered task.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -47,6 +77,12 @@ pub struct TaskState {
     /// Terminal outcome of the last execution: `success`, `failed`, or `skipped`.
     #[serde(default)]
     pub last_outcome: Option<String>,
+    /// Why the task is disabled, when `enabled == Some(false)`. `None` for
+    /// records written before this field existed, and for an enabled task.
+    /// See [`DisableCause`] for why legacy `None` on a disabled record is
+    /// treated the same as `AutoFailure` on hydration (#7206).
+    #[serde(default)]
+    pub disable_cause: Option<DisableCause>,
 }
 
 mod fjall_store;
@@ -320,6 +356,7 @@ mod tests {
             backoff_until_ts: None,
             last_error: None,
             last_outcome: Some("success".to_owned()),
+            disable_cause: None,
         };
         store.save(&state).unwrap();
 
@@ -334,6 +371,45 @@ mod tests {
             loaded[0].last_run_ts.as_deref(),
             Some("2026-01-01T00:00:00Z")
         );
+    }
+
+    #[test]
+    fn disable_cause_roundtrips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = TaskStateStore::open(&tmp.path().join("state")).unwrap();
+
+        let state = TaskState {
+            task_id: "auto-disabled-task".to_owned(),
+            enabled: Some(false),
+            disable_cause: Some(DisableCause::AutoFailure),
+            ..TaskState::default()
+        };
+        store.save(&state).unwrap();
+
+        let loaded = store.load_all().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].disable_cause, Some(DisableCause::AutoFailure));
+    }
+
+    /// A record written before `disable_cause` existed must still deserialize,
+    /// with `disable_cause: None` rather than a hard failure (#7206).
+    #[test]
+    fn disable_cause_defaults_to_none_for_legacy_json() {
+        let legacy = serde_json::json!({
+            "task_id": "legacy-task",
+            "last_run_ts": null,
+            "run_count": 3,
+            "consecutive_failures": 3,
+            "schema_version": 1,
+            "enabled": false,
+            "backoff_until_ts": null,
+            "last_error": "boom",
+            "last_outcome": "failed"
+        });
+
+        let state: TaskState = serde_json::from_value(legacy).unwrap();
+        assert_eq!(state.disable_cause, None);
+        assert_eq!(state.enabled, Some(false));
     }
 
     #[test]

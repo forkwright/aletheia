@@ -45,12 +45,14 @@ pub(crate) enum SessionLoadState<T> {
     Loaded(T),
     /// Data loaded successfully and the result set is legitimately empty.
     Empty(T),
-    /// The request failed before receiving a complete response.
+    /// The request failed before receiving a complete response, or the
+    /// server's response could not be decoded (#7198: `skene::api::client`
+    /// does not distinguish a dropped connection from an undecodable body
+    /// for these routes, so proskenion cannot classify them separately
+    /// either without re-deriving that distinction from a raw response).
     TransportError(SessionLoadFailure),
     /// The server returned a non-success HTTP status.
     HttpError(SessionLoadFailure),
-    /// The server response did not match the expected API contract.
-    ContractError(SessionLoadFailure),
 }
 
 /// Sort field for session list ordering.

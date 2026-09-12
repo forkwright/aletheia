@@ -369,8 +369,8 @@ impl SpawnServiceImpl {
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
-                extraction_model: None,
-                distillation_model: None,
+                extraction_override: None,
+                distillation_override: None,
             },
             limits: crate::config::NousLimits {
                 max_tool_iterations: resolved.max_tool_iterations,

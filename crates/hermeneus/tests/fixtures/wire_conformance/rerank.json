@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-09-06T18:35:53Z",
+  "captured_from": "http://127.0.0.1:5010/v1/rerank",
+  "served_model": "qwen3-reranker-0.6b",
+  "note": "OpenAI-compatible /v1/rerank against the incumbent's dedicated rerank llama-server (port 5010). hermeneus has no typed rerank client today (that lives in episteme::recall::reranker); this suite exercises the wire directly.",
+  "request": {
+    "model": "qwen3-reranker-0.6b",
+    "query": "capital of france",
+    "documents": [
+      "Paris is the capital of France.",
+      "Bananas are yellow."
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "qwen3-reranker-0.6b",
+      "object": "list",
+      "usage": {
+        "prompt_tokens": 162,
+        "total_tokens": 162
+      },
+      "results": [
+        {
+          "index": 0,
+          "relevance_score": 0.9988040924072266
+        },
+        {
+          "index": 1,
+          "relevance_score": 2.0079174646525644e-05
+        }
+      ]
+    }
+  }
+}

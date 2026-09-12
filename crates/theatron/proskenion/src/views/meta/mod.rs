@@ -10,9 +10,7 @@ mod quality;
 mod reflection;
 
 use dioxus::prelude::*;
-use serde::de::DeserializeOwned;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::meta::{
@@ -71,12 +69,6 @@ struct CostMetricsApiResponse {
 struct CostBucketEntry {
     #[serde(default)]
     cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct KnowledgeFactsResponse {
-    #[serde(default)]
-    facts: Vec<FactEntry>,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -166,37 +158,6 @@ struct AgentEntry {
     id: String,
     #[serde(default)]
     name: String,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct SessionsApiResponse {
-    // NOTE: the paginated endpoint wraps the list as `items`.
-    #[serde(default, alias = "items")]
-    sessions: Vec<SessionEntry>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct KnowledgeEntitiesResponse {
-    #[serde(default)]
-    entities: Vec<EntityEntry>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct TimelineEventsResponse {
-    #[serde(default)]
-    events: Vec<TimelineEventApiEntry>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct TimelineEventApiEntry {
-    #[serde(default)]
-    timestamp: String,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct AgentsApiResponse {
-    #[serde(default, alias = "agents")]
-    nous: Vec<AgentEntry>,
 }
 
 // ── New insights endpoint response types ──
@@ -290,11 +251,17 @@ struct JournalEventEntry {
     message: String,
 }
 
-/// Wire envelope for `GET /api/v1/journal`
-/// (`pylon::types::insights::JournalResponse`).
+/// Local mirror of `skene::api::types::JournalResponse`.
 ///
-/// WARNING: no `rename_all` on the server DTO, so field names must stay
-/// verbatim-identical to pylon's Rust field names.
+/// WHY(#4565, ruling B / aletheia#7187): before this migration, this type had
+/// its own hand-rolled `Deserialize` impl that parsed pylon's raw JSON body
+/// directly -- rejecting a bare JSON sequence rather than silently accepting
+/// one as an empty envelope (`#4486`). That parsing boundary now lives in
+/// `skene::api::client::ApiClient::journal` / `skene::api::types::
+/// JournalResponse` instead (its `events` field has no `#[serde(default)]`,
+/// so the same bare-`[]` shape it used to special-case already fails to
+/// deserialize there); this struct is populated purely via the `From` impl
+/// below and never deserializes JSON on its own account.
 #[derive(Debug, Clone, Default)]
 struct JournalResponseEntry {
     events: Vec<JournalEventEntry>,
@@ -304,46 +271,249 @@ struct JournalResponseEntry {
     data_unavailable: Vec<UnavailableMetricEntry>,
 }
 
-// WARNING: a plain `#[derive(serde::Deserialize)]` on an all-`#[serde(default)]`
-// struct also accepts JSON *sequences* (serde's derived struct visitor reads a
-// seq positionally, and an empty seq satisfies every trailing defaulted
-// field) -- so a bare `[]` would silently parse as an empty envelope instead
-// of failing loudly if pylon's contract ever reverted to a bare array. Route
-// through `serde_json::Value` first and reject anything that is not a JSON
-// object.
-impl<'de> serde::Deserialize<'de> for JournalResponseEntry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        struct Envelope {
-            #[serde(default)]
-            events: Vec<JournalEventEntry>,
-            #[serde(default)]
-            data_unavailable: Vec<UnavailableMetricEntry>,
-        }
-
-        let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
-        if !value.is_object() {
-            return Err(serde::de::Error::custom(
-                "expected a JSON object envelope for the journal response, not a bare sequence",
-            ));
-        }
-        let envelope: Envelope = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-        Ok(Self {
-            events: envelope.events,
-            data_unavailable: envelope.data_unavailable,
-        })
-    }
-}
-
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct UnavailableMetricEntry {
     #[serde(default)]
     metric: String,
     #[serde(default)]
     reason: String,
+}
+
+// ── Conversions from skene's typed insights DTOs ──
+//
+// WHY(#4565, ruling B / aletheia#7187): every source `fetch_meta_data` below
+// fetches now goes through `skene::api::client::ApiClient` instead of a
+// hand-built `/api/v1/...` literal on a raw client. These wire shapes mirror
+// pylon's DTOs exactly on both sides (skene's typed DTOs and this module's
+// `*Entry`/`*ApiResponse` types), so the conversions are a plain field-by-
+// field remap -- kept local rather than switching every downstream
+// `assemble_meta_data` consumer onto skene's types directly.
+
+impl From<skene::api::types::TimeSeriesPoint> for TimeSeriesPointEntry {
+    fn from(point: skene::api::types::TimeSeriesPoint) -> Self {
+        Self {
+            date: point.date,
+            value: point.value,
+        }
+    }
+}
+
+impl From<skene::api::types::AnomalyAlert> for AnomalyEntry {
+    fn from(alert: skene::api::types::AnomalyAlert) -> Self {
+        Self {
+            agent_id: alert.agent_id,
+            agent_name: alert.agent_name,
+            metric_name: alert.metric_name,
+            current_value: alert.current_value,
+            baseline_mean: alert.baseline_mean,
+            deviation_pct: alert.deviation_pct,
+            direction: alert.direction,
+        }
+    }
+}
+
+impl From<skene::api::types::AgentPerformance> for AgentPerformanceEntry {
+    fn from(perf: skene::api::types::AgentPerformance) -> Self {
+        Self {
+            agent_id: perf.agent_id,
+            agent_name: perf.agent_name,
+            avg_tokens_per_response: perf.avg_tokens_per_response,
+            tool_calls_per_session: perf.tool_calls_per_session,
+            tool_success_rate: perf.tool_success_rate,
+            distillation_frequency: perf.distillation_frequency,
+            avg_context_before_distill: perf.avg_context_before_distill,
+            messages_per_session: perf.messages_per_session,
+            sessions_per_day: perf.sessions_per_day,
+            errors_per_session: perf.errors_per_session,
+            tokens_per_response_series: perf
+                .tokens_per_response_series
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::AgentPerformanceListResponse> for AgentPerformanceApiResponse {
+    fn from(resp: skene::api::types::AgentPerformanceListResponse) -> Self {
+        Self {
+            agents: resp.agents.into_iter().map(Into::into).collect(),
+            anomalies: resp.anomalies.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::QualitySeries> for QualitySeriesEntry {
+    fn from(series: skene::api::types::QualitySeries) -> Self {
+        Self {
+            avg_turn_length: series.avg_turn_length.into_iter().map(Into::into).collect(),
+            response_to_question_ratio: series
+                .response_to_question_ratio
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            tool_call_density: series
+                .tool_call_density
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            thinking_time_ratio: series
+                .thinking_time_ratio
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::QualityMetricsResponse> for QualityMetricsApiResponse {
+    fn from(resp: skene::api::types::QualityMetricsResponse) -> Self {
+        Self {
+            series: resp.series.into(),
+        }
+    }
+}
+
+impl From<skene::api::types::JournalEvent> for JournalEventEntry {
+    fn from(event: skene::api::types::JournalEvent) -> Self {
+        Self {
+            timestamp: event.timestamp,
+            event_type: event.event_type,
+            message: event.message,
+        }
+    }
+}
+
+impl From<skene::api::types::UnavailableMetric> for UnavailableMetricEntry {
+    fn from(metric: skene::api::types::UnavailableMetric) -> Self {
+        Self {
+            metric: metric.metric,
+            reason: metric.reason,
+        }
+    }
+}
+
+impl From<skene::api::types::JournalResponse> for JournalResponseEntry {
+    fn from(resp: skene::api::types::JournalResponse) -> Self {
+        Self {
+            events: resp.events.into_iter().map(Into::into).collect(),
+            data_unavailable: resp.data_unavailable.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+// WHY(#4565): the remaining sources this view fetched directly (health,
+// tokens, costs, knowledge facts/entities/timeline/health, sessions,
+// agents) now go through skene's typed `ApiClient` the same way; these
+// `From` impls are the same boundary the block above already established
+// for performance/quality/journal.
+impl From<skene::api::types::HealthResponse> for HealthApiResponse {
+    fn from(resp: skene::api::types::HealthResponse) -> Self {
+        Self {
+            uptime_seconds: resp.uptime_seconds,
+        }
+    }
+}
+
+impl From<skene::api::types::TokenSeriesPoint> for TokenBucketEntry {
+    fn from(point: skene::api::types::TokenSeriesPoint) -> Self {
+        Self {
+            input_tokens: point.input_tokens,
+            output_tokens: point.output_tokens,
+        }
+    }
+}
+
+impl From<skene::api::types::AgentTokenRow> for AgentTokenRowEntry {
+    fn from(row: skene::api::types::AgentTokenRow) -> Self {
+        Self {
+            session_count: row.session_count,
+        }
+    }
+}
+
+impl From<skene::api::types::TokenMetricsResponse> for TokenMetricsApiResponse {
+    fn from(resp: skene::api::types::TokenMetricsResponse) -> Self {
+        Self {
+            series: resp.series.into_iter().map(Into::into).collect(),
+            agents: resp.agents.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::CostSeriesPoint> for CostBucketEntry {
+    fn from(point: skene::api::types::CostSeriesPoint) -> Self {
+        Self {
+            cost_usd: point.cost_usd,
+        }
+    }
+}
+
+impl From<skene::api::types::CostMetricsResponse> for CostMetricsApiResponse {
+    fn from(resp: skene::api::types::CostMetricsResponse) -> Self {
+        Self {
+            series: resp.series.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<skene::api::types::Fact> for FactEntry {
+    fn from(fact: skene::api::types::Fact) -> Self {
+        Self {
+            confidence: fact.confidence,
+            recorded_at: fact.recorded_at,
+            is_forgotten: fact.is_forgotten,
+            last_accessed_at: fact.last_accessed_at.unwrap_or_default(),
+            stability_hours: fact.stability_hours,
+            valid_to: fact.valid_to,
+        }
+    }
+}
+
+impl From<skene::api::types::EntityListItem> for EntityEntry {
+    fn from(item: skene::api::types::EntityListItem) -> Self {
+        Self {
+            name: item.name,
+            entity_type: item.entity_type,
+            relationship_count: item.relationship_count,
+            updated_at: item.updated_at,
+        }
+    }
+}
+
+impl From<skene::api::types::MemoryHealthResponse> for MemoryHealthApiResponse {
+    fn from(resp: skene::api::types::MemoryHealthResponse) -> Self {
+        Self {
+            avg_confidence: resp.avg_confidence,
+            orphan_ratio: resp.orphan_ratio,
+            staleness_ratio: resp.staleness_ratio,
+            health_score: resp.health_score,
+        }
+    }
+}
+
+impl From<skene::api::types::Session> for SessionEntry {
+    fn from(session: skene::api::types::Session) -> Self {
+        Self {
+            nous_id: session.nous_id.to_string(),
+            message_count: session.message_count,
+            // NOTE: the paginated session list carries only `updated_at`;
+            // `created_at` has no skene/wire equivalent, matching the
+            // pre-migration `SessionEntry` (whose own field never had a
+            // `created_at` source either -- see `activity_timestamp`).
+            created_at: String::new(),
+            updated_at: session.updated_at.unwrap_or_default(),
+        }
+    }
+}
+
+impl From<skene::api::types::Agent> for AgentEntry {
+    fn from(agent: skene::api::types::Agent) -> Self {
+        Self {
+            id: agent.id.to_string(),
+            name: agent.display_name().to_owned(),
+        }
+    }
 }
 
 /// Composite data fetched from multiple API endpoints.
@@ -628,28 +798,18 @@ fn AccordionSection(
 // ── Data fetch ──
 
 async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
-    let client = match authenticated_client(cfg) {
+    let client = match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
         Ok(client) => client,
         Err(err) => return FetchState::Error(err.to_string()),
     };
-    let base = cfg.server_url.trim_end_matches('/');
 
-    // WHY(#6732): `/api/health` is unauthenticated liveness only (`status`
-    // only); `uptime_seconds` requires the operator-only detailed route.
-    let health_url = format!("{base}/api/v1/system/health");
-    // WHY: /metrics serves Prometheus text; system totals come from the
-    // JSON token/cost insights endpoints instead.
-    let tokens_url = format!("{base}/api/v1/metrics/tokens");
-    let costs_url = format!("{base}/api/v1/metrics/costs");
-    let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000&include_forgotten=true");
-    let entities_url = format!("{base}/api/v1/knowledge/entities");
-    let timeline_url = format!("{base}/api/v1/knowledge/timeline");
-    let memory_health_url = format!("{base}/api/v1/knowledge/health");
-    let sessions_url = format!("{base}/api/v1/sessions");
-    let agents_url = format!("{base}/api/v1/nous");
-    let perf_url = format!("{base}/api/v1/metrics/agents");
-    let quality_url = format!("{base}/api/v1/metrics/quality");
-    let journal_url = format!("{base}/api/v1/journal");
+    let facts_params = skene::api::types::KnowledgeFactsRequest {
+        limit: Some(1000),
+        include_forgotten: true,
+        ..Default::default()
+    };
+    let entities_params = skene::api::types::KnowledgeEntitiesRequest::default();
+    let sessions_params = skene::api::types::ListSessionsRequest::default();
 
     // WHY: Fetch all endpoints in parallel to minimize latency.
     let (
@@ -666,105 +826,101 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         quality_res,
         journal_res,
     ) = tokio::join!(
-        client.get(&health_url).send(),
-        client.get(&tokens_url).send(),
-        client.get(&costs_url).send(),
-        client.get(&facts_url).send(),
-        client.get(&entities_url).send(),
-        client.get(&timeline_url).send(),
-        client.get(&memory_health_url).send(),
-        client.get(&sessions_url).send(),
-        client.get(&agents_url).send(),
-        client.get(&perf_url).send(),
-        client.get(&quality_url).send(),
-        client.get(&journal_url).send(),
+        client.health_details(),
+        client.token_metrics(None, None, None),
+        client.cost_metrics(None, None, None),
+        client.knowledge_facts(&facts_params),
+        client.knowledge_entities(&entities_params),
+        client.knowledge_timeline(),
+        client.knowledge_health(),
+        client.sessions_paginated(&sessions_params),
+        client.agents(),
+        client.agent_performance(),
+        client.quality_metrics(),
+        client.journal(),
     );
 
-    let health: HealthApiResponse =
-        match skene::api::health::fetch_health_response(health_res).await {
-            Ok(data) => HealthApiResponse {
-                uptime_seconds: data.uptime_seconds,
-            },
-            Err(err) => {
-                return FetchState::Error(err.to_string());
-            }
-        };
-
-    let tokens: TokenMetricsApiResponse = match tokens_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "token metrics").await,
-        _ => TokenMetricsApiResponse::default(),
-    };
-
-    let costs: CostMetricsApiResponse = match costs_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "cost metrics").await,
-        _ => CostMetricsApiResponse::default(),
-    };
-
-    let facts: Vec<FactEntry> = match facts_res {
-        Ok(resp) if resp.status().is_success() => {
-            // WHY: API may return bare array or wrapped in { facts: [...] }.
-            match optional_text(resp, "facts").await {
-                Some(text) => parse_facts_response(&text),
-                None => Vec::new(),
-            }
+    // WHY(#6732): `/api/health` is unauthenticated liveness only (`status`
+    // only); `uptime_seconds` requires the operator-only detailed route
+    // `health_details` hits.
+    let health: HealthApiResponse = match health_res {
+        Ok(data) => data.into(),
+        Err(err) => {
+            return FetchState::Error(err.to_string());
         }
-        _ => Vec::new(),
     };
 
-    let entities: Vec<EntityEntry> = match entities_res {
-        Ok(resp) if resp.status().is_success() => match optional_text(resp, "entities").await {
-            Some(text) => parse_entities_response(&text),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
+    let tokens: TokenMetricsApiResponse = tokens_res.map(Into::into).unwrap_or_default();
+    let costs: CostMetricsApiResponse = costs_res.map(Into::into).unwrap_or_default();
 
-    let timeline: Vec<TimelineEntry> = match timeline_res {
-        Ok(resp) if resp.status().is_success() => match optional_text(resp, "timeline").await {
-            Some(text) => parse_timeline_response(&text),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
+    let facts: Vec<FactEntry> = facts_res
+        .map(|resp| resp.facts.into_iter().map(Into::into).collect())
+        .unwrap_or_default();
 
-    let sessions: Vec<SessionEntry> = match sessions_res {
-        Ok(resp) if resp.status().is_success() => match optional_text(resp, "sessions").await {
-            Some(text) => parse_sessions_response(&text),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
+    let entities: Vec<EntityEntry> = entities_res
+        .map(|resp| resp.entities.into_iter().map(Into::into).collect())
+        .unwrap_or_default();
 
-    let agents: Vec<AgentEntry> = match agents_res {
-        Ok(resp) if resp.status().is_success() => match optional_text(resp, "agents").await {
-            Some(text) => parse_agents_response(&text),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
+    let timeline: Vec<TimelineEntry> = timeline_res
+        .map(|resp| bucket_timeline_events(&resp.events))
+        .unwrap_or_default();
+
+    let sessions: Vec<SessionEntry> = sessions_res
+        .map(|resp| resp.items.into_iter().map(Into::into).collect())
+        .unwrap_or_default();
+
+    let agents: Vec<AgentEntry> = agents_res
+        .map(|resp| resp.into_iter().map(Into::into).collect())
+        .unwrap_or_default();
 
     // WHY(#6823): when the server route responds, its store-derived snapshot
     // replaces the client-side recomputation from the fact/entity lists
-    // above (see `assemble_meta_data`). `fetch_source` degrades to
-    // `(default, false)` on an older server or a disabled knowledge store,
-    // which keeps that client-side computation as the fallback.
+    // above (see `assemble_meta_data`). A failure (older server or a
+    // disabled knowledge store) degrades to `(default, false)`, which keeps
+    // that client-side computation as the fallback.
     let (server_memory_health, server_memory_health_available): (MemoryHealthApiResponse, bool) =
-        fetch_source(memory_health_res, "memory health").await;
+        match memory_health_res {
+            Ok(resp) => (resp.into(), true),
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to load server memory health");
+                (MemoryHealthApiResponse::default(), false)
+            }
+        };
 
-    let (perf, perf_available): (AgentPerformanceApiResponse, bool) =
-        fetch_source(perf_res, "agent performance").await;
+    // WHY: every source here returns `Result<_, ApiError>` from skene, not
+    // an HTTP response to inspect -- `Ok` already means "2xx and parsed",
+    // so a plain `match` is the "genuinely usable" condition each `_res`
+    // above needed by hand before this migration.
+    let (perf, perf_available): (AgentPerformanceApiResponse, bool) = match perf_res {
+        Ok(resp) => (resp.into(), true),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to load agent performance");
+            (AgentPerformanceApiResponse::default(), false)
+        }
+    };
 
-    let (quality, quality_available): (QualityMetricsApiResponse, bool) =
-        fetch_source(quality_res, "quality").await;
+    let (quality, quality_available): (QualityMetricsApiResponse, bool) = match quality_res {
+        Ok(resp) => (resp.into(), true),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to load quality metrics");
+            (QualityMetricsApiResponse::default(), false)
+        }
+    };
 
     // WHY(#4486): pylon's `/api/v1/journal` returns an envelope
     // (`{events, data_unavailable}`), not a bare array, and marks itself
     // unavailable in-band via `data_unavailable` rather than an HTTP error
-    // (no persistent event journal backs the route yet). Parsing straight
-    // into `Vec<JournalEventEntry>` would fail on every real response
-    // (map where a sequence is expected) and never surface that reason.
-    let (journal_response, journal_fetched): (JournalResponseEntry, bool) =
-        fetch_source(journal_res, "journal").await;
+    // (no persistent event journal backs the route yet). `skene::api::types::
+    // JournalResponse` already models that envelope, so no bare-array/wrapped
+    // fallback parsing is needed here the way the still-raw sources above
+    // need it.
+    let (journal_response, journal_fetched): (JournalResponseEntry, bool) = match journal_res {
+        Ok(resp) => (resp.into(), true),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to load journal");
+            (JournalResponseEntry::default(), false)
+        }
+    };
     let journal_available = journal_fetched && journal_response.data_unavailable.is_empty();
     // WHY: surface pylon's own reason instead of a generic message -- the
     // whole point of parsing the envelope (see #4486 above) was to know
@@ -796,110 +952,13 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     FetchState::Loaded(data)
 }
 
-async fn optional_json<T>(resp: reqwest::Response, endpoint: &'static str) -> T
-where
-    T: DeserializeOwned + Default,
-{
-    match resp.json().await {
-        Ok(value) => value,
-        Err(err) => {
-            tracing::warn!(endpoint, error = %err, "failed to parse optional meta response");
-            T::default()
-        }
-    }
-}
-
-/// Fetch and parse one optional meta-insights source, reporting whether it
-/// is genuinely usable (2xx response, body parsed) alongside the value.
+/// Bucket per-fact timeline events into per-date counts client-side.
 ///
-/// WHY: a failed or malformed source must degrade to `T::default()` *and*
-/// `false` -- collapsing "unavailable" into the same default value as
-/// "genuinely empty" is what let downstream stores mark an unfetched source
-/// as available (#4988).
-async fn fetch_source<T>(
-    result: Result<reqwest::Response, reqwest::Error>,
-    endpoint: &'static str,
-) -> (T, bool)
-where
-    T: DeserializeOwned + Default,
-{
-    match result {
-        Ok(resp) if resp.status().is_success() => match resp.json::<T>().await {
-            Ok(value) => (value, true),
-            Err(err) => {
-                tracing::warn!(endpoint, error = %err, "failed to parse optional meta response");
-                (T::default(), false)
-            }
-        },
-        _ => (T::default(), false),
-    }
-}
-
-async fn optional_text(resp: reqwest::Response, endpoint: &'static str) -> Option<String> {
-    match resp.text().await {
-        Ok(text) => Some(text),
-        Err(err) => {
-            tracing::warn!(endpoint, error = %err, "failed to read optional meta response");
-            None
-        }
-    }
-}
-
-fn parse_facts_response(text: &str) -> Vec<FactEntry> {
-    match serde_json::from_str::<Vec<FactEntry>>(text) {
-        Ok(facts) => facts,
-        Err(array_err) => match serde_json::from_str::<KnowledgeFactsResponse>(text) {
-            Ok(response) => response.facts,
-            Err(wrapped_err) => {
-                tracing::warn!(
-                    array_error = %array_err,
-                    wrapped_error = %wrapped_err,
-                    "failed to parse facts response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-fn parse_entities_response(text: &str) -> Vec<EntityEntry> {
-    match serde_json::from_str::<Vec<EntityEntry>>(text) {
-        Ok(entities) => entities,
-        Err(array_err) => match serde_json::from_str::<KnowledgeEntitiesResponse>(text) {
-            Ok(response) => response.entities,
-            Err(wrapped_err) => {
-                tracing::warn!(
-                    array_error = %array_err,
-                    wrapped_error = %wrapped_err,
-                    "failed to parse entities response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-fn parse_timeline_response(text: &str) -> Vec<TimelineEntry> {
-    // WHY: the endpoint returns per-fact events `{events: [...], total}`;
-    // bucket timestamps into per-date counts client-side. A bare
-    // `[{date, count}]` array is accepted as a pre-bucketed fallback.
-    match serde_json::from_str::<TimelineEventsResponse>(text) {
-        Ok(response) => bucket_timeline_events(&response.events),
-        Err(wrapped_err) => match serde_json::from_str::<Vec<TimelineEntry>>(text) {
-            Ok(timeline) => timeline,
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse timeline response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-fn bucket_timeline_events(events: &[TimelineEventApiEntry]) -> Vec<TimelineEntry> {
+/// WHY(#4565): `skene::api::types::TimelineEvent` is the typed wire shape
+/// `ApiClient::knowledge_timeline` returns -- no bare-array/wrapped
+/// fallback parsing is needed here the way the pre-migration raw-text
+/// version needed, since skene owns that deserialize boundary now.
+fn bucket_timeline_events(events: &[skene::api::types::TimelineEvent]) -> Vec<TimelineEntry> {
     let mut counts: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
     for event in events {
         if let Some(date) = event.timestamp.get(..10) {
@@ -913,64 +972,27 @@ fn bucket_timeline_events(events: &[TimelineEventApiEntry]) -> Vec<TimelineEntry
         .collect()
 }
 
-fn parse_sessions_response(text: &str) -> Vec<SessionEntry> {
-    match serde_json::from_str::<Vec<SessionEntry>>(text) {
-        Ok(sessions) => sessions,
-        Err(array_err) => match serde_json::from_str::<SessionsApiResponse>(text) {
-            Ok(response) => response.sessions,
-            Err(wrapped_err) => {
-                tracing::warn!(
-                    array_error = %array_err,
-                    wrapped_error = %wrapped_err,
-                    "failed to parse sessions response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-fn parse_agents_response(text: &str) -> Vec<AgentEntry> {
-    match serde_json::from_str::<Vec<AgentEntry>>(text) {
-        Ok(agents) => agents,
-        Err(array_err) => match serde_json::from_str::<AgentsApiResponse>(text) {
-            Ok(response) => response.nous,
-            Err(wrapped_err) => {
-                tracing::warn!(
-                    array_error = %array_err,
-                    wrapped_error = %wrapped_err,
-                    "failed to parse agents response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Mirrors `pylon::types::insights::JournalResponse`'s real wire shape:
-    /// an envelope, not a bare array. Before #4486's fix this crate parsed
-    /// the response straight into `Vec<JournalEventEntry>`, which fails on
-    /// every real `/api/v1/journal` response (a JSON object where a
-    /// sequence is expected) — so the journal was reported unavailable for
-    /// the wrong reason (a parse error) regardless of what pylon reported,
-    /// and real events would never have rendered once pylon starts sending
-    /// them.
+    /// `#4486`'s original regression: pylon's `/api/v1/journal` returns an
+    /// envelope (`{events, data_unavailable}`), not a bare array. The
+    /// conversion from skene's typed response must carry a populated
+    /// `data_unavailable` through unchanged (pylon has no persistent event
+    /// journal yet, so every real response currently carries one).
     #[test]
-    fn journal_envelope_with_data_unavailable_parses() {
-        let body = serde_json::json!({
-            "events": [],
-            "data_unavailable": [
-                {"metric": "journal", "reason": "no persistent event journal is available in pylon"}
-            ]
-        })
-        .to_string();
+    fn journal_response_conversion_preserves_data_unavailable() {
+        let resp = skene::api::types::JournalResponse {
+            events: Vec::new(),
+            data_unavailable: vec![skene::api::types::UnavailableMetric {
+                metric: "journal".to_string(),
+                reason: "no persistent event journal is available in pylon".to_string(),
+            }],
+        };
 
-        let parsed: JournalResponseEntry =
-            serde_json::from_str(&body).expect("pylon's real journal envelope must parse");
+        let parsed: JournalResponseEntry = resp.into();
+
         assert!(parsed.events.is_empty());
         assert_eq!(parsed.data_unavailable.len(), 1);
         assert_eq!(
@@ -979,33 +1001,38 @@ mod tests {
         );
     }
 
-    /// A genuinely populated journal must still parse and report available.
+    /// A genuinely populated journal converts with its events intact and an
+    /// empty `data_unavailable`.
     #[test]
-    fn journal_envelope_with_events_parses_and_is_available() {
-        let body = serde_json::json!({
-            "events": [
-                {"timestamp": "2026-01-01T00:00:00Z", "event_type": "config", "message": "reloaded"}
-            ],
-            "data_unavailable": []
-        })
-        .to_string();
+    fn journal_response_conversion_carries_events_when_available() {
+        let resp = skene::api::types::JournalResponse {
+            events: vec![skene::api::types::JournalEvent {
+                timestamp: "2026-01-01T00:00:00Z".to_string(),
+                event_type: "config".to_string(),
+                message: "reloaded".to_string(),
+            }],
+            data_unavailable: Vec::new(),
+        };
 
-        let parsed: JournalResponseEntry =
-            serde_json::from_str(&body).expect("a populated journal envelope must parse");
+        let parsed: JournalResponseEntry = resp.into();
+
         assert_eq!(parsed.events.len(), 1);
         assert!(parsed.data_unavailable.is_empty());
     }
 
-    /// The old bare-array shape must not silently pass -- if pylon's
-    /// contract ever reverts, this test should fail loudly rather than the
-    /// client quietly reporting empty-and-available.
+    /// The old bare-array shape must not silently pass. That parsing
+    /// boundary now lives in `skene::api::types::JournalResponse` rather
+    /// than in this crate (see the `JournalResponseEntry` doc comment
+    /// above) -- `events` has no `#[serde(default)]` there, so a bare `[]`
+    /// still fails to deserialize rather than the client quietly reporting
+    /// empty-and-available.
     #[test]
-    fn bare_array_body_does_not_satisfy_the_envelope_type() {
+    fn skene_journal_response_rejects_bare_array() {
         let body = serde_json::json!([]).to_string();
-        let result: Result<JournalResponseEntry, _> = serde_json::from_str(&body);
+        let result: Result<skene::api::types::JournalResponse, _> = serde_json::from_str(&body);
         assert!(
             result.is_err(),
-            "a bare array must not parse as the envelope type"
+            "a bare array must not parse as skene's journal response envelope"
         );
     }
 }

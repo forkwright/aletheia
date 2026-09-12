@@ -66,7 +66,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled(&suggestion.description, theme.style_muted()),
         ];
 
-        if let Some(shortcut) = suggestion.shortcut {
+        if let Some(shortcut) = &suggestion.shortcut {
             spans.push(Span::styled(format!("  [{shortcut}]"), theme.style_dim()));
         }
 

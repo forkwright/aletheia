@@ -238,6 +238,80 @@ Tracked subsystems today: `provider_reachability`, `provider_credentials`,
 `training_qa_persistence`, `metrics_exposure`, `event_bus`,
 `config_security_posture`.
 
+`daemon_runtime` (#7206): every registered daemon task is background,
+non-serving-path work (cron/maintenance -- nothing on the request-serving
+path). A disabled or backed-off task therefore floors this subsystem at
+`"degraded"` and names the task(s) and cause in `degraded_reason` -- it never
+promotes the aggregate to `"failed"`/503 the way it used to. Only the
+task-state store itself being unreadable (a storage-layer fault, not a fact
+about any one task) still reports `"failed"`. See
+`GET /api/v1/system/daemon/tasks` below to inspect and recover a disabled
+task without hand-editing persisted state or waiting for a restart.
+
+---
+
+### `GET /api/v1/system/daemon/tasks`
+
+List every daemon task with persisted execution history, across every
+attached runner (`"system"` plus one per configured agent). Requires
+`Role::Operator` (#7206).
+
+**Response `200 OK`:**
+
+```json
+{
+  "tasks": [
+    {
+      "runner": "system",
+      "task_id": "routing-store-refresh",
+      "name": "Routing after-action store refresh",
+      "enabled": false,
+      "cause": "auto_failure",
+      "consecutive_failures": 3,
+      "last_error": "I/O error reading after-action log ...",
+      "last_outcome": "failed",
+      "last_run": "2026-09-04T08:00:00Z",
+      "backoff_until": null
+    }
+  ]
+}
+```
+
+`cause` is `"auto_failure"` (the runner's own 3-consecutive-failure policy) or
+`"operator"` (explicitly disabled through the routes below); `null`/omitted
+when `enabled` is `true`.
+
+---
+
+### `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/enable`
+
+Fully re-enable a task: resets `consecutive_failures` to `0` and clears
+`backoff_until`/`last_error`/`cause`. Equivalent to the `aletheia maintenance
+reset` CLI command, exposed over HTTP so agents and humans share one
+capability through one route. Requires `Role::Operator`. `404` for an
+unknown `runner`/`task_id`.
+
+---
+
+### `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/disable`
+
+Explicitly disable a task. Persists `cause: "operator"`, which -- unlike an
+auto-disable -- is never automatically re-armed when the daemon restarts;
+only `enable` or `retry` re-enables it. Optional body `{"reason": "..."}` is
+recorded as the task's `last_error`. Requires `Role::Operator`. `404` for an
+unknown `runner`/`task_id`.
+
+---
+
+### `POST /api/v1/system/daemon/tasks/{runner}/{task_id}/retry`
+
+Give a disabled task exactly one more attempt now, without resetting
+`consecutive_failures`. Unlike `enable`, a further failure re-disables the
+task after one more strike rather than three fresh ones -- this is the
+on-demand form of the automatic one-retry hydration an `auto_failure`
+disable already gets on every daemon restart. Requires `Role::Operator`.
+`404` for an unknown `runner`/`task_id`.
+
 ---
 
 ### `GET /metrics`
@@ -267,8 +341,15 @@ schema, so it is gated the same way `/metrics` is (#5174).
 
 ## Sessions
 
-All session endpoints require a valid Bearer token (`Claims` extractor). State-changing
-endpoints also require CSRF header when CSRF is enabled.
+All session endpoints require a valid Bearer token (`Claims` extractor). Reads (list,
+detail, history, replay, pending approvals) additionally require `Role::Agent` or above --
+`Role::Readonly` is dashboard-only and cannot read session content -- and are scoped to
+the caller's own `nous_id` when the token carries one. This read floor does not apply to
+the synthetic identity `auth.mode = "none"` produces (`require_read_role`, #7234): that
+mode never had a role check on these routes before it was added, and disabling auth
+entirely must not retroactively lock an instance out of its own sessions because
+`none_role` schema-defaults to `"readonly"`. State-changing endpoints also require CSRF
+header when CSRF is enabled.
 
 ```
 POST /api/v1/sessions/{id}/messages  ─── Idempotency-Key header (optional, max 64 chars)
@@ -657,6 +738,51 @@ to grant or deny a queued tool call.
 
 ---
 
+### `GET /api/v1/sessions/{id}/approvals`
+
+Pending-approval reconciliation read (#7207): list every tool approval still pending for a
+session, oldest first. The read half of the route above — same `ApprovalRegistry`, same
+session-ownership check — for a client that connects late, restarts, or reconnects after missing
+the live `tool_approval_required` SSE event. Pending approvals live in memory only (never
+persisted), so a pylon restart clears them exactly as it already clears the registry's senders.
+A turn that ends with an approval still unanswered (client disconnect, shutdown) cancels it
+(#7252): the entry leaves this read, the domain bus publishes `tool.approval_resolved` with
+`decision: "turn_ended"`, and a late resolve attempt is answered `410` with
+`details.reason: "turn_ended"`.
+Requires `Role::Agent` or above (#7200/#7227's floor for every session-content read in this
+module).
+
+**Response `200 OK`** - `PendingApprovalsResponse`:
+```json
+{
+  "approvals": [
+    {
+      "session_id": "01JXKQ2S...",
+      "turn_id": "01JXKQ2T...",
+      "tool_id": "toolu_123",
+      "tool_name": "shell_execute",
+      "risk": "critical",
+      "requested_at": "2026-01-01T00:00:00Z",
+      "deadline": "2026-01-01T00:02:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/v1/approvals?nous_id=…`
+
+Pending-approval reconciliation read, nous-scoped (#7207): list every tool approval still pending
+across every session belonging to one agent. For a caller holding only a nous-scoped token, which
+has no session id to enumerate against. `nous_id` is required; a scoped token's own agent id must
+match it. Requires `Role::Agent` or above, matching `list_sessions`'s floor for the same
+unscoped-listing shape.
+
+**Response `200 OK`** - `PendingApprovalsResponse` (same shape as above).
+
+---
+
 ### `GET /api/v1/ops/tools`
 
 List all registered tool adapters and their current enabled/disabled state. Intended for
@@ -667,6 +793,15 @@ operator inspection and debugging.
 ---
 
 ## Nous (agents)
+
+List/status/tools reads require `Role::Agent` or above -- `Role::Readonly` is
+dashboard-only and cannot read agent info -- except for the synthetic identity
+`auth.mode = "none"` produces, which this floor never applied to before it was added and
+so does not apply to now (`require_read_role`, #7234). Visibility is then narrowed per
+agent: a token scoped to a `nous_id` only sees that agent, and a private agent (per its
+config) additionally requires unscoped `Role::Operator`+. Mutations
+(enable/disable, tool toggle, recovery, creation) require `Role::Operator` and are
+scoped the same way.
 
 ### `GET /api/v1/nous`
 
@@ -804,8 +939,14 @@ validates the result, writes to disk, and broadcasts via the config watch channe
 ## Knowledge
 
 Knowledge endpoints are feature-gated on the `knowledge` feature and require a valid Bearer
-token. Write operations (forget, restore, confidence update, import, ingest) require CSRF
-header when enabled.
+token. Reads (facts, entities, search, timeline) additionally require `Role::Agent` or
+above -- `Role::Readonly` is dashboard-only -- with per-fact/entity visibility then
+resolved by `KnowledgeReadPolicy` (own nous_id, or `Shared`/`Published` visibility, or
+unscoped `Role::Operator`+ for everything). The `Role::Agent` floor is exempted for the
+synthetic `auth.mode = "none"` identity (`require_read_role`, #7234), which this floor
+never applied to before it was added; `KnowledgeReadPolicy`'s own visibility resolution
+still runs. Write operations (forget, restore, confidence update, import, ingest) require
+`Role::Operator` and CSRF header when enabled.
 
 ```
 GET  /api/v1/knowledge/facts
@@ -1065,7 +1206,9 @@ Full-text search over workspace files.
 
 ## System credentials
 
-Credential endpoints require Admin role and CSRF protection.
+Credential endpoints go through the standard `Claims` extractor (so `auth.mode = "none"`
+opens them like every other route) and require `Role::Operator` or above
+(`crate::extract::require_role`), plus CSRF protection.
 
 ### `GET /api/v1/system/credentials`
 
@@ -1111,7 +1254,13 @@ Validate a stored credential by making a lightweight probe to the target service
 
 ## Metrics
 
-Metrics endpoints expose aggregated behavioral and cost analytics. Require Operator role.
+Metrics endpoints expose aggregated behavioral and cost analytics. Aggregate endpoints
+(`/metrics/agents`, `/metrics/quality`, `/metrics/tokens`, `/metrics/costs`) require an
+unscoped `Role::Operator`+ token; this floor predates #7234 and applies to `auth.mode =
+"none"` the same as any other caller. `/metrics/agents/{id}` requires `Role::Agent` or
+above, admitting a token scoped to that same agent in addition to unscoped Operator+ --
+except the synthetic `auth.mode = "none"` identity, which this per-agent floor never
+applied to before it was added (`require_read_role`, #7234).
 
 ### `GET /api/v1/metrics/agents`
 
@@ -1208,6 +1357,14 @@ in the window).
 ---
 
 ## Planning
+
+Both routes require an unscoped `Role::Operator`+ token, except the synthetic `auth.mode =
+"none"` identity, which this floor never applied to before it was added
+(`require_read_role`, #7234). No project-scoped role exists in the RBAC model yet, so this
+is a coarse floor rather than per-project access control; the per-workspace
+`planning_meta.json` visibility sidecar classifies a project as public/private/internal
+and redacts evidence/gap detail in the response, but it is presentation metadata, not the
+security boundary.
 
 ### `GET /api/v1/planning/projects/{project_id}/verification`
 

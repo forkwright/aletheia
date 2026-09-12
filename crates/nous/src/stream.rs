@@ -85,6 +85,10 @@ pub enum TurnStreamEvent {
     ToolApprovalResolved {
         identity: TurnEventIdentity,
         tool_id: String,
+        /// Outcome string: the gate's own `approved`/`denied` wire values, or
+        /// a policy outcome from shared dispatch (`auto_approved`,
+        /// `advisory_auto`, `policy_auto_approved`, `no_gate_denied`,
+        /// `approval_event_unavailable_denied`).
         decision: String,
     },
     /// Tool execution completed.

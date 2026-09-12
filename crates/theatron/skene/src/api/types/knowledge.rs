@@ -268,3 +268,287 @@ pub struct TimelineResponse {
     #[serde(default)]
     pub total: usize,
 }
+
+/// A single result from `GET /api/v1/knowledge/search`. Mirrors pylon's
+/// `SearchResult`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's SearchResult; self-documenting by name"
+)]
+pub struct SearchResult {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub fact_type: String,
+    pub score: f64,
+}
+
+/// Response for `GET /api/v1/knowledge/search`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponse {
+    /// Results ranked by relevance, already filtered to the selected set.
+    pub results: Vec<SearchResult>,
+}
+
+/// Candidate decision reported by `GET /api/v1/knowledge/search/explain`.
+/// Mirrors pylon's `ExplainDecision`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplainDecision {
+    /// Included in the returned result set.
+    Selected,
+    /// Removed because it did not meet a hard gate.
+    Dropped,
+    /// Removed by a policy filter such as forgetting or visibility.
+    Filtered,
+}
+
+/// Per-factor score breakdown. Mirrors pylon's `FactorScoreBreakdown`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's FactorScoreBreakdown; self-documenting by name"
+)]
+pub struct FactorScoreBreakdown {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+}
+
+/// A single candidate in an explain response. Mirrors pylon's
+/// `ExplainCandidate`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's ExplainCandidate; self-documenting by name"
+)]
+pub struct ExplainCandidate {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub fact_type: String,
+    pub score: f64,
+    pub decision: ExplainDecision,
+    pub reasons: Vec<String>,
+    pub factors: FactorScoreBreakdown,
+}
+
+/// Recall weights reported by the explain endpoint. Mirrors pylon's
+/// `RecallWeightsView`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's RecallWeightsView; self-documenting by name"
+)]
+pub struct RecallWeightsView {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+    pub serendipity: f64,
+    pub surprise: f64,
+    pub evidence_coverage: f64,
+    pub convergence: f64,
+}
+
+/// Response for `GET /api/v1/knowledge/search/explain`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExplainResponse {
+    /// The query text that was scored.
+    pub query: String,
+    /// The recall engine weights applied to every candidate.
+    pub weights: RecallWeightsView,
+    /// Total candidates considered (selected + dropped).
+    pub total_candidates: usize,
+    /// Candidates included in the result set.
+    pub selected: Vec<ExplainCandidate>,
+    /// Candidates removed by a hard gate or policy filter.
+    pub dropped: Vec<ExplainCandidate>,
+}
+
+/// Request body for `POST /api/v1/knowledge/entities/merge`.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::MergeRequest`.
+#[derive(Debug, Clone, Serialize)]
+pub struct MergeRequest {
+    /// Canonical entity ID to keep.
+    pub canonical_id: String,
+    /// Entity ID to merge and remove.
+    pub merged_id: String,
+}
+
+/// Entity flagging severity.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::FlagSeverity`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FlagSeverity {
+    /// Low-priority review.
+    Low,
+    /// Medium-priority review.
+    Medium,
+    /// High-priority review.
+    High,
+}
+
+/// Request body for `POST /api/v1/knowledge/entities/{id}/flag`.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::FlagRequest`.
+#[derive(Debug, Clone, Serialize)]
+pub struct FlagRequest {
+    /// Human-readable reason for the flag.
+    pub reason: String,
+    /// Review severity.
+    pub severity: FlagSeverity,
+}
+
+/// A single knowledge entity, as returned by `GET
+/// /api/v1/knowledge/entities/{id}`.
+///
+/// Mirrors `eidos::knowledge::Entity` -- the bare per-entity shape, distinct
+/// from [`EntityListItem`] (the list-row shape, which additionally carries
+/// server-computed `confidence`/`page_rank`/`memory_count`/
+/// `relationship_count`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror eidos::knowledge::Entity; self-documenting by name"
+)]
+pub struct Entity {
+    pub id: String,
+    pub name: String,
+    pub entity_type: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Server-computed memory-health metrics (`GET /api/v1/knowledge/health`).
+///
+/// Mirrors `pylon::handlers::knowledge::health_metrics::MemoryHealthResponse`
+/// -- the same snapshot the `aletheia_memory_health_*` Prometheus gauges
+/// export, so a headless driver reading this route and a Prometheus scrape
+/// can never disagree on the numbers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MemoryHealthResponse {
+    /// Mean confidence across active (non-forgotten, non-superseded) facts.
+    pub avg_confidence: f64,
+    /// Fraction of entities with no relationships and no fact links.
+    pub orphan_ratio: f64,
+    /// Fraction of active facts past the staleness threshold or their
+    /// `valid_to`.
+    pub staleness_ratio: f64,
+    /// Composite score: confidence 0.4, non-orphan 0.3, non-stale 0.3.
+    pub health_score: f64,
+}
+
+/// Graph consistency report (`GET /api/v1/knowledge/check`).
+///
+/// Mirrors `pylon::handlers::knowledge::dto::GraphCheckReport`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphCheckReport {
+    /// Total number of facts stored.
+    pub fact_count: usize,
+    /// Total number of entities stored.
+    pub entity_count: usize,
+    /// Total number of relationships stored.
+    pub relationship_count: usize,
+    /// Entities with no facts or relationships (potential orphans).
+    pub orphaned_entity_count: usize,
+    /// Edges that reference missing endpoint entities.
+    pub dangling_edge_count: usize,
+    /// Overall health: `"healthy"` or `"issues_found"`.
+    pub status: String,
+}
+
+/// Query parameters for `GET /api/v1/knowledge/facts`.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::FactsQuery`. Every field
+/// defaults to pylon's own default (`sort=confidence`, `order=desc`,
+/// `limit=100`, `offset=0`, `include_forgotten=false`) when left
+/// `None`/`false`/`0`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct KnowledgeFactsRequest {
+    /// Filter by agent ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nous_id: Option<String>,
+    /// Sort field: confidence, recency, created, `access_count`, `fsrs_review`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    /// Sort direction: asc or desc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<String>,
+    /// Free-text filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    /// Fact type filter (knowledge, preference, skill, observation, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fact_type: Option<String>,
+    /// Epistemic tier filter (verified, inferred, assumed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    /// Maximum results to return.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Pagination offset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u32>,
+    /// Include forgotten facts.
+    #[serde(skip_serializing_if = "is_false")]
+    pub include_forgotten: bool,
+}
+
+/// `serde(skip_serializing_if)` helper: skip a `bool` field when `false`.
+///
+/// WHY: `skip_serializing_if` requires `fn(&T) -> bool`, but
+/// `std::ops::Not::not` for `bool` takes `self` by value, not `&bool` --
+/// this is the smallest correct adapter.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if calls this as fn(&T) -> bool; the signature is fixed by that contract, not a style choice"
+)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// Query parameters for `GET /api/v1/knowledge/entities`.
+///
+/// Mirrors `pylon::handlers::knowledge::dto::EntitiesQuery`.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct KnowledgeEntitiesRequest {
+    /// Maximum results to return (server default: 100, max: 1000).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Pagination offset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u32>,
+    /// Search text filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
+    /// Sort field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    /// Sort order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<String>,
+    /// Entity type filter (repeated query param).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub entity_type: Vec<String>,
+    /// Minimum confidence threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_confidence: Option<f64>,
+    /// Agent filter (repeated query param).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub agent: Vec<String>,
+}

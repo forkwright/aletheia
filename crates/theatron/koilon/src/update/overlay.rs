@@ -12,7 +12,7 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
         }
         other => {
             app.layout.overlay = Some(match other {
-                OverlayKind::Help => Overlay::Help,
+                OverlayKind::Help => Overlay::Help { scroll: 0 },
                 OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
                 OverlayKind::SessionPicker => Overlay::SessionPicker(SessionPickerOverlay {
                     cursor: 0,
@@ -57,7 +57,6 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         start_tool_approval_action(app, ToolApprovalAction::Deny);
         return;
     }
-    // NOTE: DecisionCard close without submit = skip, no API call needed
     app.layout.overlay = None;
 }
 
@@ -69,22 +68,13 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         Some(Overlay::SessionPicker(picker)) => {
             picker.cursor = picker.cursor.saturating_sub(1);
         }
-        Some(Overlay::PlanApproval(plan)) => {
-            plan.cursor = plan.cursor.saturating_sub(1);
-        }
         Some(Overlay::ContextActions(ctx)) => {
             ctx.cursor = ctx.cursor.saturating_sub(1);
         }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_up(app);
         }
-        Some(Overlay::DecisionCard(card))
-            if card.focused_field == crate::state::DecisionField::Options =>
-        {
-            card.cursor = card.cursor.saturating_sub(1);
-        }
-        Some(Overlay::DecisionCard(_)) => {}
-        Some(Overlay::NotificationHistory { scroll }) => {
+        Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) => {
             *scroll = scroll.saturating_sub(1);
         }
         _ => {
@@ -108,10 +98,6 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
                 picker.cursor = (cursor + 1).min(max);
             }
         }
-        Some(Overlay::PlanApproval(plan)) => {
-            let max = plan.steps.len().saturating_sub(1);
-            plan.cursor = (plan.cursor + 1).min(max);
-        }
         Some(Overlay::ContextActions(ctx)) => {
             let max = ctx.actions.len().saturating_sub(1);
             ctx.cursor = (ctx.cursor + 1).min(max);
@@ -119,19 +105,37 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         Some(Overlay::Settings(_)) => {
             super::settings::handle_down(app);
         }
-        Some(Overlay::DecisionCard(card))
-            if card.focused_field == crate::state::DecisionField::Options =>
-        {
-            let max = card.options.len().saturating_sub(1);
-            card.cursor = (card.cursor + 1).min(max);
-        }
-        Some(Overlay::DecisionCard(_)) => {}
-        Some(Overlay::NotificationHistory { scroll }) => {
+        Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) => {
             *scroll += 1;
         }
         _ => {
             // NOTE: no overlay or non-navigable overlay, nothing to do
         }
+    }
+}
+
+/// Page-size step for `OverlayPageUp`/`OverlayPageDown`, matching the diff
+/// viewer's 20-line page (`update/diff.rs::handle_diff_page_up/down`).
+const OVERLAY_PAGE_SCROLL_STEP: usize = 20;
+
+/// Page up in a scroll-offset-carrying overlay (Help, Notification History).
+pub(crate) fn handle_overlay_page_up(app: &mut App) {
+    if let Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) =
+        &mut app.layout.overlay
+    {
+        *scroll = scroll.saturating_sub(OVERLAY_PAGE_SCROLL_STEP);
+    }
+}
+
+/// Page down in a scroll-offset-carrying overlay (Help, Notification
+/// History). Render-time clamping (`view::overlay::render_help`,
+/// `view::notification::render_history`) keeps this from scrolling past the
+/// last line -- the same pattern `DiffViewState` uses.
+pub(crate) fn handle_overlay_page_down(app: &mut App) {
+    if let Some(Overlay::NotificationHistory { scroll } | Overlay::Help { scroll }) =
+        &mut app.layout.overlay
+    {
+        *scroll += OVERLAY_PAGE_SCROLL_STEP;
     }
 }
 
@@ -156,7 +160,7 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                 // WHY(#4911): the wire history format carries no per-message
                 // model; resolve it from the (already-loaded) session.
                 let session_model = crate::update::session_model_for(app, &session_id);
-                match app.client.history(&session_id).await {
+                match app.client.history(&session_id, None, None).await {
                     Ok(history) => {
                         app.dashboard.messages = crate::update::history_to_chat_messages(
                             history,
@@ -178,9 +182,6 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                 start_tool_approval_action(app, ToolApprovalAction::Approve);
             }
         }
-        Some(Overlay::PlanApproval(_plan)) => {
-            mark_plan_approval_failed(app);
-        }
         Some(Overlay::ContextActions(ctx)) => {
             if let Some(action) = ctx.selected_action() {
                 let kind = action.kind;
@@ -191,21 +192,21 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
         Some(Overlay::Settings(_)) => {
             super::settings::handle_enter(app);
         }
-        Some(Overlay::DecisionCard(_)) => {
-            if let Some(Overlay::DecisionCard(card)) = app.layout.overlay.take() {
-                let chosen = card.chosen_label().to_string();
-                let decision = crate::state::SubmittedDecision {
-                    question: card.question,
-                    chosen_label: chosen,
-                    notes: card.notes,
-                    submitted_at: std::time::Instant::now(),
-                };
-                app.dashboard.submitted_decisions.push(decision);
-            }
-        }
         _ => {
             app.layout.overlay = None;
         }
+    }
+}
+
+/// Wire vocabulary pylon's session-scoped approval route expects
+/// (`crates/pylon/src/handlers/sessions/approvals.rs`): `"approved"` or
+/// `"denied"`.
+fn approval_decision_str(action: ToolApprovalAction) -> &'static str {
+    match action {
+        ToolApprovalAction::Deny => "denied",
+        ToolApprovalAction::Approve
+        | ToolApprovalAction::AlwaysAllow
+        | ToolApprovalAction::AutoApprove => "approved",
     }
 }
 
@@ -217,30 +218,42 @@ fn start_tool_approval_action(app: &mut App, action: ToolApprovalAction) {
         return;
     }
 
+    let session_id = approval.session_id.clone();
     let turn_id = approval.turn_id.clone();
     let tool_id = approval.tool_id.clone();
     let tool_name = approval.tool_name.clone();
     let action_id = tool_approval_action_id(action, &turn_id, &tool_id);
+
+    // WHY(#7202): the session-scoped route requires a session id -- if the
+    // overlay somehow opened with none (structurally shouldn't happen: see
+    // `ToolApprovalOverlay::session_id`), refuse rather than send a
+    // fabricated id pylon would reject anyway, and say so visibly instead
+    // of silently doing nothing.
+    let Some(session_id) = session_id else {
+        let message = "Cannot resolve approval: no active session".to_string();
+        approval.status = ControlMutationStatus::failed(action_id.clone(), message.clone());
+        app.viewport.error_toast = Some(ErrorToast::new(format!("[{action_id}] {message}")));
+        return;
+    };
     approval.status = ControlMutationStatus::pending(action_id.clone());
 
     let client = app.client.clone();
+    let decision = approval_decision_str(action);
     let span = tracing::info_span!(
         "tool_approval_action",
         %action_id,
         action = action.label(),
+        %session_id,
         %turn_id,
         %tool_id,
         %tool_name
     );
     app.background_tasks.spawn(
         async move {
-            let result = match action {
-                ToolApprovalAction::Deny => client.deny_tool(&turn_id, &tool_id).await,
-                ToolApprovalAction::Approve
-                | ToolApprovalAction::AlwaysAllow
-                | ToolApprovalAction::AutoApprove => client.approve_tool(&turn_id, &tool_id).await,
-            }
-            .map_err(|e| e.to_string());
+            let result = client
+                .resolve_session_approval(&session_id, &turn_id, &tool_id, decision)
+                .await
+                .map_err(|e| e.to_string());
 
             crate::msg::Msg::ToolApprovalCompleted {
                 action_id,
@@ -263,10 +276,21 @@ pub(crate) fn start_auto_tool_approval(
 ) {
     let action = ToolApprovalAction::AutoApprove;
     let action_id = tool_approval_action_id(action, &turn_id, &tool_id);
+
+    // WHY(#7202): auto-approval ("always allow") fires from the same
+    // focused-session context a manually opened overlay would have used --
+    // see `ToolApprovalOverlay::session_id`.
+    let Some(session_id) = app.dashboard.focused_session_id.clone() else {
+        app.viewport.error_toast = Some(ErrorToast::new(format!(
+            "[{action_id}] Cannot auto-approve: no active session"
+        )));
+        return;
+    };
     let client = app.client.clone();
     let span = tracing::info_span!(
         "auto_approve_tool",
         %action_id,
+        %session_id,
         %turn_id,
         %tool_id,
         %tool_name
@@ -274,7 +298,7 @@ pub(crate) fn start_auto_tool_approval(
     app.background_tasks.spawn(
         async move {
             let result = client
-                .approve_tool(&turn_id, &tool_id)
+                .resolve_session_approval(&session_id, &turn_id, &tool_id, "approved")
                 .await
                 .map_err(|e| e.to_string());
             crate::msg::Msg::ToolApprovalCompleted {
@@ -350,18 +374,6 @@ fn tool_approval_action_id(
     tool_id: &crate::id::ToolId,
 ) -> String {
     format!("tool:{}:{turn_id}:{tool_id}", action.action_key())
-}
-
-fn mark_plan_approval_failed(app: &mut App) {
-    let action_id = "plan:approval:unavailable".to_string();
-    let message = "Plan approval API not available - pending pylon support.".to_string();
-    if let Some(Overlay::PlanApproval(ref mut plan)) = app.layout.overlay {
-        if plan.status.is_pending() {
-            return;
-        }
-        plan.status = ControlMutationStatus::failed(action_id.clone(), message.clone());
-    }
-    app.viewport.error_toast = Some(ErrorToast::new(format!("[{action_id}] {message}")));
 }
 
 pub(crate) fn visible_session_count(app: &App, show_archived: bool) -> usize {
@@ -453,6 +465,7 @@ mod tests {
 
     fn tool_approval_overlay() -> Overlay {
         Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+            session_id: Some("s1".into()),
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "write_file".to_string(),
@@ -467,7 +480,7 @@ mod tests {
     async fn open_overlay_help() {
         let mut app = test_app();
         handle_open_overlay(&mut app, OverlayKind::Help).await;
-        assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
+        assert!(matches!(app.layout.overlay, Some(Overlay::Help { .. })));
     }
 
     #[tokio::test]
@@ -540,6 +553,59 @@ mod tests {
         );
     }
 
+    /// Regression for #7202: the overlay used to POST the legacy
+    /// `/api/v1/turns/{turn_id}/tools/{tool_id}/approve` route, which pylon
+    /// rejects for any scoped token. It must now hit the session-scoped,
+    /// ownership-verifying route with the overlay's captured session id.
+    #[tokio::test]
+    async fn approve_success_posts_the_session_scoped_route() {
+        let (url, _server) = routing_server(vec![(
+            "/api/v1/sessions/s1/approvals".into(),
+            r#"{"decision":"approved"}"#.into(),
+        )])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.layout.overlay = Some(tool_approval_overlay());
+
+        handle_overlay_select(&mut app).await;
+        drain_one_background(&mut app).await;
+
+        assert!(
+            app.layout.overlay.is_none(),
+            "a successful approval must close the overlay"
+        );
+    }
+
+    /// An overlay opened with no captured session id must refuse locally
+    /// rather than send a request pylon could only reject.
+    #[tokio::test]
+    async fn approve_without_session_id_refuses_without_calling_the_api() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        let Overlay::ToolApproval(mut approval) = tool_approval_overlay() else {
+            unreachable!("tool_approval_overlay always returns ToolApproval");
+        };
+        approval.session_id = None;
+        app.layout.overlay = Some(Overlay::ToolApproval(approval));
+
+        handle_overlay_select(&mut app).await;
+
+        assert_eq!(
+            app.background_tasks.len(),
+            0,
+            "no session id must mean no background API call is spawned"
+        );
+        let Some(Overlay::ToolApproval(approval)) = &app.layout.overlay else {
+            panic!("overlay must remain open with a failed status");
+        };
+        assert!(matches!(
+            &approval.status,
+            ControlMutationStatus::Failed { message, .. } if message.contains("no active session")
+        ));
+    }
+
     #[tokio::test]
     async fn always_allow_failure_does_not_insert_local_allow() {
         let (url, _server) = failing_server().await;
@@ -562,39 +628,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_approval_failure_keeps_overlay_failed_with_action_id() {
-        let mut app = test_app();
-        app.layout.overlay = Some(Overlay::PlanApproval(crate::state::PlanApprovalOverlay {
-            steps: vec![crate::state::PlanStepApproval {
-                id: 1,
-                label: "Step".to_string(),
-                role: "planner".to_string(),
-                checked: true,
-            }],
-            total_cost_cents: 100,
-            cursor: 0,
-            status: ControlMutationStatus::Idle,
-        }));
-
-        handle_overlay_select(&mut app).await;
-
-        let Some(Overlay::PlanApproval(plan)) = &app.layout.overlay else {
-            panic!("plan approval failure should keep overlay open");
-        };
-        assert!(matches!(
-            &plan.status,
-            ControlMutationStatus::Failed { action_id, .. }
-                if action_id == "plan:approval:unavailable"
-        ));
-        assert!(
-            app.viewport
-                .error_toast
-                .as_ref()
-                .is_some_and(|toast| toast.message.contains("plan:approval:unavailable"))
-        );
-    }
-
-    #[tokio::test]
     async fn open_overlay_agent_picker() {
         let mut app = test_app();
         handle_open_overlay(&mut app, OverlayKind::AgentPicker).await;
@@ -614,7 +647,7 @@ mod tests {
     #[test]
     fn close_overlay_clears() {
         let mut app = test_app();
-        app.layout.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help { scroll: 0 });
         handle_close_overlay(&mut app);
         assert!(app.layout.overlay.is_none());
     }
@@ -861,36 +894,6 @@ mod tests {
         // Archived sessions are not interactive
         assert_eq!(visible_session_count(&app, false), 1);
         assert_eq!(visible_session_count(&app, true), 2);
-    }
-
-    #[test]
-    fn overlay_up_plan_approval() {
-        let mut app = test_app();
-        app.layout.overlay = Some(Overlay::PlanApproval(crate::state::PlanApprovalOverlay {
-            steps: vec![
-                crate::state::PlanStepApproval {
-                    id: 1,
-                    label: "S1".to_string(),
-                    role: "r".to_string(),
-                    checked: true,
-                },
-                crate::state::PlanStepApproval {
-                    id: 2,
-                    label: "S2".to_string(),
-                    role: "r".to_string(),
-                    checked: true,
-                },
-            ],
-            total_cost_cents: 100,
-            cursor: 1,
-            status: ControlMutationStatus::Idle,
-        }));
-
-        handle_overlay_up(&mut app);
-
-        if let Some(Overlay::PlanApproval(plan)) = &app.layout.overlay {
-            assert_eq!(plan.cursor, 0);
-        }
     }
 
     // --- Context actions overlay tests ---

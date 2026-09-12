@@ -28,7 +28,7 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 | `JwtManager` | `jwt.rs` | HS256 JWT issuance, validation, and refresh (Send + Sync) |
 | `JwtConfig` | `jwt.rs` | Signing key, access/refresh TTL, issuer |
 | `Claims` | `types.rs` | JWT payload: sub, role, nous_id, iss, iat, exp, jti, kind |
-| `Role` | `types.rs` | RBAC roles: Operator, Agent, Readonly |
+| `Role` | `types.rs` | RBAC roles, ordered by privilege: Readonly, Agent, Operator, Admin |
 | `AuthService` | `auth.rs` | Unified facade: register, login, issue/validate tokens, check permissions |
 | `AuthStore` | `store/fjall_store.rs` | fjall-backed user, API key, and token persistence |
 

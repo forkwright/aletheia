@@ -91,6 +91,7 @@ impl TaskRunner {
             backoff_until: None,
             last_error: None,
             last_errors: 0,
+            disable_cause: None,
         });
     }
 

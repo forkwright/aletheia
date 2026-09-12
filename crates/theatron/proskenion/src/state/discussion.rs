@@ -1,6 +1,6 @@
 //! Discussion state for planning gray-area questions.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// Priority level for a discussion item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -74,17 +74,6 @@ pub(crate) struct Discussion {
     pub(crate) free_text_answer: Option<String>,
     #[serde(default)]
     pub(crate) history: Vec<DiscussionHistoryEntry>,
-}
-
-/// Request body for answering a discussion.
-#[derive(Debug, Serialize)]
-pub(crate) struct DiscussionAnswerRequest {
-    /// Selected option id, or None for free-text override.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) option_id: Option<String>,
-    /// Free-text answer override.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) free_text: Option<String>,
 }
 
 /// Store for discussions associated with the active project.

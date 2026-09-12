@@ -14,11 +14,19 @@ use super::error::{
 };
 use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
-    Agent, AgentsResponse, CostMetricsResponse, EntitiesResponse, FactDetailResponse,
-    FactsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest, NousTool,
-    NousToolsResponse, PaginatedSessionsResponse, ProviderListResponse, ProviderRouteResponse,
-    RelationshipsResponse, Session, SessionReplayResponse, SessionsResponse, TimelineResponse,
-    TokenMetricsResponse,
+    AddCredentialRequest, Agent, AgentPerformance, AgentPerformanceListResponse, AgentsResponse,
+    ConfigReloadResponse, ConfigUpdateResponse, CostMetricsResponse, CredentialRemoveResponse,
+    CredentialResponse, CredentialsListResponse, DaemonTask, DaemonTaskListResponse,
+    EntitiesResponse, Entity, EntityMemory, ExplainResponse, FactDetailResponse, FactsResponse,
+    FileEntry, FlagRequest, FlagSeverity, GitStatusEntry, GraphCheckReport, HealthResponse,
+    HistoryMessage, HistoryResponse, JournalResponse, KnowledgeEntitiesRequest,
+    KnowledgeFactsRequest, ListSessionsRequest, MemoryHealthResponse, MergeRequest, NousStatus,
+    NousSummary, NousTool, NousToolsResponse, OpenFileResponse, OpsToolsResponse,
+    PaginatedSessionsResponse, PendingApprovalsResponse, ProjectVerificationResult,
+    ProviderListResponse, ProviderRouteResponse, QualityMetricsResponse, RecoverResponse,
+    RelationshipsResponse, SearchResponse, Session, SessionReplayResponse, SessionsResponse,
+    TimelineResponse, TokenMetricsResponse, WorkspaceSearchResult, WriteContentRequest,
+    WriteContentResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -77,6 +85,39 @@ pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
         .context(HttpSnafu {
             operation: "build streaming HTTP client",
         })
+}
+
+/// Build a metrics-endpoint path with pylon's shared `MetricsQuery` params
+/// (`granularity`/`from`/`to`) appended when present.
+///
+/// WHY: [`ApiClient::token_metrics`] and [`ApiClient::cost_metrics`] both
+/// query the same `MetricsQuery` shape server-side; a shared builder keeps
+/// the query-string assembly defined once.
+fn metrics_query_path(
+    base_path: &str,
+    granularity: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> String {
+    let mut path = base_path.to_owned();
+    let mut sep = '?';
+    let mut push_param = |name: &str, value: &str| {
+        path.push(sep);
+        sep = '&';
+        path.push_str(name);
+        path.push('=');
+        path.push_str(&super::routes::encoding::query_value(value));
+    };
+    if let Some(granularity) = granularity {
+        push_param("granularity", granularity);
+    }
+    if let Some(from) = from {
+        push_param("from", from);
+    }
+    if let Some(to) = to {
+        push_param("to", to);
+    }
+    path
 }
 
 /// HTTP client for the Aletheia gateway REST API.
@@ -437,12 +478,28 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
+    pub async fn history(
+        &self,
+        session_id: &str,
+        limit: Option<u32>,
+        before: Option<i64>,
+    ) -> Result<Vec<HistoryMessage>> {
+        let mut path = super::routes::sessions::session_history_path(session_id);
+        let mut sep = '?';
+        if let Some(limit) = limit {
+            path.push(sep);
+            sep = '&';
+            path.push_str("limit=");
+            path.push_str(&limit.to_string());
+        }
+        if let Some(before) = before {
+            path.push(sep);
+            path.push_str("before=");
+            path.push_str(&before.to_string());
+        }
+
         let resp = self
-            .request(
-                reqwest::Method::GET,
-                &super::routes::sessions::session_history_path(session_id),
-            )
+            .request(reqwest::Method::GET, &path)
             .send()
             .await
             .context(HttpSnafu {
@@ -506,6 +563,36 @@ impl ApiClient {
         let resp = Self::check_status(resp, "create session request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "create session response",
+        })
+    }
+
+    /// Resolve or create the canonical session for a (nous, key) pair.
+    ///
+    /// Unlike [`create_session`](Self::create_session), which 409s when the
+    /// pair already exists, this returns the existing session — the
+    /// get-or-create an interactive client wants when entering a nous's one
+    /// ongoing conversation.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn resolve_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
+        let resp = self
+            .request(reqwest::Method::POST, "/api/v1/sessions/resolve")
+            .json(&serde_json::json!({
+                "nous_id": nous_id,
+                "session_key": session_key,
+            }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "resolve session",
+            })?;
+        let resp = Self::check_status(resp, "resolve session request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "resolve session response",
         })
     }
 
@@ -576,52 +663,121 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Approve a tool invocation awaiting user consent.
+    /// Resolve a pending tool approval via the session-scoped,
+    /// ownership-verifying route (#7202): `POST
+    /// /api/v1/sessions/{session_id}/approvals`.
+    ///
+    /// WHY(#7202): replaces the legacy `approve_tool`/`deny_tool` methods,
+    /// which `POST`ed `/api/v1/turns/{turn_id}/tools/{tool_id}/{approve,deny}`
+    /// -- a route with no session id at all, so pylon rejects it outright
+    /// for any token carrying a `nous_id` (`SECURITY(#5340)` at
+    /// `crates/pylon/src/handlers/sessions/approvals.rs`). This route
+    /// carries `session_id` so pylon can verify the caller's token owns the
+    /// session's agent before routing the decision, working for both scoped
+    /// and unscoped tokens -- there is no remaining first-party use for the
+    /// legacy route, so it was not kept as a fallback.
+    ///
+    /// `decision` is the wire vocabulary pylon expects: `"approved"` or
+    /// `"denied"`.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
-        let t = keryx::url::encode_path_segment(turn_id);
-        let d = keryx::url::encode_path_segment(tool_id);
+    pub async fn resolve_session_approval(
+        &self,
+        session_id: &str,
+        turn_id: &str,
+        tool_id: &str,
+        decision: &str,
+    ) -> Result<()> {
         let resp = self
             .request(
                 reqwest::Method::POST,
-                &format!("/api/v1/turns/{t}/tools/{d}/approve"),
+                &super::routes::sessions::session_approvals_path(session_id),
             )
+            .json(&serde_json::json!({
+                "turn_id": turn_id,
+                "tool_id": tool_id,
+                "decision": decision,
+            }))
             .send()
             .await
             .context(HttpSnafu {
-                operation: "approve tool",
+                operation: "resolve session approval",
             })?;
-        Self::check_status(resp, "approve request").await?;
+        Self::check_status(resp, "session approval request").await?;
         Ok(())
     }
 
-    /// Deny a tool invocation awaiting user consent.
+    /// List pending tool approvals for a session (#7207): the read half of
+    /// [`Self::resolve_session_approval`]'s model. Lets a client that
+    /// connects late, restarts, or reconnects after missing the live
+    /// `tool.approval_required` event discover what is still waiting,
+    /// instead of depending on having seen it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
-        let t = keryx::url::encode_path_segment(turn_id);
-        let d = keryx::url::encode_path_segment(tool_id);
+    pub async fn pending_session_approvals(
+        &self,
+        session_id: &str,
+    ) -> Result<PendingApprovalsResponse> {
         let resp = self
             .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/turns/{t}/tools/{d}/deny"),
+                reqwest::Method::GET,
+                &super::routes::sessions::session_approvals_path(session_id),
             )
             .send()
             .await
             .context(HttpSnafu {
-                operation: "deny tool",
+                operation: "list session pending approvals",
             })?;
-        Self::check_status(resp, "deny request").await?;
-        Ok(())
+        let resp = Self::check_status(resp, "list session pending approvals request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "list session pending approvals response",
+        })
+    }
+
+    /// List pending tool approvals across every session belonging to
+    /// `nous_id` (#7207): the scoped-token shape of
+    /// [`Self::pending_session_approvals`], for a caller that has no
+    /// session id to enumerate against.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn pending_approvals_for_nous(
+        &self,
+        nous_id: &str,
+    ) -> Result<PendingApprovalsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/approvals")
+            .query(&[("nous_id", nous_id)])
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "list nous pending approvals",
+            })?;
+        let resp = Self::check_status(resp, "list nous pending approvals request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "list nous pending approvals response",
+        })
     }
 
     /// Fetch registered tools for an agent.
@@ -712,24 +868,21 @@ impl ApiClient {
         })
     }
 
-    /// Fetch knowledge facts with sorting and pagination.
+    /// Fetch knowledge facts with sorting, filtering, and pagination.
+    ///
+    /// `params` mirrors pylon's `FactsQuery` (#4565): every field left at
+    /// its `Default` value is omitted from the query string, so the server
+    /// applies its own default (sort=confidence, order=desc, limit=100).
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_facts(
-        &self,
-        sort: &str,
-        order: &str,
-        limit: u32,
-    ) -> Result<FactsResponse> {
+    pub async fn knowledge_facts(&self, params: &KnowledgeFactsRequest) -> Result<FactsResponse> {
         let resp = self
-            .request(
-                reqwest::Method::GET,
-                &format!("/api/v1/knowledge/facts?sort={sort}&order={order}&limit={limit}"),
-            )
+            .request(reqwest::Method::GET, "/api/v1/knowledge/facts")
+            .query(params)
             .send()
             .await
             .context(HttpSnafu {
@@ -812,16 +965,23 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Fetch all knowledge entities.
+    /// Fetch knowledge entities with search, filtering, and pagination.
+    ///
+    /// `params` mirrors pylon's `EntitiesQuery` (#4565); every field left at
+    /// its `Default` value is omitted from the query string.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_entities(&self) -> Result<EntitiesResponse> {
+    pub async fn knowledge_entities(
+        &self,
+        params: &KnowledgeEntitiesRequest,
+    ) -> Result<EntitiesResponse> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/entities")
+            .query(params)
             .send()
             .await
             .context(HttpSnafu {
@@ -830,6 +990,99 @@ impl ApiClient {
         let resp = Self::check_status(resp, "entities request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "entities response",
+        })
+    }
+
+    /// Fetch detail for a single knowledge entity.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entity(&self, entity_id: &str) -> Result<Entity> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity",
+            })?;
+        let resp = Self::check_status(resp, "entity request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity response",
+        })
+    }
+
+    /// Fetch the memories (facts) linked to a specific entity.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entity_memories(&self, entity_id: &str) -> Result<Vec<EntityMemory>> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}/memories"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity memories",
+            })?;
+        let resp = Self::check_status(resp, "entity memories request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity memories response",
+        })
+    }
+
+    /// Run server-side graph consistency checks over the knowledge store.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_check(&self) -> Result<GraphCheckReport> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/check")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "run graph check",
+            })?;
+        let resp = Self::check_status(resp, "graph check request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "graph check response",
+        })
+    }
+
+    /// Fetch server-computed memory-health metrics (#6823): the same
+    /// snapshot the `aletheia_memory_health_*` Prometheus gauges export.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_health(&self) -> Result<MemoryHealthResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/health")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load memory health",
+            })?;
+        let resp = Self::check_status(resp, "memory health request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "memory health response",
         })
     }
 
@@ -879,6 +1132,85 @@ impl ApiClient {
         let resp = Self::check_status(resp, "timeline request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "timeline response",
+        })
+    }
+
+    /// Semantic/relevance search over the knowledge store (#7197).
+    ///
+    /// WHY(#7197): pylon has registered `GET /api/v1/knowledge/search` since
+    /// before this method existed; the endpoint was never the gap. Both
+    /// first-party UIs disabled their search entry points citing a missing
+    /// pylon route that was never true — the actual gap was this client
+    /// method. `nous_id` scopes results to one agent; `None` searches across
+    /// every agent's facts, matching how the rest of the memory inspector
+    /// (`knowledge_facts`, `knowledge_timeline`) already reads globally.
+    /// `limit` is left to pylon's own default (20) when `None`.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_search(
+        &self,
+        q: &str,
+        nous_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<SearchResponse> {
+        let mut params: Vec<(&str, String)> = vec![("q", q.to_string())];
+        if let Some(id) = nous_id {
+            params.push(("nous_id", id.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/search")
+            .query(&params)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "knowledge search",
+            })?;
+        let resp = Self::check_status(resp, "knowledge search request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "knowledge search response",
+        })
+    }
+
+    /// Explainable recall scoring for the same query [`Self::knowledge_search`]
+    /// runs, reporting every candidate's per-factor score and why it was
+    /// selected, filtered, or dropped (#7197).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_search_explain(
+        &self,
+        q: &str,
+        nous_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<ExplainResponse> {
+        let mut params: Vec<(&str, String)> = vec![("q", q.to_string())];
+        if let Some(id) = nous_id {
+            params.push(("nous_id", id.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/search/explain")
+            .query(&params)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "knowledge search explain",
+            })?;
+        let resp = Self::check_status(resp, "knowledge search explain request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "knowledge search explain response",
         })
     }
 
@@ -946,6 +1278,11 @@ impl ApiClient {
 
     /// Fetch canonical backend-wide token usage telemetry (#4987).
     ///
+    /// `granularity`/`from`/`to` mirror pylon's `MetricsQuery` (daily/weekly/
+    /// monthly buckets over an inclusive `YYYY-MM-DD` date range); `None`
+    /// leaves the corresponding query param unset so the server applies its
+    /// own default (daily, no range limit).
+    ///
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
@@ -956,9 +1293,15 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn token_metrics(&self) -> Result<TokenMetricsResponse> {
+    pub async fn token_metrics(
+        &self,
+        granularity: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<TokenMetricsResponse> {
+        let path = metrics_query_path("/api/v1/metrics/tokens", granularity, from, to);
         let resp = self
-            .request(reqwest::Method::GET, "/api/v1/metrics/tokens")
+            .request(reqwest::Method::GET, &path)
             .send()
             .await
             .context(HttpSnafu {
@@ -972,6 +1315,9 @@ impl ApiClient {
 
     /// Fetch canonical backend-wide cost telemetry (#4987).
     ///
+    /// `granularity`/`from`/`to` mirror pylon's `MetricsQuery`; see
+    /// [`Self::token_metrics`].
+    ///
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
@@ -982,9 +1328,15 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn cost_metrics(&self) -> Result<CostMetricsResponse> {
+    pub async fn cost_metrics(
+        &self,
+        granularity: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<CostMetricsResponse> {
+        let path = metrics_query_path("/api/v1/metrics/costs", granularity, from, to);
         let resp = self
-            .request(reqwest::Method::GET, "/api/v1/metrics/costs")
+            .request(reqwest::Method::GET, &path)
             .send()
             .await
             .context(HttpSnafu {
@@ -994,6 +1346,921 @@ impl ApiClient {
         resp.json().await.context(HttpSnafu {
             operation: "cost metrics response",
         })
+    }
+
+    /// List every daemon task with persisted execution history, across every
+    /// attached runner (#7206).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn daemon_tasks(&self) -> Result<Vec<DaemonTask>> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                super::routes::system::daemon_tasks_path(),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load daemon tasks",
+            })?;
+        let resp = Self::check_status(resp, "daemon tasks request").await?;
+        let wrapper: DaemonTaskListResponse = resp.json().await.context(HttpSnafu {
+            operation: "daemon tasks response",
+        })?;
+        Ok(wrapper.tasks)
+    }
+
+    /// Fully re-enable a daemon task, resetting its failure history (#7206).
+    ///
+    /// Equivalent to the `aletheia maintenance reset` CLI command.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status
+    /// (including 404 for an unknown `runner`/`task_id`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn enable_daemon_task(&self, runner: &str, task_id: &str) -> Result<DaemonTask> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::daemon_task_enable_path(runner, task_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "enable daemon task",
+            })?;
+        let resp = Self::check_status(resp, "enable daemon task request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "enable daemon task response",
+        })
+    }
+
+    /// Explicitly disable a daemon task (#7206).
+    ///
+    /// Unlike an auto-disable, this persists an `operator` cause that is
+    /// never re-armed on the daemon's own restart -- only [`Self::enable_daemon_task`]
+    /// or [`Self::retry_daemon_task`] re-enables it. `reason`, when given, is
+    /// recorded as the task's operator-facing `last_error`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status
+    /// (including 404 for an unknown `runner`/`task_id`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn disable_daemon_task(
+        &self,
+        runner: &str,
+        task_id: &str,
+        reason: Option<&str>,
+    ) -> Result<DaemonTask> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::daemon_task_disable_path(runner, task_id),
+            )
+            .json(&serde_json::json!({ "reason": reason }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "disable daemon task",
+            })?;
+        let resp = Self::check_status(resp, "disable daemon task request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "disable daemon task response",
+        })
+    }
+
+    /// Give a disabled daemon task exactly one more attempt now, without
+    /// resetting its failure history (#7206).
+    ///
+    /// Unlike [`Self::enable_daemon_task`], a subsequent failure re-disables
+    /// the task immediately rather than after three fresh strikes -- see the
+    /// pylon handler's doc comment for why.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status
+    /// (including 404 for an unknown `runner`/`task_id`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn retry_daemon_task(&self, runner: &str, task_id: &str) -> Result<DaemonTask> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::daemon_task_retry_path(runner, task_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "retry daemon task",
+            })?;
+        let resp = Self::check_status(resp, "retry daemon task request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "retry daemon task response",
+        })
+    }
+
+    // ── Workspace (#4565) ──────────────────────────────────────────────
+    //
+    // WHY(#4565): proskenion's file browser, viewer, and diff/search views
+    // called these routes directly through a duplicate HTTP client
+    // (`crates/theatron/proskenion/src/api/client.rs`) because skene wrapped
+    // none of pylon's seven workspace routes. These wrap all seven so the
+    // desktop can move onto skene domain by domain without a capability gap.
+
+    /// List workspace files and directories, optionally scoped to `path`.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn workspace_files(&self, path: Option<&str>) -> Result<Vec<FileEntry>> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::workspace::files_path(path),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load workspace files",
+            })?;
+        let resp = Self::check_status(resp, "workspace files request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "workspace files response",
+        })
+    }
+
+    /// Fetch normalized git-status entries for the workspace.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn workspace_git_status(&self) -> Result<Vec<GitStatusEntry>> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                super::routes::workspace::git_status_path(),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load workspace git status",
+            })?;
+        let resp = Self::check_status(resp, "workspace git status request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "workspace git status response",
+        })
+    }
+
+    /// Fetch raw content for one workspace file.
+    ///
+    /// Returns the raw response bytes rather than a typed body: pylon's
+    /// `Content-Type` is guessed from the file extension and the content may
+    /// be binary, so text/binary handling is left to the caller -- the same
+    /// split proskenion's file viewer already makes on the client side.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn workspace_file_content(&self, path: &str) -> Result<Vec<u8>> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::workspace::content_path(path),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load workspace file content",
+            })?;
+        let resp = Self::check_status(resp, "workspace file content request").await?;
+        let bytes = resp.bytes().await.context(HttpSnafu {
+            operation: "workspace file content response",
+        })?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Write UTF-8 text content back to a workspace file.
+    ///
+    /// `if_match_mtime_ms`, when set, is an optimistic-concurrency guard:
+    /// pylon rejects the write with `409` if the on-disk mtime has since
+    /// changed.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self, content))]
+    pub async fn workspace_write_file(
+        &self,
+        path: &str,
+        content: &str,
+        if_match_mtime_ms: Option<i64>,
+    ) -> Result<WriteContentResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                super::routes::workspace::content_write_path(),
+            )
+            .json(&WriteContentRequest {
+                path: path.to_owned(),
+                content: content.to_owned(),
+                if_match_mtime_ms,
+            })
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "write workspace file",
+            })?;
+        let resp = Self::check_status(resp, "workspace write request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "workspace write response",
+        })
+    }
+
+    /// Dispatch a workspace file to the system default application.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn workspace_open_file(&self, path: &str) -> Result<OpenFileResponse> {
+        let resp = self
+            .request(reqwest::Method::POST, super::routes::workspace::open_path())
+            .json(&serde_json::json!({ "path": path }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "open workspace file",
+            })?;
+        let resp = Self::check_status(resp, "workspace open request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "workspace open response",
+        })
+    }
+
+    /// Fetch a unified `git diff` for one workspace file.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn workspace_diff(&self, path: &str) -> Result<String> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::workspace::diff_path(path),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load workspace diff",
+            })?;
+        let resp = Self::check_status(resp, "workspace diff request").await?;
+        resp.text().await.context(HttpSnafu {
+            operation: "workspace diff response",
+        })
+    }
+
+    /// Search workspace filenames and content for `q`, capped at `limit`
+    /// results.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn workspace_search(
+        &self,
+        q: &str,
+        limit: usize,
+    ) -> Result<Vec<WorkspaceSearchResult>> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::workspace::search_path(q, limit),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "search workspace",
+            })?;
+        let resp = Self::check_status(resp, "workspace search request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "workspace search response",
+        })
+    }
+
+    // ── Credentials (#4565) ────────────────────────────────────────────
+    //
+    // WHY(#4565): route templates for all five credential routes already
+    // existed in `routes::system` with zero client methods wrapping them;
+    // proskenion's operator credentials view called pylon directly instead.
+
+    /// List managed provider credentials (secret-safe metadata only).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn list_credentials(&self) -> Result<CredentialsListResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                super::routes::system::credentials_path(),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load credentials",
+            })?;
+        let resp = Self::check_status(resp, "credentials request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "credentials response",
+        })
+    }
+
+    /// Add a managed provider credential.
+    ///
+    /// `key` is sent once, in the request body, to be stored encrypted at
+    /// rest server-side; skene does not itself persist it (see
+    /// `secret_store` for the client-local credential cache this method does
+    /// not touch).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self, key))]
+    pub async fn add_credential(
+        &self,
+        provider: &str,
+        key: SecretString,
+        role: &str,
+    ) -> Result<CredentialResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                super::routes::system::credentials_path(),
+            )
+            .json(&AddCredentialRequest {
+                provider: provider.to_owned(),
+                key,
+                role: role.to_owned(),
+            })
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "add credential",
+            })?;
+        let resp = Self::check_status(resp, "add credential request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "add credential response",
+        })
+    }
+
+    /// Remove one managed credential.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn remove_credential(&self, id: &str) -> Result<CredentialRemoveResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::DELETE,
+                &super::routes::system::credential_path(id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "remove credential",
+            })?;
+        let resp = Self::check_status(resp, "remove credential request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "remove credential response",
+        })
+    }
+
+    /// Validate one managed credential against its provider.
+    ///
+    /// A real network round trip for providers skene knows how to reach
+    /// live; the outcome is persisted server-side (see
+    /// [`super::types::CredentialValidationState`]).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn validate_credential(&self, id: &str) -> Result<CredentialResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::credential_validate_path(id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "validate credential",
+            })?;
+        let resp = Self::check_status(resp, "validate credential request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "validate credential response",
+        })
+    }
+
+    /// Swap the primary and backup credentials for `provider`.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn rotate_credentials(&self, provider: &str) -> Result<CredentialsListResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::system::credential_rotate_path(provider),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "rotate credentials",
+            })?;
+        let resp = Self::check_status(resp, "rotate credentials request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "rotate credentials response",
+        })
+    }
+
+    // ── Planning (#4565) ───────────────────────────────────────────────
+    //
+    // WHY(#4565): `ProjectVerificationResult` and its route templates
+    // already existed with zero client methods wrapping them; proskenion's
+    // planning verification view called pylon directly instead.
+
+    /// Fetch the verification result for one planning project.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn project_verification(
+        &self,
+        project_id: &str,
+    ) -> Result<ProjectVerificationResult> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::planning::project_verification_path(project_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load project verification",
+            })?;
+        let resp = Self::check_status(resp, "project verification request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "project verification response",
+        })
+    }
+
+    /// Re-run verification for one planning project and fetch the refreshed
+    /// result.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn refresh_project_verification(
+        &self,
+        project_id: &str,
+    ) -> Result<ProjectVerificationResult> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::planning::project_verification_refresh_path(project_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "refresh project verification",
+            })?;
+        let resp = Self::check_status(resp, "project verification refresh request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "project verification refresh response",
+        })
+    }
+
+    // ── Feature flags and config reload (#4565) ─────────────────────────
+
+    /// Replace the entire `feature_flags` config section.
+    ///
+    /// WHY: sends the complete section rather than a partial patch --
+    /// pylon's `PUT /api/v1/config/{section}` replaces the section wholesale,
+    /// so a partial payload here would silently drop sibling flags, exactly
+    /// as proskenion's own feature-flags view already documents.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self, flags))]
+    pub async fn update_feature_flags(
+        &self,
+        flags: &serde_json::Value,
+    ) -> Result<ConfigUpdateResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &super::routes::config::feature_flags_path(),
+            )
+            .json(flags)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update feature flags",
+            })?;
+        let resp = Self::check_status(resp, "feature flags update request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "feature flags update response",
+        })
+    }
+
+    /// Re-read `aletheia.toml` from disk and apply hot-reloadable changes.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn reload_config(&self) -> Result<ConfigReloadResponse> {
+        let resp = self
+            .request(reqwest::Method::POST, super::routes::config::reload_path())
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "reload config",
+            })?;
+        let resp = Self::check_status(resp, "config reload request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "config reload response",
+        })
+    }
+
+    // ── Nous get-one / recover (#4565) ──────────────────────────────────
+
+    /// Fetch detailed status for one nous agent.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn agent_status(&self, id: &str) -> Result<NousStatus> {
+        let resp = self
+            .request(reqwest::Method::GET, &super::routes::nous::agent_path(id))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load agent status",
+            })?;
+        let resp = Self::check_status(resp, "agent status request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent status response",
+        })
+    }
+
+    /// Reset a degraded nous agent back to idle.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn agent_recover(&self, id: &str) -> Result<RecoverResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &super::routes::nous::agent_recover_path(id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "recover agent",
+            })?;
+        let resp = Self::check_status(resp, "agent recover request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent recover response",
+        })
+    }
+
+    /// Toggle a nous agent's enabled state.
+    ///
+    /// Persisted to the config file and mirrored into the live actor when
+    /// running; the returned summary reflects the operator's intent even
+    /// when the live actor could not be reached (see
+    /// `NousSummary::restart_required`).
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn update_agent_enabled(&self, id: &str, enabled: bool) -> Result<NousSummary> {
+        let resp = self
+            .request(reqwest::Method::PATCH, &super::routes::nous::agent_path(id))
+            .json(&serde_json::json!({ "enabled": enabled }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update agent enabled",
+            })?;
+        let resp = Self::check_status(resp, "agent toggle request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent toggle response",
+        })
+    }
+
+    /// Toggle one tool for a nous agent.
+    ///
+    /// Persists the operator intent to the config file; runtime tool-gating
+    /// follows the actor's current config snapshot and picks up the
+    /// persisted allowlist on reload.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn update_agent_tool(
+        &self,
+        id: &str,
+        tool: &str,
+        enabled: bool,
+    ) -> Result<NousToolsResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::PATCH,
+                &super::routes::nous::agent_tools_path(id),
+            )
+            .json(&serde_json::json!({ "tool": tool, "enabled": enabled }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update agent tool",
+            })?;
+        let resp = Self::check_status(resp, "agent tool toggle request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent tool toggle response",
+        })
+    }
+
+    /// Fetch the live tool registry summary: catalog, currently-running
+    /// invocations, recent audit history, and cumulative call/error totals.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn ops_tools(&self) -> Result<OpsToolsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/ops/tools")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load ops tools",
+            })?;
+        let resp = Self::check_status(resp, "ops tools request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "ops tools response",
+        })
+    }
+
+    // ── Metrics dashboards (#4565) ───────────────────────────────────────
+    //
+    // WHY(#4565): rounds out `token_metrics`/`cost_metrics` with the
+    // remaining dashboard views (agent performance, quality, journal)
+    // proskenion's meta/ops views fetched directly instead.
+
+    /// Fetch performance metrics for every agent, with cross-agent anomaly
+    /// alerts.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn agent_performance(&self) -> Result<AgentPerformanceListResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, super::routes::metrics::agents_path())
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load agent performance",
+            })?;
+        let resp = Self::check_status(resp, "agent performance request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent performance response",
+        })
+    }
+
+    /// Fetch performance metrics for a single agent.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn agent_performance_one(&self, id: &str) -> Result<AgentPerformance> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::metrics::agent_performance_path(id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load agent performance detail",
+            })?;
+        let resp = Self::check_status(resp, "agent performance detail request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "agent performance detail response",
+        })
+    }
+
+    /// Fetch conversation-quality time series metrics.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn quality_metrics(&self) -> Result<QualityMetricsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, super::routes::metrics::quality_path())
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load quality metrics",
+            })?;
+        let resp = Self::check_status(resp, "quality metrics request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "quality metrics response",
+        })
+    }
+
+    /// Fetch recent system journal events.
+    ///
+    /// WHY: pylon has never had a persistent event journal to back this
+    /// endpoint (`data_unavailable` on every response says so honestly); the
+    /// method is wired anyway so a future backing store needs no new client
+    /// surface.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn journal(&self) -> Result<JournalResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, super::routes::metrics::journal_path())
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load journal",
+            })?;
+        let resp = Self::check_status(resp, "journal request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "journal response",
+        })
+    }
+
+    // ── Entity merge / delete / flag (#4565) ────────────────────────────
+    //
+    // WHY(#4565): rounds out the knowledge-entities surface
+    // (`knowledge_entities`, `knowledge_entity_relationships`) with the three
+    // operator mutation routes proskenion's entity actions view called
+    // directly instead. All three return `204 No Content` on success.
+
+    /// Merge `merged_id` into `canonical_id`, removing the merged entity.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn merge_entities(&self, canonical_id: &str, merged_id: &str) -> Result<()> {
+        let resp = self
+            .request(reqwest::Method::POST, "/api/v1/knowledge/entities/merge")
+            .json(&MergeRequest {
+                canonical_id: canonical_id.to_owned(),
+                merged_id: merged_id.to_owned(),
+            })
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "merge entities",
+            })?;
+        Self::check_status(resp, "merge entities request").await?;
+        Ok(())
+    }
+
+    /// Persist an operator review flag against an entity. The latest flag
+    /// for an entity overwrites any previous flag.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn flag_entity(
+        &self,
+        entity_id: &str,
+        reason: &str,
+        severity: FlagSeverity,
+    ) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/knowledge/entities/{encoded}/flag"),
+            )
+            .json(&FlagRequest {
+                reason: reason.to_owned(),
+                severity,
+            })
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "flag entity",
+            })?;
+        Self::check_status(resp, "flag entity request").await?;
+        Ok(())
+    }
+
+    /// Delete an entity and its relationship links.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn delete_entity(&self, entity_id: &str) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::DELETE,
+                &format!("/api/v1/knowledge/entities/{encoded}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "delete entity",
+            })?;
+        Self::check_status(resp, "delete entity request").await?;
+        Ok(())
     }
 
     /// Consumes a response, returning it unchanged if 2xx.
@@ -1100,6 +2367,8 @@ mod tests {
     use std::net::TcpListener;
     use std::time::Duration;
 
+    use crate::api::types::{CredentialMutationEffect, CredentialValidationState, ExplainDecision};
+
     use super::*;
 
     fn serve_http_error_once(
@@ -1186,6 +2455,181 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn knowledge_search_gets_the_pylon_search_route_with_query_params() {
+        // WHY(#7197): before this method existed, koilon's `/` and `:recall`
+        // both claimed pylon had no search endpoint. It always did
+        // (`GET /api/v1/knowledge/search`) -- this asserts skene actually
+        // reaches it with the caller's query text, agent scope, and limit as
+        // URL-encoded query parameters, and parses the ranked result set.
+        crate::install_test_crypto_provider();
+        let body = r#"{"results":[{"id":"f-1","content":"hello world","confidence":0.9,"tier":"verified","fact_type":"knowledge","score":1.5}]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .knowledge_search("hello world", Some("syn"), Some(5))
+            .await
+            .expect("knowledge search should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/knowledge/search?"),
+            "must GET pylon's search route, got: {request}"
+        );
+        assert!(request.contains("q=hello+world") || request.contains("q=hello%20world"));
+        assert!(request.contains("nous_id=syn"));
+        assert!(request.contains("limit=5"));
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].id, "f-1");
+        assert!((response.results[0].score - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn knowledge_search_omits_optional_params_when_absent() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"results":[]}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .knowledge_search("q", None, None)
+            .await
+            .expect("knowledge search should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(!request.contains("nous_id="), "got: {request}");
+        assert!(!request.contains("limit="), "got: {request}");
+    }
+
+    #[tokio::test]
+    async fn knowledge_search_explain_gets_the_pylon_explain_route() {
+        crate::install_test_crypto_provider();
+        // WHY: pylon serializes these DTOs with plain (snake_case) field
+        // names (crates/pylon/src/handlers/knowledge/dto.rs has no
+        // `rename_all`) -- this body uses that wire casing directly so the
+        // test fails if skene's types ever drifted to expect camelCase.
+        let body = r#"{
+            "query": "hello",
+            "weights": {
+                "vector_similarity": 0.3, "decay": 0.1, "relevance": 0.2,
+                "epistemic_tier": 0.1, "access_frequency": 0.1,
+                "relationship_proximity": 0.1, "graph_importance": 0.1,
+                "serendipity": 0.0, "surprise": 0.0, "evidence_coverage": 0.0,
+                "convergence": 0.0
+            },
+            "total_candidates": 1,
+            "selected": [{
+                "id": "f-1", "content": "hello", "confidence": 0.9,
+                "tier": "verified", "fact_type": "knowledge", "score": 1.2,
+                "decision": "selected", "reasons": ["matched"],
+                "factors": {
+                    "vector_similarity": 0.3, "decay": 0.1, "relevance": 0.2,
+                    "epistemic_tier": 0.1, "access_frequency": 0.1,
+                    "relationship_proximity": 0.1, "graph_importance": 0.1
+                }
+            }],
+            "dropped": []
+        }"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .knowledge_search_explain("hello", None, None)
+            .await
+            .expect("knowledge search explain should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/knowledge/search/explain?"),
+            "must GET pylon's explain route, got: {request}"
+        );
+        assert_eq!(response.total_candidates, 1);
+        assert_eq!(response.selected.len(), 1);
+        assert!(matches!(
+            response.selected[0].decision,
+            ExplainDecision::Selected
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_session_approval_posts_the_session_scoped_route() {
+        // WHY(#7202): before this method existed, koilon and proskenion both
+        // called approve_tool/deny_tool against the legacy
+        // /api/v1/turns/{turn_id}/tools/{tool_id}/{approve,deny} route, which
+        // pylon rejects for any token carrying a nous_id (SECURITY(#5340)).
+        // This asserts the session-scoped route is actually hit, with the
+        // session id in the path and turn_id/tool_id/decision in the body.
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"decision":"approved"}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .resolve_session_approval("ses-1", "turn-1", "tool-1", "approved")
+            .await
+            .expect("session approval should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/sessions/ses-1/approvals"),
+            "must POST pylon's session-scoped approval route, got: {request}"
+        );
+        assert!(request.contains(r#""turn_id":"turn-1""#), "got: {request}");
+        assert!(request.contains(r#""tool_id":"tool-1""#), "got: {request}");
+        assert!(
+            request.contains(r#""decision":"approved""#),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_session_approvals_gets_the_session_scoped_route() {
+        // WHY(#7207): the read half of `resolve_session_approval` -- a
+        // client that reconnects must be able to list what is still
+        // pending on the same session-scoped route the write uses.
+        crate::install_test_crypto_provider();
+        let body = r#"{"approvals":[{"session_id":"ses-1","turn_id":"turn-1","tool_id":"tool-1","tool_name":"shell_execute","risk":"critical","requested_at":"2026-01-01T00:00:00Z","deadline":"2026-01-01T00:02:00Z"}]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .pending_session_approvals("ses-1")
+            .await
+            .expect("pending session approvals should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/sessions/ses-1/approvals"),
+            "must GET pylon's session-scoped approval route, got: {request}"
+        );
+        assert_eq!(response.approvals.len(), 1);
+        assert_eq!(response.approvals[0].tool_id, "tool-1");
+        assert_eq!(response.approvals[0].turn_id, "turn-1");
+        assert_eq!(response.approvals[0].risk, "critical");
+        assert_eq!(response.approvals[0].deadline, "2026-01-01T00:02:00Z");
+    }
+
+    #[tokio::test]
+    async fn pending_approvals_for_nous_gets_the_nous_scoped_route_with_query_param() {
+        // WHY(#7207): the scoped-token shape -- a caller with no session id
+        // to enumerate against lists by agent instead.
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"approvals":[]}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let response = client
+            .pending_approvals_for_nous("syn")
+            .await
+            .expect("pending nous approvals should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/approvals?"),
+            "must GET pylon's nous-scoped approval route, got: {request}"
+        );
+        assert!(request.contains("nous_id=syn"), "got: {request}");
+        assert!(response.approvals.is_empty());
+    }
+
+    #[tokio::test]
     async fn session_replay_gets_the_pylon_replay_route_and_parses_the_full_dto() {
         // WHY(#4913): the koilon TUI export previously had no way to fetch a
         // replay-faithful export at all -- session_replay did not exist on
@@ -1240,6 +2684,7 @@ mod tests {
                 "approval": "auto",
                 "createdAt": "2026-01-01T00:00:00Z"
             }],
+            "toolAuditCorruptCount": 0,
             "turnAttempts": [{
                 "version": 1,
                 "turnId": "t1",
@@ -1271,6 +2716,9 @@ mod tests {
             .expect("one tool audit record");
         assert!(audit.is_error);
         assert_eq!(audit.approval.as_deref(), Some("auto"));
+        // WHY(#7217): the replay DTO discloses corrupt tool_audit rows
+        // alongside the ones it could decode; a clean response reports 0.
+        assert_eq!(replay.tool_audit_corrupt_count, 0);
         let attempt = replay.turn_attempts.first().expect("one turn attempt");
         assert_eq!(attempt.status, "complete");
     }
@@ -1587,6 +3035,591 @@ mod tests {
         assert!(
             request.starts_with("GET /api/v1/providers/route?model=claude-opus-4-6 "),
             "provider_route must GET pylon's route endpoint with the model query param, got: {request}"
+        );
+    }
+
+    // ── Workspace (#4565) ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn workspace_files_gets_the_pylon_route_with_the_path_query() {
+        crate::install_test_crypto_provider();
+        let body = r#"[{"name":"a.rs","path":"src/a.rs","is_dir":false,"size":12}]"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let entries = client
+            .workspace_files(Some("src"))
+            .await
+            .expect("workspace files should parse");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "src/a.rs");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/workspace/files?path=src "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_files_omits_the_path_query_when_absent() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", "[]");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .workspace_files(None)
+            .await
+            .expect("workspace files should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/workspace/files "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_git_status_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"[{"path":"src/a.rs","status":"M"}]"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let entries = client
+            .workspace_git_status()
+            .await
+            .expect("git status should parse");
+        assert_eq!(entries[0].status, "M");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/workspace/git-status "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_file_content_gets_raw_bytes() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", "hello world");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let bytes = client
+            .workspace_file_content("src/a.rs")
+            .await
+            .expect("file content should succeed");
+        assert_eq!(bytes, b"hello world");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/workspace/files/content?path=src%2Fa.rs "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_write_file_puts_content_and_mtime_guard() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"path":"src/a.rs","size":5,"mtime_ms":1000}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .workspace_write_file("src/a.rs", "hello", Some(999))
+            .await
+            .expect("write should succeed");
+        assert_eq!(resp.size, 5);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("PUT /api/v1/workspace/files/content "),
+            "must PUT the bare content route (path is in the body), got: {request}"
+        );
+        assert!(request.contains(r#""path":"src/a.rs""#));
+        assert!(request.contains(r#""content":"hello""#));
+        assert!(request.contains(r#""if_match_mtime_ms":999"#));
+    }
+
+    #[tokio::test]
+    async fn resolve_session_posts_to_the_resolve_route() {
+        // WHY: the resolve endpoint is the get-or-create the desktop chat
+        // calls when entering a nous's canonical conversation; a drifted
+        // path here 404s against a real pylon with no compile-time signal.
+        crate::install_test_crypto_provider();
+        let body = r#"{"id":"ses-1","nous_id":"syn","session_key":"syn:default","status":"active","model":"test-model","message_count":4}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let session = client
+            .resolve_session("syn", "syn:default")
+            .await
+            .expect("resolve should succeed");
+        assert_eq!(session.id.as_ref(), "ses-1");
+        assert_eq!(session.key, "syn:default");
+        assert_eq!(session.message_count, 4);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/sessions/resolve "),
+            "must POST pylon's resolve route, got: {request}"
+        );
+        assert!(request.contains(r#""nous_id":"syn""#));
+        assert!(request.contains(r#""session_key":"syn:default""#));
+    }
+
+    #[tokio::test]
+    async fn workspace_open_file_posts_the_path() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"ok":true,"path":"src/a.rs"}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .workspace_open_file("src/a.rs")
+            .await
+            .expect("open should succeed");
+        assert!(resp.ok);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/workspace/open "),
+            "got: {request}"
+        );
+        assert!(request.contains(r#""path":"src/a.rs""#));
+    }
+
+    #[tokio::test]
+    async fn workspace_diff_gets_raw_text() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", "diff --git a b\n");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let diff = client
+            .workspace_diff("src/a.rs")
+            .await
+            .expect("diff should succeed");
+        assert!(diff.starts_with("diff --git"));
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/workspace/diff?path=src%2Fa.rs "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_search_gets_query_and_limit() {
+        crate::install_test_crypto_provider();
+        let body = r#"[{"path":"src/a.rs","line":1,"snippet":"fn main"}]"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let results = client
+            .workspace_search("main", 10)
+            .await
+            .expect("search should succeed");
+        assert_eq!(results[0].snippet, "fn main");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/workspace/search?q=main&limit=10 "),
+            "got: {request}"
+        );
+    }
+
+    // ── Credentials (#4565) ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn list_credentials_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"credentials":[{"id":"anthropic:primary","provider":"anthropic","role":"primary","masked_key":"sk-...ab12","status":"valid","provider_verified":false,"usage_counters_available":false}]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .list_credentials()
+            .await
+            .expect("credentials should parse");
+        assert_eq!(resp.credentials[0].id, "anthropic:primary");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/system/credentials "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_credential_posts_provider_key_and_role() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"id":"anthropic:primary","provider":"anthropic","role":"primary","masked_key":"sk-...ab12","status":"valid","provider_verified":false,"usage_counters_available":false}"#;
+        let (base_url, server) = serve_http_capture_once("201 Created", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .add_credential("anthropic", SecretString::from("sk-test"), "primary")
+            .await
+            .expect("add credential should succeed");
+        assert_eq!(resp.provider, "anthropic");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/system/credentials "),
+            "got: {request}"
+        );
+        assert!(request.contains(r#""provider":"anthropic""#));
+        assert!(request.contains(r#""role":"primary""#));
+        // WHY: `SecretString`'s default `Serialize` impl always emits the
+        // literal "[REDACTED]", never the real value. `AddCredentialRequest`
+        // overrides that for this one field with a custom serializer so the
+        // actual key reaches pylon; this asserts the override held, not just
+        // that some `key` field is present.
+        assert!(
+            request.contains(r#""key":"sk-test""#),
+            "the real key must reach the wire, not a redacted placeholder, got: {request}"
+        );
+        assert!(
+            !request.contains("[REDACTED]"),
+            "credential add must never send the redacted placeholder as the key value, got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_credential_deletes_the_encoded_id() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"runtime_effect":"applied"}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .remove_credential("anthropic:primary")
+            .await
+            .expect("remove should succeed");
+        assert_eq!(resp.runtime_effect, CredentialMutationEffect::Applied);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("DELETE /api/v1/system/credentials/anthropic%3Aprimary "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_credential_posts_the_encoded_id() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"id":"anthropic:primary","provider":"anthropic","role":"primary","masked_key":"sk-...ab12","status":"valid","provider_verified":true,"validation_state":"accepted","usage_counters_available":false}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .validate_credential("anthropic:primary")
+            .await
+            .expect("validate should succeed");
+        assert_eq!(
+            resp.validation_state,
+            Some(CredentialValidationState::Accepted)
+        );
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/system/credentials/anthropic%3Aprimary/validate "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rotate_credentials_posts_the_provider_query() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"credentials":[],"runtime_effect":"restart_required"}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .rotate_credentials("anthropic")
+            .await
+            .expect("rotate should succeed");
+        assert_eq!(
+            resp.runtime_effect,
+            Some(CredentialMutationEffect::RestartRequired)
+        );
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/system/credentials/rotate?provider=anthropic "),
+            "got: {request}"
+        );
+    }
+
+    // ── Planning (#4565) ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn project_verification_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body =
+            r#"{"project_id":"p1","requirements":[],"last_verified_at":"2026-01-01T00:00:00Z"}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .project_verification("p1")
+            .await
+            .expect("verification should parse");
+        assert_eq!(resp.project_id, "p1");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/planning/projects/p1/verification "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_project_verification_posts_the_refresh_route() {
+        crate::install_test_crypto_provider();
+        let body =
+            r#"{"project_id":"p1","requirements":[],"last_verified_at":"2026-01-02T00:00:00Z"}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .refresh_project_verification("p1")
+            .await
+            .expect("refresh should parse");
+        assert_eq!(resp.last_verified_at, "2026-01-02T00:00:00Z");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/planning/projects/p1/verification/refresh "),
+            "got: {request}"
+        );
+    }
+
+    // ── Feature flags and config reload (#4565) ─────────────────────────
+
+    #[tokio::test]
+    async fn update_feature_flags_puts_the_whole_section() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"section":"feature_flags","config":[{"key":"foo","description":"d","enabled":true}],"restart_required":[]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let flags = serde_json::json!([{"key": "foo", "description": "d", "enabled": true}]);
+        let resp = client
+            .update_feature_flags(&flags)
+            .await
+            .expect("update should succeed");
+        assert_eq!(resp.section, "feature_flags");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("PUT /api/v1/config/feature_flags "),
+            "got: {request}"
+        );
+        assert!(request.contains(r#""key":"foo""#));
+    }
+
+    #[tokio::test]
+    async fn reload_config_posts_with_no_body() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"hot_reloaded":2,"restart_required":[],"changed":["gateway.port"]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client.reload_config().await.expect("reload should succeed");
+        assert_eq!(resp.hot_reloaded, 2);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/config/reload "),
+            "got: {request}"
+        );
+    }
+
+    // ── Nous get-one / recover (#4565) ──────────────────────────────────
+
+    #[tokio::test]
+    async fn agent_status_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{
+            "id": "syn",
+            "model": "claude-opus-4-6",
+            "fallback_models": [],
+            "fallback_providers": [],
+            "retries_before_fallback": 1,
+            "complexity_routing_enabled": false,
+            "complexity_no_llm_threshold": 0,
+            "complexity_low_threshold": 0,
+            "complexity_high_threshold": 0,
+            "provider_readiness": [],
+            "context_window": 200000,
+            "max_output_tokens": 8192,
+            "thinking_enabled": false,
+            "thinking_budget": 0,
+            "max_tool_iterations": 10,
+            "status": "idle",
+            "background_failure_total_count": 0,
+            "background_failure_recent_count": 0,
+            "background_health_degraded": false,
+            "address_mask": {"kind": "public", "allowed_senders": []}
+        }"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let status = client
+            .agent_status("syn")
+            .await
+            .expect("agent status should parse");
+        assert_eq!(status.id, "syn");
+        assert_eq!(status.status, "idle");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/nous/syn "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_recover_posts_the_recover_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"id":"syn","recovered":true}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .agent_recover("syn")
+            .await
+            .expect("recover should succeed");
+        assert!(resp.recovered);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/nous/syn/recover "),
+            "got: {request}"
+        );
+    }
+
+    // ── Metrics dashboards (#4565) ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn agent_performance_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"agents":[],"anomalies":[]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .agent_performance()
+            .await
+            .expect("agent performance should parse");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/metrics/agents "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_performance_one_gets_the_encoded_id_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{
+            "agent_id": "syn",
+            "agent_name": "Syn",
+            "avg_tokens_per_response": 1.0,
+            "tool_calls_per_session": 1.0,
+            "tool_success_rate": 1.0,
+            "distillation_frequency": 0.0,
+            "avg_context_before_distill": 0.0,
+            "messages_per_session": 1.0,
+            "sessions_per_day": 1.0,
+            "errors_per_session": 0.0
+        }"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let perf = client
+            .agent_performance_one("syn")
+            .await
+            .expect("agent performance detail should parse");
+        assert_eq!(perf.agent_id, "syn");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/metrics/agents/syn "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn quality_metrics_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"series":{"avg_turn_length":[],"response_to_question_ratio":[],"tool_call_density":[],"thinking_time_ratio":[]}}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .quality_metrics()
+            .await
+            .expect("quality metrics should parse");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/metrics/quality "),
+            "got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn journal_gets_the_pylon_route() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"events":[],"data_unavailable":[{"metric":"journal","reason":"no persistent event journal is available in pylon"}]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client.journal().await.expect("journal should parse");
+        assert_eq!(resp.data_unavailable.len(), 1);
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/journal "),
+            "got: {request}"
+        );
+    }
+
+    // ── Entity merge / delete / flag (#4565) ────────────────────────────
+
+    #[tokio::test]
+    async fn merge_entities_posts_canonical_and_merged_ids() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("204 No Content", "");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .merge_entities("e-1", "e-2")
+            .await
+            .expect("merge should succeed");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/knowledge/entities/merge "),
+            "got: {request}"
+        );
+        assert!(request.contains(r#""canonical_id":"e-1""#));
+        assert!(request.contains(r#""merged_id":"e-2""#));
+    }
+
+    #[tokio::test]
+    async fn flag_entity_posts_the_encoded_id_and_reason() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("204 No Content", "");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .flag_entity("entity/1", "looks wrong", FlagSeverity::High)
+            .await
+            .expect("flag should succeed");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("POST /api/v1/knowledge/entities/entity%2F1/flag "),
+            "got: {request}"
+        );
+        assert!(request.contains(r#""reason":"looks wrong""#));
+        assert!(request.contains(r#""severity":"high""#));
+    }
+
+    #[tokio::test]
+    async fn delete_entity_deletes_the_encoded_id() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("204 No Content", "");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .delete_entity("entity/1")
+            .await
+            .expect("delete should succeed");
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("DELETE /api/v1/knowledge/entities/entity%2F1 "),
+            "got: {request}"
         );
     }
 }

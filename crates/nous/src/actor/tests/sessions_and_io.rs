@@ -332,6 +332,126 @@ async fn maybe_spawn_extraction_skips_when_degraded() {
     );
 }
 
+/// Regression test for the #4235/#3740 background-routing fix: background
+/// extraction must resolve to the nous's own primary model
+/// (`test_config()`'s `"test-model"`) when no `generation.extraction_model`
+/// override is set, not to `mneme::extract::ExtractionConfig::default()`'s
+/// compiled model (episteme's extraction task-role default). The registry
+/// here serves ONLY `"test-model"`, so the spawned task can only clear its
+/// own provider lookup — and therefore never log "no provider for model" —
+/// if `maybe_spawn_extraction` actually threaded the resolved primary model
+/// through.
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn maybe_spawn_extraction_runs_against_primary_model_when_no_override() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("extracted").models(&["test-model"]),
+    ));
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor_with_providers(Arc::new(providers), config);
+
+    actor.maybe_spawn_extraction(
+        "user message here",
+        "assistant response here",
+        &[],
+        "",
+        false,
+    );
+    assert_eq!(actor.runtime.background_tasks.len(), 1);
+
+    // Drive the spawned task to completion before inspecting logs.
+    while actor.runtime.background_tasks.join_next().await.is_some() {}
+
+    assert!(
+        !logs_contain("no provider for model"),
+        "background extraction must resolve to the nous's primary model \
+         (\"test-model\", the only model registered here), not episteme's \
+         compiled extraction default"
+    );
+}
+
+/// Regression test: `generation.extraction_model` (#3740) must be consulted
+/// by the background extraction path. The registry here serves ONLY the
+/// override model — never `test_config()`'s primary (`"test-model"`) — so
+/// the spawned task's provider lookup can only succeed if
+/// `maybe_spawn_extraction` actually resolved and used the override.
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn maybe_spawn_extraction_honors_extraction_model_override() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("extracted").models(&["extract-override-model"]),
+    ));
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor_with_providers(Arc::new(providers), config);
+    actor.config.generation.extraction_override = Some("extract-override-model".to_owned());
+
+    actor.maybe_spawn_extraction(
+        "user message here",
+        "assistant response here",
+        &[],
+        "",
+        false,
+    );
+    assert_eq!(actor.runtime.background_tasks.len(), 1);
+
+    while actor.runtime.background_tasks.join_next().await.is_some() {}
+
+    assert!(
+        !logs_contain("no provider for model"),
+        "an explicit generation.extraction_model override must be used for background extraction"
+    );
+}
+
+/// Regression test: when no provider serves the resolved model, background
+/// extraction must fail closed and the warning must name the nous, the
+/// resolved model, and the config field that controls it — so an operator
+/// reading the log knows which knob to check instead of only seeing an
+/// opaque model string.
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn maybe_spawn_extraction_warns_with_config_field_when_no_provider() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) =
+        make_test_actor_with_providers(Arc::new(ProviderRegistry::new()), config);
+
+    actor.maybe_spawn_extraction(
+        "user message here",
+        "assistant response here",
+        &[],
+        "",
+        false,
+    );
+    assert_eq!(actor.runtime.background_tasks.len(), 1);
+
+    while actor.runtime.background_tasks.join_next().await.is_some() {}
+
+    assert!(logs_contain("no provider for model test-model"));
+    assert!(logs_contain("generation.extraction_model"));
+}
+
 // ── background.rs: maybe_spawn_skill_analysis ────────────────────────────────
 
 #[test]
@@ -500,20 +620,18 @@ async fn maybe_spawn_distillation_clears_flag_when_session_not_found() {
 /// Build an actor whose session `"s"` (store id `"ses-1"`) has enough
 /// messages to trip `should_trigger_distillation`'s "never distilled"
 /// threshold (`AgentBehaviorDefaults::distillation_never_distilled_trigger`,
-/// default 30 — see `crates/taxis/src/config/agents.rs`), with a provider
-/// registered for `DistillTriggerConfig::default().model` so
-/// `try_spawn_distillation` clears every gate up to the actual spawn.
-fn make_distillation_ready_actor() -> (
+/// default 30 — see `crates/taxis/src/config/agents.rs`), wired to
+/// `providers`. Shared by the "no override" and "override honored" fixtures
+/// below: only the provider registry (and, for the override case, the
+/// generation config) differs between them.
+fn make_distillation_ready_actor_with_providers(
+    providers: Arc<ProviderRegistry>,
+) -> (
     NousActor,
     mpsc::Sender<NousMessage>,
     tempfile::TempDir, // kept alive: drop would delete tempdir
 ) {
-    let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(
-        MockProvider::new("distilled").models(&[koina::defaults::DEFAULT_MODEL]),
-    ));
-    let (mut actor, tx, dir) =
-        make_test_actor_with_providers(Arc::new(providers), PipelineConfig::default());
+    let (mut actor, tx, dir) = make_test_actor_with_providers(providers, PipelineConfig::default());
 
     let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     store
@@ -538,6 +656,26 @@ fn make_distillation_ready_actor() -> (
     );
 
     (actor, tx, dir)
+}
+
+/// Same fixture as above, with a provider registered for `"test-model"` —
+/// `test_config()`'s primary (`generation.model`), NOT
+/// `koina::defaults::DEFAULT_MODEL` — so `try_spawn_distillation` clears
+/// every gate up to the actual spawn only if it resolves the nous's own
+/// primary model when no `generation.distillation_model` override is set
+/// (regression coverage for the #4235/#3740 background routing fix: this
+/// fixture would fail to spawn if the code still reached for a compiled
+/// default instead).
+fn make_distillation_ready_actor() -> (
+    NousActor,
+    mpsc::Sender<NousMessage>,
+    tempfile::TempDir, // kept alive: drop would delete tempdir
+) {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("distilled").models(&["test-model"]),
+    ));
+    make_distillation_ready_actor_with_providers(Arc::new(providers))
 }
 
 /// Control for `maybe_spawn_distillation_skips_when_degraded`: proves the
@@ -580,25 +718,79 @@ async fn maybe_spawn_distillation_skips_when_degraded() {
     );
 }
 
+/// Regression test: `generation.distillation_model` (#3740) must be
+/// consulted by the background distillation path, not only by in-turn
+/// compaction (`pipeline::stages::compact_with_llm`). The registry here
+/// serves ONLY the override model — never `test_config()`'s primary
+/// (`"test-model"`) and never a compiled default — so a spawn is possible
+/// only if `try_spawn_distillation` actually resolved and used the
+/// override.
+#[tokio::test]
+async fn maybe_spawn_distillation_honors_distillation_model_override() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("distilled").models(&["distill-override-model"]),
+    ));
+    let (mut actor, _tx, _dir) = make_distillation_ready_actor_with_providers(Arc::new(providers));
+    actor.config.generation.distillation_override = Some("distill-override-model".to_owned());
+
+    actor.maybe_spawn_distillation("s", false).await;
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "an explicit generation.distillation_model override must be used for background distillation"
+    );
+}
+
+/// Regression test: when no provider serves the resolved model, background
+/// distillation must fail closed (no spawn) and the warning must name the
+/// nous, the resolved model, and the config field that controls it — so an
+/// operator reading the log knows which knob to check instead of only
+/// seeing an opaque model string.
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn maybe_spawn_distillation_warns_with_config_field_when_no_provider() {
+    let (mut actor, _tx, _dir) =
+        make_distillation_ready_actor_with_providers(Arc::new(ProviderRegistry::new()));
+
+    actor.maybe_spawn_distillation("s", false).await;
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "no provider for the resolved model must fail closed rather than spawn"
+    );
+    assert!(logs_contain("no provider for distillation model"));
+    assert!(logs_contain("test-model"));
+    assert!(logs_contain("generation.distillation_model"));
+}
+
 // ── background.rs: maybe_run_auto_dream ──────────────────────────────────────
 
 /// Build an actor with everything `maybe_run_auto_dream` needs to clear every
 /// gate up to constructing the `DreamEngine`: an in-memory session store, an
-/// in-memory knowledge store, and a provider registered for
-/// `DistillTriggerConfig::default().model`. Mirrors
-/// `make_distillation_ready_actor` above.
+/// in-memory knowledge store, and a provider registered for `"test-model"`
+/// (`test_config()`'s primary — the [`ModelRole::Dream`] fallback). Same
+/// fixture shape as `make_distillation_ready_actor` above; wired to
+/// `providers` so the "no override" and "override honored" fixtures below
+/// can share it, mirroring `make_distillation_ready_actor_with_providers`.
+///
+/// Regression coverage for #7212: before that fix, `maybe_run_auto_dream`
+/// resolved its model from `DistillTriggerConfig::default()`'s compiled
+/// `koina::defaults::DEFAULT_MODEL`, never consulting the nous's own
+/// config — this fixture would fail to build the dream engine against
+/// that fix's predecessor because `"test-model"`, not
+/// `DEFAULT_MODEL`, is all that is registered here.
 #[cfg(feature = "knowledge-store")]
-fn make_auto_dream_ready_actor() -> (
+fn make_auto_dream_ready_actor_with_providers(
+    providers: Arc<ProviderRegistry>,
+) -> (
     NousActor,
     mpsc::Sender<NousMessage>,
     tempfile::TempDir, // kept alive: drop would delete tempdir
 ) {
-    let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(
-        MockProvider::new("dreamed").models(&[koina::defaults::DEFAULT_MODEL]),
-    ));
-    let (mut actor, tx, dir) =
-        make_test_actor_with_providers(Arc::new(providers), PipelineConfig::default());
+    let (mut actor, tx, dir) = make_test_actor_with_providers(providers, PipelineConfig::default());
 
     let session_store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(session_store)));
@@ -607,6 +799,24 @@ fn make_auto_dream_ready_actor() -> (
     actor.stores.knowledge_store = Some(knowledge_store);
 
     (actor, tx, dir)
+}
+
+/// Same fixture as above, with a provider registered for `"test-model"` —
+/// `test_config()`'s primary, NOT `koina::defaults::DEFAULT_MODEL` — so
+/// `maybe_run_auto_dream` can only reach `DreamEngine` construction if it
+/// resolves the nous's own primary model when no
+/// `generation.distillation_model` override is set (#7212).
+#[cfg(feature = "knowledge-store")]
+fn make_auto_dream_ready_actor() -> (
+    NousActor,
+    mpsc::Sender<NousMessage>,
+    tempfile::TempDir, // kept alive: drop would delete tempdir
+) {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("dreamed").models(&["test-model"]),
+    ));
+    make_auto_dream_ready_actor_with_providers(Arc::new(providers))
 }
 
 /// Control for `maybe_run_auto_dream_skips_when_degraded`: proves the fixture
@@ -646,6 +856,54 @@ async fn maybe_run_auto_dream_skips_when_degraded() {
         "a degraded turn must never build the dream engine, even when stores \
          and a provider are otherwise ready"
     );
+}
+
+/// Regression test (#7212): `ModelRole::Dream` shares
+/// `generation.distillation_model`'s override — there is no dedicated
+/// `dream_model` key. The registry here serves ONLY the override model —
+/// never `test_config()`'s primary (`"test-model"`) — so the dream engine
+/// can only build if `maybe_run_auto_dream` actually resolved and used the
+/// distillation override for the Dream role.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn maybe_run_auto_dream_honors_distillation_model_override() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("dreamed").models(&["dream-override-model"]),
+    ));
+    let (mut actor, _tx, _dir) = make_auto_dream_ready_actor_with_providers(Arc::new(providers));
+    actor.config.generation.distillation_override = Some("dream-override-model".to_owned());
+
+    actor.maybe_run_auto_dream(false).await;
+
+    assert!(
+        actor.runtime.auto_dream_engine.is_some(),
+        "an explicit generation.distillation_model override must be used for dream, \
+         since Dream has no dedicated override key of its own"
+    );
+}
+
+/// Regression test (#7212): when no provider serves the resolved model,
+/// auto-dream must fail closed (no engine built) and, unlike the
+/// pre-#7212 behaviour, the warning must name the nous, the resolved
+/// model, and the config field that controls it — the original bug was
+/// not just the wrong model, but that the miss was never logged at all.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn maybe_run_auto_dream_warns_with_config_field_when_no_provider() {
+    let (mut actor, _tx, _dir) =
+        make_auto_dream_ready_actor_with_providers(Arc::new(ProviderRegistry::new()));
+
+    actor.maybe_run_auto_dream(false).await;
+
+    assert!(
+        actor.runtime.auto_dream_engine.is_none(),
+        "no provider for the resolved model must fail closed rather than build the dream engine"
+    );
+    assert!(logs_contain("no provider for dream model"));
+    assert!(logs_contain("test-model"));
+    assert!(logs_contain("generation.distillation_model"));
 }
 
 // ── turn.rs: finalize_turn corpus side-effect gating (#5367) ────────────────

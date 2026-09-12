@@ -38,6 +38,7 @@ impl TaskRunner {
                 last_errors: t.last_errors,
                 available: true,
                 reason: None,
+                disable_cause: t.disable_cause,
             })
             .collect()
     }

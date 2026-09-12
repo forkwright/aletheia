@@ -1,0 +1,56 @@
+{
+  "captured_at": "2026-09-06T18:35:53Z",
+  "captured_from": "http://127.0.0.1:8089/v1/chat/completions",
+  "served_model": "qwen3.8-27b",
+  "note": "Non-streaming chat completion against the incumbent llama-server@agent. max_tokens=120 leaves enough budget for the model's brief chain-of-thought (emitted as a non-standard 'reasoning_content' field hermeneus's wire types do not model and correctly ignore) to finish before the real 'content' answer.",
+  "request": {
+    "model": "qwen3.8-27b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly the word OK and nothing else."
+      }
+    ],
+    "max_tokens": 120
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "Thinking:\n\n1.  **Analyze the Request:** The user wants me to reply with exactly the word \"OK\" and nothing else.\n2.  **Determine the Output:** The output must be the string \"OK\" without any punctuation, whitespace, or additional text.\n3.  **Format the Output:** Just \"OK\".\n4.  **Final Verification:** Does it match the constraint \"exactly the word OK and nothing else\"? Yes.\n\n*Self-Correction during thought process:* Make sure not to include markdown formatting like bolding or code blocks,"
+          }
+        }
+      ],
+      "created": 1788719758,
+      "model": "qwen3.8-27b",
+      "system_fingerprint": "b1-9723942",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 120,
+        "prompt_tokens": 62,
+        "total_tokens": 182,
+        "prompt_tokens_details": {
+          "cached_tokens": 58
+        }
+      },
+      "id": "chatcmpl-KUACkA1MzgoV2ieu05gONYgSEoU1ZDVa",
+      "timings": {
+        "cache_n": 58,
+        "prompt_n": 4,
+        "prompt_ms": 233.459,
+        "prompt_per_token_ms": 58.36475,
+        "prompt_per_second": 17.133629459562492,
+        "predicted_n": 120,
+        "predicted_ms": 4788.116,
+        "predicted_per_token_ms": 40.23626890756302,
+        "predicted_per_second": 24.853199045302997
+      }
+    }
+  }
+}

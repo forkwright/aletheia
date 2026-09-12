@@ -648,3 +648,326 @@ async fn stream_turn_approval_publishes_tool_approval_domain_events() {
         "approved irreversible tool should execute exactly once"
     );
 }
+
+/// #7252 `Done when`: a turn that dies mid-approval-wait (here: the client
+/// disconnects while the tool blocks on a decision nobody will ever send)
+/// must not leave the approval dangling on the domain bus — the pending read
+/// empties AND a `tool.approval_resolved` with the `turn_ended` disposition
+/// is published, so a reconnecting client replaying the journal sees the
+/// request closed instead of paging the operator on a dead approval.
+#[tokio::test]
+async fn disconnect_mid_approval_wait_cancels_pending_approval_on_domain_bus() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    let mut event_bus_rx = state.event_bus.subscribe();
+
+    let resp = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "stream-approval-disconnect",
+            "run approval test tool",
+            "01ARZ3NDEKTSV4RRFFQ69G5FC8",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let mut stream = resp.into_body().into_data_stream();
+    let mut buffer = String::new();
+    let start = read_sse_data_event(&mut stream, &mut buffer, "message_start").await;
+    let session_id = start["session_id"]
+        .as_str()
+        .expect("message_start.session_id")
+        .to_owned();
+    let turn_id = start["turn_id"]
+        .as_str()
+        .expect("message_start.turn_id")
+        .to_owned();
+    let _required = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_required").await;
+    let _required_domain = await_domain_event(&mut event_bus_rx, "tool.approval_required").await;
+
+    // The client vanishes while the approval is still waiting: dropping the
+    // response stream aborts the turn task (AbortOnDrop), which drops the
+    // approval guard with the request still pending.
+    drop(stream);
+
+    let ended = await_domain_event(&mut event_bus_rx, "tool.approval_resolved").await;
+    assert_eq!(ended.payload["session_id"], session_id);
+    assert_eq!(ended.payload["nous_id"], "syn");
+    assert_eq!(ended.payload["turn_id"], turn_id);
+    assert_eq!(ended.payload["tool_id"], APPROVAL_TEST_TOOL_ID);
+    assert_eq!(
+        ended.payload["decision"], "turn_ended",
+        "an approval that outlived its turn is cancelled, not left pending: {ended:?}"
+    );
+
+    // Removal happens synchronously in the guard before the publish spawns,
+    // so once the domain event exists the reconciliation read is clean.
+    let list_req = authed_request(
+        "GET",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        None,
+    );
+    let list_resp = router.clone().oneshot(list_req).await.unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_body = body_json(list_resp).await;
+    assert!(
+        list_body["approvals"]
+            .as_array()
+            .expect("approvals must be an array")
+            .is_empty(),
+        "the dead turn's approval must not linger in the reconciliation read: {list_body}"
+    );
+
+    // A late operator answer is told the truth: the approval is gone because
+    // its turn ended, not that it never existed.
+    let late_req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        Some(serde_json::json!({
+            "turn_id": turn_id,
+            "tool_id": APPROVAL_TEST_TOOL_ID,
+            "decision": "approved",
+        })),
+    );
+    let late_resp = router.clone().oneshot(late_req).await.unwrap();
+    assert_eq!(late_resp.status(), StatusCode::GONE);
+    let late_body = body_json(late_resp).await;
+    assert_eq!(late_body["error"]["details"]["reason"], "turn_ended");
+
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        0,
+        "the approval-gated tool must never execute after its turn died"
+    );
+}
+
+// ── #7207: pending-approval reconciliation reads ──
+
+/// #7207 `Done when:`: a pending approval created, [the client] disconnected,
+/// the GET returns it.
+///
+/// Modeled here as an independent GET request rather than literally
+/// dropping the primary `stream_turn` connection: that connection alone
+/// owns the turn (`AbortOnDrop`), so dropping it aborts the turn itself,
+/// not merely a reconciling client's connection. The realistic "reconnect"
+/// case this proves is the always-open domain-bus `events/subscribe`
+/// stream a client holds separately (#7196) dropping and coming back — the
+/// GET below never depends on that connection, or on having seen the live
+/// `tool_approval_required` event on either connection, at all.
+#[tokio::test]
+async fn session_pending_approvals_lists_registered_approval_and_clears_after_resolve() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, _state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    let resp = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "stream-approval-pending-read",
+            "run approval test tool",
+            "01ARZ3NDEKTSV4RRFFQ69G5FC5",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let mut stream = resp.into_body().into_data_stream();
+    let mut buffer = String::new();
+    let start = read_sse_data_event(&mut stream, &mut buffer, "message_start").await;
+    let session_id = start["session_id"]
+        .as_str()
+        .expect("message_start.session_id")
+        .to_owned();
+    let turn_id = start["turn_id"]
+        .as_str()
+        .expect("message_start.turn_id")
+        .to_owned();
+    let _required = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_required").await;
+
+    let list_req = authed_request(
+        "GET",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        None,
+    );
+    let list_resp = router.clone().oneshot(list_req).await.unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_body = body_json(list_resp).await;
+    let approvals = list_body["approvals"]
+        .as_array()
+        .expect("approvals must be an array");
+    assert_eq!(
+        approvals.len(),
+        1,
+        "the read must find the approval without having seen the live event: {list_body}"
+    );
+    let approval = &approvals[0];
+    assert_eq!(approval["session_id"], session_id);
+    assert_eq!(approval["turn_id"], turn_id);
+    assert_eq!(approval["tool_id"], APPROVAL_TEST_TOOL_ID);
+    assert_eq!(approval["tool_name"], APPROVAL_TEST_TOOL);
+    assert_eq!(approval["risk"], "critical");
+    assert!(
+        approval["requested_at"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
+        "got: {approval}"
+    );
+    assert!(
+        approval["deadline"].as_str().is_some_and(|s| !s.is_empty()),
+        "got: {approval}"
+    );
+
+    // Resolve it, then the reconciliation read must report it gone.
+    let approve_req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        Some(serde_json::json!({
+            "turn_id": turn_id,
+            "tool_id": APPROVAL_TEST_TOOL_ID,
+            "decision": "approved",
+        })),
+    );
+    let approve_resp = router.clone().oneshot(approve_req).await.unwrap();
+    assert_eq!(approve_resp.status(), StatusCode::OK);
+
+    let after_req = authed_request(
+        "GET",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        None,
+    );
+    let after_resp = router.clone().oneshot(after_req).await.unwrap();
+    assert_eq!(after_resp.status(), StatusCode::OK);
+    let after_body = body_json(after_resp).await;
+    assert!(
+        after_body["approvals"]
+            .as_array()
+            .expect("approvals must be an array")
+            .is_empty(),
+        "a resolved approval must not still be reported as pending: {after_body}"
+    );
+
+    // Drain to completion so the turn task exits cleanly rather than being
+    // torn down by the response stream dropping at the end of the test.
+    let _resolved = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_resolved").await;
+    let _complete = read_sse_data_event(&mut stream, &mut buffer, "message_complete").await;
+}
+
+/// #7207 `Done when:`: a scoped token for another nous gets 404/403, never
+/// the list. Ownership-verified exactly like the write route.
+#[tokio::test]
+async fn session_pending_approvals_scoped_token_for_other_nous_is_forbidden() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, _state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    let resp = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "stream-approval-scoped-read",
+            "run approval test tool",
+            "01ARZ3NDEKTSV4RRFFQ69G5FC6",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let mut stream = resp.into_body().into_data_stream();
+    let mut buffer = String::new();
+    let start = read_sse_data_event(&mut stream, &mut buffer, "message_start").await;
+    let session_id = start["session_id"]
+        .as_str()
+        .expect("message_start.session_id")
+        .to_owned();
+    let _required = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_required").await;
+
+    let req = authed_get_scoped_as(
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        symbolon::types::Role::Operator,
+        "other-agent",
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "a scoped token for a different agent must never see another agent's pending approvals"
+    );
+}
+
+/// The nous-scoped listing (#7207) is the scoped-token shape: it must find
+/// a pending approval across the agent's sessions without the caller
+/// enumerating session ids first.
+#[tokio::test]
+async fn nous_pending_approvals_lists_across_that_agents_sessions() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, _state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    let resp = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "stream-approval-nous-read",
+            "run approval test tool",
+            "01ARZ3NDEKTSV4RRFFQ69G5FC7",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let mut stream = resp.into_body().into_data_stream();
+    let mut buffer = String::new();
+    let _start = read_sse_data_event(&mut stream, &mut buffer, "message_start").await;
+    let _required = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_required").await;
+
+    let req = authed_request("GET", "/api/v1/approvals?nous_id=syn", None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let approvals = body["approvals"]
+        .as_array()
+        .expect("approvals must be an array");
+    assert_eq!(approvals.len(), 1);
+    assert_eq!(approvals[0]["tool_id"], APPROVAL_TEST_TOOL_ID);
+}
+
+#[tokio::test]
+async fn nous_pending_approvals_requires_nous_id() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, _state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    let req = authed_request("GET", "/api/v1/approvals", None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert_eq!(body["error"]["details"]["errors"][0]["field"], "nous_id");
+}
+
+#[tokio::test]
+async fn nous_pending_approvals_scoped_token_mismatch_is_forbidden() {
+    let (router, _dir) = app().await;
+
+    let req = authed_get_scoped_as(
+        "/api/v1/approvals?nous_id=other-agent",
+        symbolon::types::Role::Operator,
+        "syn",
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+/// WHY(#7200, #7227): `Role::Readonly` is documented as dashboard-only and
+/// cannot read session content -- pending-approval state is exactly that.
+/// This is the nous-scoped listing's half of the floor #7227 applied to
+/// `list_sessions`; the session-scoped route's half lives in
+/// `session_read_routes_reject_readonly_role` (`tests/session.rs`), which
+/// now includes `/api/v1/sessions/{id}/approvals`.
+#[tokio::test]
+async fn nous_pending_approvals_rejects_readonly_role() {
+    let (router, _dir) = app().await;
+
+    let req = authed_get_as(
+        "/api/v1/approvals?nous_id=syn",
+        symbolon::types::Role::Readonly,
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}

@@ -8,7 +8,7 @@ use axum::extract::{Path, Query, State};
 use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::{Claims, require_nous_access, require_role};
+use crate::extract::{Claims, require_nous_access, require_read_role, require_role};
 use crate::state::KnowledgeState;
 
 mod dto;
@@ -160,6 +160,7 @@ fn validate_entity_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
         (status = 200, description = "Fact list with total count"),
         (status = 400, description = "Invalid sort or order parameter", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
@@ -177,6 +178,10 @@ pub async fn list_facts(
 ) -> Result<Json<FactsResponse>, ApiError> {
     use mneme::knowledge::EpistemicTier;
 
+    // SECURITY(#7200): Readonly is dashboard-only (symbolon::types::Role
+    // doc); knowledge reads are Agent-or-above. Nous/visibility scope is
+    // enforced below via `KnowledgeReadPolicy`.
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
     query.nous_id = policy.single_target_nous_id().map(ToOwned::to_owned);
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
@@ -241,6 +246,7 @@ pub async fn list_facts(
     responses(
         (status = 200, description = "Fact detail with relationships and similar facts"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Fact not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -262,6 +268,10 @@ pub async fn get_fact(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_claims(&claims)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &policy;
@@ -314,6 +324,7 @@ pub async fn get_fact(
     responses(
         (status = 200, description = "Entity list with total count"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
@@ -324,6 +335,10 @@ pub async fn list_entities(
     claims: Claims,
     Query(mut query): Query<EntitiesQuery>,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_agent_filters(&claims, &query.agent)?;
     query.agent = policy.target_agents();
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
@@ -405,6 +420,7 @@ pub async fn list_entities(
     responses(
         (status = 200, description = "Entity relationships"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -414,6 +430,10 @@ pub async fn entity_relationships(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
+    // SECURITY(#7200): Readonly is dashboard-only; knowledge reads are
+    // Agent-or-above. Nous/visibility scope is enforced below via
+    // `KnowledgeReadPolicy`.
+    require_read_role(&claims, Role::Agent)?;
     let policy = KnowledgeReadPolicy::from_claims(&claims)?;
     policy.require_entity(&state, &id)?;
     let relationships = get_entity_relationships(&state, &policy, &id)?;
@@ -657,6 +677,7 @@ pub use webhook::{
     responses(
         (status = 200, description = "Graph health report"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

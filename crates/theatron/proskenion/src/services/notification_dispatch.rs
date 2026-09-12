@@ -122,6 +122,18 @@ impl NotificationDispatch {
                     toast_fallback,
                 );
             }
+            SseEvent::ToolApprovalRequired {
+                nous_id, tool_name, ..
+            } => {
+                self.on_tool_approval_required(
+                    nous_id,
+                    tool_name,
+                    prefs,
+                    dnd,
+                    on_sent,
+                    toast_fallback,
+                );
+            }
             SseEvent::Connected => {
                 let was_pending = self.disconnect_at.is_some();
                 self.disconnect_at = None;
@@ -219,6 +231,44 @@ impl NotificationDispatch {
             body,
             NotificationUrgency::Critical,
             Some(10),
+            prefs,
+            dnd,
+            on_sent,
+            fallback,
+        );
+    }
+
+    /// Alert on a tool call blocked on approval (#7202/#7196).
+    ///
+    /// WHY: unlike every other category here, this always fires -- no
+    /// `focused` suppression -- because an agent blocked on approval stays
+    /// blocked until the operator acts, regardless of which window has
+    /// focus. `send` already special-cases `ToolApproval` to bypass DND for
+    /// the same reason (time-sensitive); this was the missing event source
+    /// `NotificationCategory::is_wired`'s doc comment named.
+    fn on_tool_approval_required(
+        &mut self,
+        nous_id: &ApiNousId,
+        tool_name: &str,
+        prefs: &NotificationPreferences,
+        dnd: &DndState,
+        on_sent: &mut impl FnMut(NotificationEntry),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
+    ) {
+        if !prefs.category_enabled(NotificationCategory::ToolApproval) {
+            return;
+        }
+        let title = String::from("Aletheia — Approval needed");
+        let body = format!(
+            "{}: '{tool_name}' is waiting for approval",
+            nous_id.as_str()
+        );
+        self.dispatch_with_grouping(
+            NotificationCategory::ToolApproval,
+            title,
+            body,
+            NotificationUrgency::Critical,
+            Some(15),
             prefs,
             dnd,
             on_sent,
@@ -644,6 +694,86 @@ mod tests {
         assert!(
             history.is_empty(),
             "DND should suppress completion notification"
+        );
+    }
+
+    // ── Tool approval (#7202/#7196) ──
+
+    fn approval_required_event() -> SseEvent {
+        SseEvent::ToolApprovalRequired {
+            session_id: session("s1"),
+            nous_id: nous("syn"),
+            turn_id: skene::id::TurnId::from("t1"),
+            tool_id: "tool1".to_string(),
+            tool_name: "shell_execute".to_string(),
+            risk: "critical".to_string(),
+            reason: "destructive command".to_string(),
+        }
+    }
+
+    #[test]
+    fn tool_approval_required_dispatches_a_notification() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+
+        dispatch.process_event(
+            &approval_required_event(),
+            &prefs(),
+            &dnd_off(),
+            false,
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert_eq!(history.len(), 1);
+        assert_eq!(
+            history.entries()[0].category,
+            NotificationCategory::ToolApproval
+        );
+    }
+
+    /// Unlike completion notifications, an approval alert must fire even
+    /// while the window has focus -- the agent stays blocked regardless of
+    /// what the operator is looking at.
+    #[test]
+    fn tool_approval_required_fires_even_when_focused() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+
+        dispatch.process_event(
+            &approval_required_event(),
+            &prefs(),
+            &dnd_off(),
+            true,
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert_eq!(history.len(), 1);
+    }
+
+    /// `send` special-cases `ToolApproval` to bypass DND (time-sensitive);
+    /// this proves the event now actually reaches that bypass.
+    #[test]
+    fn tool_approval_required_bypasses_dnd() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+        let mut dnd = dnd_off();
+        dnd.activate(DndDuration::FifteenMinutes);
+
+        dispatch.process_event(
+            &approval_required_event(),
+            &prefs(),
+            &dnd,
+            false,
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert_eq!(
+            history.len(),
+            1,
+            "tool approval must bypass DND, unlike other categories"
         );
     }
 

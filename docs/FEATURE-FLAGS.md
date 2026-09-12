@@ -60,6 +60,7 @@ Cargo metadata cannot infer.
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
 | **episteme** | `gliner` | no | GLiNER ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `nuextract` | no | NuExtract ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
+| **episteme** | `ort-load-dynamic` | no | CI-only: links gliner/nuextract tests via a runtime `dlopen` instead of a build-time onnxruntime (aletheia#6862) | `ort?/load-dynamic` |
 | **episteme** | `openai-embed` | no | OpenAI-compatible embedding provider | `dep:reqwest`, `dep:tokio`, `dep:rustls` |
 | **episteme** | `online-tests` | no | Network-dependent candle tests | - |
 | **episteme** | `test-support` | no | Test helpers | - |
@@ -201,7 +202,7 @@ Cargo metadata cannot infer.
 | **poiesis-text** | `pdf` | no | PDF backend | `dep:krilla` |
 | **poiesis-text** | `odt` | no | ODT backend | `dep:zip` |
 
-Workspace crates not listed define no feature flags: `aletheia-classify`, `aletheia-lexica`, `aletheia-memory-mcp`, `theatron`, `proskenion`, `poiesis-core`, and the remaining poiesis members (`deck`, `diff`, `inspect`, `intake`, `lint`, `scaffold`, `theme`, `typst`, `verify`).
+Workspace crates not listed define no feature flags: `aletheia-classify`, `aletheia-lexica`, `xenodocheion`, `theatron`, `proskenion`, `poiesis-core`, and the remaining poiesis members (`deck`, `diff`, `inspect`, `intake`, `lint`, `scaffold`, `theme`, `typst`, `verify`).
 
 
 ## Cross-crate feature interactions

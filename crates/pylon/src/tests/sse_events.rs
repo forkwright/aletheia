@@ -45,6 +45,7 @@ fn sse_event_type_message_complete() {
         provider: None,
         request_id: None,
         error: None,
+        degraded_reason: None,
     };
     assert_eq!(event.event_type(), "message_complete");
 }
@@ -82,6 +83,7 @@ fn sse_event_message_complete_serialization() {
         provider: Some("local-proxy".to_owned()),
         request_id: Some("req-789".to_owned()),
         error: None,
+        degraded_reason: None,
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "message_complete");
@@ -93,6 +95,39 @@ fn sse_event_message_complete_serialization() {
     assert!(
         json.get("error").is_none(),
         "successful completion must omit error"
+    );
+    assert!(
+        json.get("degraded_reason").is_none(),
+        "ordinary completion must omit degraded_reason"
+    );
+}
+
+#[test]
+fn sse_event_message_complete_includes_degraded_reason_when_present() {
+    // WHY(#7218): a recall-stage timeout degrades the turn instead of failing
+    // it; the reason must be visible on the response the client sees.
+    let event = crate::stream::SseEvent::MessageComplete {
+        stop_reason: "end_turn".to_owned(),
+        usage: crate::stream::UsageData {
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        },
+        provider: Some("menos-code".to_owned()),
+        request_id: Some("req-recall-timeout".to_owned()),
+        error: None,
+        degraded_reason: Some("Recall (semantic memory search) timed out after 15s".to_owned()),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "message_complete");
+    assert_eq!(
+        json["degraded_reason"],
+        "Recall (semantic memory search) timed out after 15s"
+    );
+    assert!(
+        json.get("error").is_none(),
+        "a degraded-but-completed turn is not an error"
     );
 }
 
@@ -196,6 +231,7 @@ fn tui_event_message_complete_type() {
             cache_write_tokens: 0,
             stop_reason: "end_turn".to_owned(),
             error: None,
+            degraded_reason: None,
         },
     };
     assert_eq!(event.event_type(), "message_complete");
@@ -248,6 +284,7 @@ fn tui_event_message_complete_serialization() {
             cache_write_tokens: 20,
             stop_reason: "end_turn".to_owned(),
             error: None,
+            degraded_reason: None,
         },
     };
     let json = serde_json::to_value(&event).unwrap();
@@ -322,6 +359,7 @@ fn message_complete_is_terminal_after_error_event() {
         provider: None,
         request_id: Some("req-123".to_owned()),
         error: Some("provider error".to_owned()),
+        degraded_reason: None,
     };
 
     assert_eq!(error.event_type(), "error");
@@ -351,6 +389,7 @@ fn sse_event_message_complete_includes_cache_tokens() {
         provider: None,
         request_id: None,
         error: None,
+        degraded_reason: None,
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["usage"]["input_tokens"], 100);

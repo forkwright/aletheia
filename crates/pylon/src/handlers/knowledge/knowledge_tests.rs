@@ -375,6 +375,7 @@ async fn update_sensitivity_handler_persists_to_fact_list_path() {
         sub: "alice".to_owned(),
         role: Role::Operator,
         nous_id: None,
+        unauthenticated: false,
     };
 
     let response = match update_sensitivity(
@@ -515,6 +516,7 @@ fn operator_claims() -> Claims {
         sub: "alice".to_owned(),
         role: Role::Operator,
         nous_id: None,
+        unauthenticated: false,
     }
 }
 
@@ -523,6 +525,7 @@ fn readonly_claims() -> Claims {
         sub: "bob".to_owned(),
         role: Role::Readonly,
         nous_id: None,
+        unauthenticated: false,
     }
 }
 
@@ -532,6 +535,7 @@ fn scoped_agent_claims(nous_id: &str) -> Claims {
         sub: format!("{nous_id}-user"),
         role: Role::Agent,
         nous_id: Some(nous_id.to_owned()),
+        unauthenticated: false,
     }
 }
 
@@ -675,15 +679,18 @@ async fn knowledge_read_policy_applies_across_fact_search_timeline_and_entity_re
     .unwrap();
     assert_eq!(operator_list.0.facts.len(), 3);
 
-    let readonly_list = list_facts(
+    // WHY(#7200): `Role::Readonly` is dashboard-only and is now rejected by
+    // `require_role` before it ever reaches `KnowledgeReadPolicy`'s
+    // visibility filtering -- it no longer gets a Shared/Published-only
+    // view of `list_facts`, it gets nothing.
+    let readonly_err = list_facts(
         State(state.clone()),
         readonly_claims(),
         Query(default_facts_query(None)),
     )
     .await
-    .unwrap();
-    assert_eq!(readonly_list.0.facts.len(), 1);
-    assert_eq!(readonly_list.0.facts[0].id.as_str(), "fact-bob-shared");
+    .unwrap_err();
+    assert!(matches!(readonly_err, ApiError::Forbidden { .. }));
 
     let alice_claims = scoped_agent_claims("alice-nous");
     let alice_list = list_facts(

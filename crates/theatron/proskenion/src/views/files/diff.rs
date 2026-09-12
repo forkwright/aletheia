@@ -5,7 +5,6 @@ use dioxus::prelude::*;
 use gramma::diff::{DiffFile, DiffViewMode, parse_unified_diff};
 use skeue::DiffHunkView;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 
@@ -84,33 +83,22 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
         diff_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        diff_state.set(FetchState::Error(err.to_string()));
+                        return;
+                    }
+                };
+
+            match client.workspace_diff(&p).await {
+                Ok(text) => {
+                    let parsed = parse_unified_diff(&p, &text);
+                    diff_state.set(FetchState::Loaded(parsed));
+                }
                 Err(err) => {
                     diff_state.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = keryx::url::encode_path_segment(&p);
-            let url = format!("{base}/api/v1/workspace/diff?path={encoded}");
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => {
-                        let parsed = parse_unified_diff(&p, &text);
-                        diff_state.set(FetchState::Loaded(parsed));
-                    }
-                    Err(e) => {
-                        diff_state.set(FetchState::Error(format!("read error: {e}")));
-                    }
-                },
-                Ok(resp) => {
-                    let message = crate::api::error::decode_error_response(resp).await;
-                    diff_state.set(FetchState::Error(message));
-                }
-                Err(e) => {
-                    diff_state.set(FetchState::Error(format!("connection error: {e}")));
                 }
             }
         });

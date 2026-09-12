@@ -34,7 +34,7 @@ name = "aletheia tui"
 purpose = "Launch the terminal dashboard when built with the TUI feature."
 
 [[mcp_tools]]
-name = "aletheia-memory-mcp"
+name = "xenodocheion"
 purpose = "Standalone memory MCP server for external agents."
 
 [[http_routes]]

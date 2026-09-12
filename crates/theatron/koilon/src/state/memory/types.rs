@@ -322,6 +322,19 @@ impl From<skene_types::SimilarFact> for SimilarFact {
     }
 }
 
+impl From<skene_types::SearchResult> for MemorySearchResult {
+    fn from(result: skene_types::SearchResult) -> Self {
+        Self {
+            id: result.id,
+            content: result.content,
+            confidence: result.confidence,
+            tier: result.tier,
+            fact_type: result.fact_type,
+            score: result.score,
+        }
+    }
+}
+
 impl From<skene_types::FactDetailResponse> for FactDetail {
     fn from(detail: skene_types::FactDetailResponse) -> Self {
         Self {

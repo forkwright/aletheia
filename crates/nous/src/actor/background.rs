@@ -14,6 +14,8 @@ use mneme::store::SessionStore;
 use tokio::sync::Mutex;
 use tracing::{Instrument, debug, info, warn};
 
+use crate::config::ModelRole;
+
 use super::{MAX_SPAWNED_TASKS, NousActor};
 
 /// Drop guard that clears the distillation-in-progress flag on drop.
@@ -151,6 +153,16 @@ impl NousActor {
                 .project_id
                 .clone_from(&self.pipeline_config.project_id);
         }
+        // WHY(#3740/#4235/#7195): route background extraction through the
+        // nous's resolved generation config via [`ModelRole::Extraction`],
+        // exactly like `try_spawn_distillation`. Without this,
+        // `mneme::extract::ExtractionConfig::default()`'s compiled model
+        // (episteme's extraction task-role default) always wins, regardless
+        // of what the operator configured this nous to run on.
+        self.config
+            .generation
+            .resolve_model(ModelRole::Extraction)
+            .clone_into(&mut config.model);
         config.provider = match self.config.behavior.knowledge_extraction_provider {
             taxis::config::BookkeepingProviderKind::Llm => {
                 mneme::extract::BookkeepingProviderKind::Llm
@@ -396,14 +408,26 @@ impl NousActor {
             return false;
         }
 
-        let config = crate::distillation::DistillTriggerConfig::default();
+        let config = crate::distillation::DistillTriggerConfig {
+            model: self
+                .config
+                .generation
+                .resolve_model(ModelRole::Distillation)
+                .to_owned(),
+            ..crate::distillation::DistillTriggerConfig::default()
+        };
         if self
             .services
             .providers
             .find_provider(&config.model)
             .is_none()
         {
-            warn!(model = %config.model, "no provider for distillation model");
+            warn!(
+                nous_id = %self.id,
+                model = %config.model,
+                config_field = "generation.distillation_model (falls back to generation.model)",
+                "no provider for distillation model"
+            );
             return false;
         }
 
@@ -464,13 +488,35 @@ impl NousActor {
             return;
         };
 
-        let config = crate::distillation::DistillTriggerConfig::default();
+        // WHY(#7212): resolve through `ModelRole::Dream`, not
+        // `DistillTriggerConfig::default()`'s compiled model. Before this
+        // fix, dream always reached for `koina::defaults::DEFAULT_MODEL`
+        // regardless of what the nous was configured to run on, and on a
+        // local-only instance that provider is never registered, so
+        // `find_provider` always failed and dream never ran — silently,
+        // because the miss was never logged. `ModelRole::Dream` shares
+        // `Distillation`'s override and, like every other role, falls back
+        // to the nous's own primary model.
+        let config = crate::distillation::DistillTriggerConfig {
+            model: self
+                .config
+                .generation
+                .resolve_model(ModelRole::Dream)
+                .to_owned(),
+            ..crate::distillation::DistillTriggerConfig::default()
+        };
         if self
             .services
             .providers
             .find_provider(&config.model)
             .is_none()
         {
+            warn!(
+                nous_id = %self.id,
+                model = %config.model,
+                config_field = "generation.distillation_model (dream shares the distillation override; falls back to generation.model)",
+                "no provider for dream model"
+            );
             return;
         }
         let provider: Arc<dyn LlmProvider> = Arc::new(RegistryLlmProvider::new(
@@ -736,6 +782,20 @@ impl LlmProvider for RegistryLlmProvider {
 }
 
 /// Run extraction as a background task. Logs results, never panics.
+///
+/// Boundary: this is where a full conversational turn collapses to 0-N
+/// persisted facts. `user_content`, `assistant_content`, `tool_calls`, and
+/// `reasoning` all feed the extraction prompt, but only the LLM's structured
+/// output — entities, relationships, facts, each optionally dropped again by
+/// `persist_with_scope`'s own limits and conflict detection — survives past
+/// this call. The model's reasoning about *why* it extracted (or declined to
+/// extract) a given fact is never persisted; `refined.facts_filtered` and
+/// `result.skipped` carry only counts and short reasons, not the reasoning
+/// chain that produced them. This is intentional: the knowledge store holds
+/// claims, not transcripts. A caller that needs to audit *why* a specific
+/// fact was or was not extracted must capture it from the LLM call's own
+/// trace, not from this function's return value (there is none — see the
+/// "Logs results, never panics" line above).
 #[expect(
     clippy::too_many_arguments,
     reason = "background extraction async runner: config + providers + ids + content + tool_calls + reasoning + optional store + cross_tx"
@@ -897,7 +957,18 @@ async fn run_extraction(
             );
         }
         Err(e) => {
-            warn!(nous_id = %nous_id, error = %e, "extraction failed");
+            // WHY: `model`/`config_field` ride along on every extraction
+            // failure, not only a missing-provider one — cheap context, and
+            // the field controlling the model is exactly what an operator
+            // needs whether the LLM call failed to dispatch or failed once
+            // dispatched.
+            warn!(
+                nous_id = %nous_id,
+                model = %config.model,
+                config_field = "generation.extraction_model (falls back to generation.model)",
+                error = %e,
+                "extraction failed"
+            );
             crate::metrics::record_background_failure(nous_id, "extraction");
             #[cfg(feature = "knowledge-store")]
             mneme::metrics::record_extraction(nous_id, false);
@@ -1087,10 +1158,15 @@ async fn run_background_distillation(
     #[cfg(not(feature = "knowledge-store"))] _project_id: Option<mneme::workspace::ProjectId>,
 ) {
     let Some(provider) = providers.find_provider(&config.model) else {
+        // WHY: defense-in-depth against a provider deregistered between
+        // `try_spawn_distillation`'s preflight check and this call — that
+        // check already resolves and validates the same model, so this
+        // should be unreachable in the steady state.
         warn!(
             nous_id = %nous_id,
             session_id = %session_id,
             model = %config.model,
+            config_field = "generation.distillation_model (falls back to generation.model)",
             "distillation aborted: no provider for configured model"
         );
         crate::metrics::record_background_failure(&nous_id, "distillation");

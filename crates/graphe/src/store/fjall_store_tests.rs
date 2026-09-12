@@ -7,7 +7,7 @@
 
 use super::{
     FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRecordSpec,
-    FinalizeTurnRequest, SessionStatusCounts, SessionStore, test_finalize_failure,
+    FinalizeTurnRequest, SessionStatusCounts, SessionStore, pad_u64, test_finalize_failure,
     test_persist_counter,
 };
 use crate::error::Error;
@@ -559,6 +559,61 @@ fn list_sessions_no_duplicates_after_distillation() {
     assert_eq!(listed[0].id, "ses-1");
 }
 
+/// Regression for #7219: `GET /api/v1/sessions?nous_id=X&limit=N` returned a
+/// duplicate row in place of a distinct session and inflated `total`, because
+/// a stale `idx:nous:{nous_id}:upd:{ts}:{id}` entry left behind by an older
+/// write path (or manual store surgery) resolved the same session id twice.
+/// Fixed at the query layer: `list_sessions` now dedups by session id instead
+/// of trusting the index unconditionally.
+#[test]
+fn list_sessions_dedupes_stale_nous_index_entry() {
+    let store = test_store();
+    let n_plus_one = 11;
+    for i in 0..n_plus_one {
+        store
+            .create_session(
+                &format!("ses-{i}"),
+                "alice",
+                &format!("key-{i}"),
+                None,
+                None,
+            )
+            .expect("create");
+    }
+
+    let target = store
+        .find_session_by_id("ses-5")
+        .expect("query")
+        .expect("session exists");
+
+    // WHY: fabricate a second, stale index entry for the same session id with
+    // an older embedded timestamp — the exact shape a since-fixed write path
+    // (or a future regression) can leave behind alongside the current,
+    // correct entry.
+    let stale_key = super::SessionStore::session_nous_index_key(
+        "alice",
+        "2020-01-01T00:00:00.000Z",
+        &target.id,
+    );
+    write_raw(&store, "sessions", &stale_key, b"");
+
+    let listed = store.list_sessions(Some("alice")).expect("list");
+    assert_eq!(
+        listed.len(),
+        n_plus_one,
+        "a stale duplicate index entry must not inflate the list beyond the \
+         distinct session count"
+    );
+    let mut ids: Vec<&str> = listed.iter().map(|s| s.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(
+        ids.len(),
+        n_plus_one,
+        "every session id returned by list_sessions must be distinct"
+    );
+}
+
 #[test]
 fn count_sessions_since_uses_index_not_full_scan() {
     let store = test_store();
@@ -975,6 +1030,7 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
         store
             .recent_tool_audit_records(10)
             .expect("tool audit")
+            .records
             .iter()
             .any(|record| record.session_id == "ses-x"),
         "tool audit row should exist before delete"
@@ -1009,6 +1065,7 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
         store
             .recent_tool_audit_records(10)
             .expect("tool audit")
+            .records
             .iter()
             .all(|record| record.session_id != "ses-x"),
         "tool audit rows must be removed"
@@ -1432,9 +1489,14 @@ fn finalize_turn_persists_structured_tool_audit_records() {
     let result = store.finalize_turn(&request).expect("finalize turn");
     assert_eq!(result.tool_audit_records_persisted, 1);
 
-    let recent = store
+    let recent_scan = store
         .recent_tool_audit_records(10)
         .expect("recent tool audit records");
+    assert!(
+        recent_scan.corrupt.is_empty(),
+        "no corrupt rows expected in this fixture"
+    );
+    let recent = recent_scan.records;
     assert_eq!(recent.len(), 1);
     assert_eq!(recent[0].session_id, session_id);
     assert_eq!(recent[0].nous_id, "syn");
@@ -1450,13 +1512,15 @@ fn finalize_turn_persists_structured_tool_audit_records() {
 
     let session_records = store
         .tool_audit_records_for_session(session_id)
-        .expect("session tool audit records");
+        .expect("session tool audit records")
+        .records;
     assert_eq!(session_records.len(), 1);
     assert_eq!(session_records[0].tool_call_id, "toolu_audit_1");
     assert!(
         store
             .tool_audit_records_for_session("other-session")
             .expect("other session audit records")
+            .records
             .is_empty(),
         "session-scoped audit read must not leak records from other sessions"
     );
@@ -1483,6 +1547,205 @@ fn finalize_turn_persists_structured_tool_audit_records() {
             .expect("compat read")
             .is_none(),
         "a turn_seq with no usage row and no turn record must read as absent, not reconstructed"
+    );
+}
+
+/// Plant a genuinely corrupt `tool_audit` row (`tool_name` is required and
+/// has no null-tolerant deserializer, unlike `receipt`) at a fresh global id
+/// so it never collides with rows a test's own `finalize_turn` calls write.
+fn plant_corrupt_tool_audit_row(store: &SessionStore) -> String {
+    let key = pad_u64(999_999);
+    write_raw(
+        store,
+        "tool_audit",
+        &key,
+        br#"{"id":999999,"session_id":"ses-corrupt","nous_id":"alice","turn_seq":1,
+             "tool_call_id":"call-corrupt","tool_name":null,"duration_ms":1,
+             "is_error":false,"outcome":"error","result":null,"approval":null,
+             "receipt":"","created_at":"2026-09-06T00:00:00.000Z"}"#,
+    );
+    key
+}
+
+#[test]
+fn recent_tool_audit_records_skips_corrupt_row_and_reports_it() {
+    // WHY(#7217): one malformed row must never take down the bounded
+    // recent-N read that `/ops/tools` and `/tool-stats` both depend on.
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    let audits = vec![FinalizeToolAuditRecord {
+        turn_seq: 1,
+        tool_call_id: "call-good",
+        tool_name: "read_file",
+        duration_ms: 5,
+        is_error: false,
+        outcome: "success",
+        result: Some("ok"),
+        approval: Some("auto_approved"),
+        receipt: "receipt-good",
+    }];
+    store
+        .finalize_turn(&FinalizeTurnRequest {
+            session_id: "ses-1",
+            nous_id: "syn",
+            session_key: "main",
+            model: None,
+            parent_session_id: None,
+            messages: &[],
+            usage: None,
+            tool_audit_records: &audits,
+            completion_note: None,
+            turn_record: None,
+        })
+        .expect("finalize good record");
+    let corrupt_key = plant_corrupt_tool_audit_row(&store);
+
+    let scan = store
+        .recent_tool_audit_records(10)
+        .expect("recent_tool_audit_records must survive a corrupt row");
+    assert_eq!(scan.records.len(), 1, "the valid row must still come back");
+    assert_eq!(scan.records[0].tool_call_id, "call-good");
+    assert_eq!(scan.corrupt.len(), 1, "the corrupt row must be reported");
+    assert_eq!(scan.corrupt[0].key, corrupt_key);
+    assert!(
+        scan.corrupt[0].error.contains("invalid type: null"),
+        "the decode error should explain the failure, e.g. aletheia#7217's exact \
+         \"invalid type: null, expected a string\": {}",
+        scan.corrupt[0].error
+    );
+}
+
+#[test]
+fn tool_audit_records_for_session_skips_corrupt_row_and_reports_it() {
+    // WHY(#7217): this is the exact path `nous::history::tool_audit_by_call_id`
+    // and `/replay` call -- a single corrupt row anywhere in the shared
+    // `tool_audit` partition must not fail a session's turn or export, even
+    // a session (like this one) that never itself used a tool.
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    plant_corrupt_tool_audit_row(&store);
+
+    let scan = store
+        .tool_audit_records_for_session("ses-1")
+        .expect("tool_audit_records_for_session must survive a corrupt row");
+    assert!(
+        scan.records.is_empty(),
+        "ses-1 has no tool_audit rows of its own"
+    );
+    assert_eq!(
+        scan.corrupt.len(),
+        1,
+        "the corrupt row must still be reported, even though it does not belong to ses-1"
+    );
+}
+
+#[test]
+fn scan_tool_audit_records_reports_the_full_partition() {
+    // WHY(#7217): backs `aletheia session-store tool-audit-check` -- the
+    // operator-facing "how big is the backlog" doctor query.
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    let audits = vec![FinalizeToolAuditRecord {
+        turn_seq: 1,
+        tool_call_id: "call-good",
+        tool_name: "read_file",
+        duration_ms: 5,
+        is_error: false,
+        outcome: "success",
+        result: Some("ok"),
+        approval: Some("auto_approved"),
+        receipt: "receipt-good",
+    }];
+    store
+        .finalize_turn(&FinalizeTurnRequest {
+            session_id: "ses-1",
+            nous_id: "syn",
+            session_key: "main",
+            model: None,
+            parent_session_id: None,
+            messages: &[],
+            usage: None,
+            tool_audit_records: &audits,
+            completion_note: None,
+            turn_record: None,
+        })
+        .expect("finalize good record");
+    plant_corrupt_tool_audit_row(&store);
+
+    let scan = store
+        .scan_tool_audit_records()
+        .expect("scan_tool_audit_records must survive a corrupt row");
+    assert_eq!(scan.records.len(), 1);
+    assert_eq!(scan.corrupt.len(), 1);
+}
+
+#[test]
+fn tool_audit_row_with_null_receipt_decodes_as_a_normal_record() {
+    // WHY(#7217): the exact shape of every row written under the
+    // pre-#4835 `Option<String>` receipt schema. Before the
+    // `deserialize_receipt` fix this row failed to decode at all
+    // ("invalid type: null, expected a string") and took every reader of
+    // the shared `tool_audit` partition down with it. This is the
+    // regression test for the root cause, not just the general
+    // tolerant-decode mechanism above: this row must come back as a
+    // perfectly normal record, not as a `ToolAuditScan::corrupt` entry.
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    let key = pad_u64(1);
+    write_raw(
+        &store,
+        "tool_audit",
+        &key,
+        br#"{"id":1,"session_id":"ses-1","nous_id":"syn","turn_seq":1,
+             "tool_call_id":"call-legacy","tool_name":"exec","duration_ms":0,
+             "is_error":true,"outcome":"no_gate_denied","result":"denied",
+             "approval":"no_gate_denied","receipt":null,
+             "created_at":"2026-09-04T17:32:40.428Z"}"#,
+    );
+
+    let scan = store
+        .tool_audit_records_for_session("ses-1")
+        .expect("a legacy null-receipt row must decode, not error");
+    assert!(scan.corrupt.is_empty(), "a null receipt is not corruption");
+    assert_eq!(scan.records.len(), 1);
+    assert_eq!(scan.records[0].receipt, "");
+    assert_eq!(scan.records[0].tool_call_id, "call-legacy");
+}
+
+#[test]
+fn delete_session_survives_unrelated_corrupt_tool_audit_row() {
+    // WHY(#7217): `delete_session`'s tool_audit key scan used to `?` on the
+    // first decode failure anywhere in the shared partition, so deleting
+    // ANY session broke the moment ANY tool_audit row anywhere was corrupt
+    // -- distinct from `delete_session_aborts_on_corrupt_session_row`
+    // above, which is about a session's OWN row in a session-keyed
+    // partition, not an unrelated row in a partition scanned in full.
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "hello", None, None, 5)
+        .expect("append");
+    plant_corrupt_tool_audit_row(&store);
+
+    let deleted = store
+        .delete_session("ses-1")
+        .expect("delete_session must survive an unrelated corrupt tool_audit row");
+    assert!(deleted);
+    assert!(
+        store
+            .get_history("ses-1", None)
+            .expect("history")
+            .is_empty()
     );
 }
 

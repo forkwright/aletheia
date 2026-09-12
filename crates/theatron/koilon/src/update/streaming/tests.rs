@@ -5,7 +5,6 @@
 )]
 
 use super::*;
-use crate::api::types::PlanStep;
 use crate::app::test_helpers::*;
 
 #[test]
@@ -160,6 +159,7 @@ fn tool_result_matches_duplicate_tool_names_by_id() {
 #[test]
 fn tool_approval_opens_overlay() {
     let mut app = test_app();
+    app.dashboard.focused_session_id = Some("ses-1".into());
 
     handle_stream_tool_approval_required(
         &mut app,
@@ -175,6 +175,10 @@ fn tool_approval_opens_overlay() {
     if let Some(Overlay::ToolApproval(ref approval)) = app.layout.overlay {
         assert_eq!(approval.tool_name, "dangerous_tool");
         assert_eq!(approval.risk, "high");
+        // WHY(#7202): the session-scoped approval route needs this;
+        // it must be captured from the focused session at overlay
+        // construction time, not left empty.
+        assert_eq!(approval.session_id, Some("ses-1".into()));
     }
 }
 
@@ -182,6 +186,7 @@ fn tool_approval_opens_overlay() {
 fn tool_approval_resolved_closes_overlay() {
     let mut app = test_app();
     app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+        session_id: Some("s1".into()),
         turn_id: "t1".into(),
         tool_id: "tool1".into(),
         tool_name: "test".to_string(),
@@ -198,85 +203,10 @@ fn tool_approval_resolved_closes_overlay() {
 #[test]
 fn tool_approval_resolved_ignores_non_approval_overlay() {
     let mut app = test_app();
-    app.layout.overlay = Some(Overlay::Help);
+    app.layout.overlay = Some(Overlay::Help { scroll: 0 });
 
     handle_stream_tool_approval_resolved(&mut app);
-    assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
-}
-
-#[test]
-fn plan_proposed_opens_overlay() {
-    let mut app = test_app();
-    let plan = Plan {
-        id: "plan1".into(),
-        session_id: "s1".into(),
-        nous_id: "syn".into(),
-        steps: vec![PlanStep {
-            id: 1,
-            label: "Step 1".to_string(),
-            role: "analyst".to_string(),
-            parallel: None,
-            status: "pending".to_string(),
-            result: None,
-        }],
-        total_estimated_cost_cents: 50,
-        status: "proposed".to_string(),
-    };
-
-    handle_stream_plan_proposed(&mut app, plan);
-
-    assert!(matches!(app.layout.overlay, Some(Overlay::PlanApproval(_))));
-    if let Some(Overlay::PlanApproval(ref plan_overlay)) = app.layout.overlay {
-        assert_eq!(plan_overlay.steps.len(), 1);
-        assert!(plan_overlay.steps[0].checked);
-        assert_eq!(plan_overlay.total_cost_cents, 50);
-    }
-}
-
-#[test]
-fn plan_step_start_adds_ops_entry() {
-    let mut app = test_app();
-    handle_stream_plan_step_start(&mut app, 1);
-    assert_eq!(app.layout.ops.tool_calls.len(), 1);
-    assert_eq!(app.layout.ops.tool_calls[0].name, "plan step 1");
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Running
-    );
-}
-
-#[test]
-fn plan_step_complete_marks_done() {
-    let mut app = test_app();
-    handle_stream_plan_step_start(&mut app, 2);
-    handle_stream_plan_step_complete(&mut app, 2, "done".to_string());
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Complete
-    );
-}
-
-#[test]
-fn plan_step_complete_marks_failed_on_error_status() {
-    let mut app = test_app();
-    handle_stream_plan_step_start(&mut app, 3);
-    handle_stream_plan_step_complete(&mut app, 3, "failed".to_string());
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Failed
-    );
-}
-
-#[test]
-fn plan_complete_adds_completed_ops_entry() {
-    let mut app = test_app();
-    handle_stream_plan_complete(&mut app, "done".to_string());
-    assert_eq!(app.layout.ops.tool_calls.len(), 1);
-    assert_eq!(app.layout.ops.tool_calls[0].name, "plan: done");
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Complete
-    );
+    assert!(matches!(app.layout.overlay, Some(Overlay::Help { .. })));
 }
 
 #[test]

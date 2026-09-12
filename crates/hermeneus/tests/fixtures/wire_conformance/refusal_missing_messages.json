@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-09-06T18:35:53Z",
+  "captured_from": "http://127.0.0.1:8089/v1/chat/completions",
+  "note": "Real incumbent refusal: 'messages' is a required field. The envelope's error.code is a JSON NUMBER (400), not a string -- hermeneus's WireErrorDetail.code: Option<String> fails to parse this envelope, so the generic 'HTTP {status}: {body}' fallback message path is what actually runs in production against this incumbent, not the code-matched branches.",
+  "request": {
+    "model": "qwen3.8-27b"
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": 400,
+        "message": "'messages' is required",
+        "type": "invalid_request_error"
+      }
+    }
+  }
+}

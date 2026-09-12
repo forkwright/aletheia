@@ -186,6 +186,30 @@ pub fn redact_resolved_secrets_in_prepared_json(
     redact_secret_values(prepared, &secrets);
 }
 
+/// Redact every resolved vault value found in `text`, replacing each
+/// occurrence with `"[REDACTED]"`.
+///
+/// WHY: error messages derived from post-substitution tool arguments (schema
+/// violations quoting the offending value, path validators echoing the
+/// rejected path) can otherwise carry a resolved secret back to the model or
+/// into the transcript. Scrubbing against the vault closes that leak without
+/// heuristics: only values the vault actually holds are replaced, so ordinary
+/// prose passes through unchanged.
+///
+/// Empty vault values are skipped: the empty string is a substring of every
+/// string, so replacing it would destroy the text.
+pub fn redact_vault_values_in_str(vault: &SecretVault, text: &mut String) {
+    for name in vault.list_names() {
+        let Some(secret) = vault.get(&name) else {
+            continue;
+        };
+        let value = secret.expose_secret();
+        if !value.is_empty() && text.contains(value) {
+            *text = text.replace(value, "[REDACTED]");
+        }
+    }
+}
+
 fn redact_placeholder_positions(template: &serde_json::Value, prepared: &mut serde_json::Value) {
     match (template, prepared) {
         (serde_json::Value::String(template), prepared)
@@ -659,6 +683,37 @@ mod tests {
             serde_json::json!({"__redaction__": "[REDACTED]"})
         );
         assert!(!prepared.to_string().contains("1234"));
+    }
+
+    #[test]
+    fn redact_vault_values_in_str_scrubs_only_vault_contents() {
+        let vault = SecretVault::new();
+        vault.store("token", "s3cr3t-resolved-value");
+        vault.store("empty", "");
+        let mut text = "path outside allowed roots: /etc/s3cr3t-resolved-value".to_owned();
+
+        redact_vault_values_in_str(&vault, &mut text);
+
+        assert!(
+            !text.contains("s3cr3t-resolved-value"),
+            "resolved vault value must not survive: {text}"
+        );
+        assert!(text.contains("[REDACTED]"), "redaction marker expected");
+        assert!(
+            text.contains("/etc/"),
+            "surrounding prose must survive: {text}"
+        );
+    }
+
+    #[test]
+    fn redact_vault_values_in_str_leaves_plain_text_alone() {
+        let vault = SecretVault::new();
+        vault.store("token", "real-token-123");
+        let mut text = "path outside allowed roots: /etc".to_owned();
+
+        redact_vault_values_in_str(&vault, &mut text);
+
+        assert_eq!(text, "path outside allowed roots: /etc");
     }
 
     #[test]

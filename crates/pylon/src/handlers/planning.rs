@@ -4,11 +4,19 @@
 //! component. Results are computed through dianoia's verification engine over
 //! the persisted planning workspace for the requested project.
 //!
-//! Privacy guard: project visibility is read from a per-workspace metadata
-//! sidecar. Public projects return full verification detail; private or
-//! internal projects classify the response and redact evidence, gap, and
-//! artifact detail because this handler only validates bearer presence, not
-//! project-scoped roles.
+//! Access control: both routes require an unscoped `Role::Operator`+ token
+//! for a real Bearer token, the same floor `crates/pylon/src/handlers/config.rs`
+//! and `health.rs` use for full system state -- because no project-scoped
+//! role exists in the RBAC model yet (see #7201's follow-up for that
+//! prerequisite). `require_read_role` (rather than `require_role` directly)
+//! exempts the synthetic `auth_mode = "none"` identity from that floor
+//! (#7234): before #7201, these routes checked no role at all, so a
+//! `none_role` instance could always read them, and disabling auth entirely
+//! must not retroactively lock it out. The per-workspace `planning_meta.json`
+//! visibility sidecar below is presentation metadata only -- it classifies a
+//! project as public/private/internal and redacts evidence/gap detail for
+//! the UI, but it is not itself a security boundary: the `Role::Operator`
+//! floor is.
 
 use std::path::{Path as StdPath, PathBuf};
 
@@ -23,9 +31,10 @@ use dianoia::verify::{
 };
 use dianoia::workspace::ProjectWorkspace;
 use serde::{Deserialize, Serialize};
+use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NotFoundSnafu};
-use crate::extract::Claims;
+use crate::extract::{Claims, require_read_role};
 use crate::state::PlanningState;
 
 #[path = "planning_dto.rs"]
@@ -100,15 +109,20 @@ impl ProjectMetadata {
     responses(
         (status = 200, description = "Current verification result"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn get_verification(
     State(state): State<PlanningState>,
-    _claims: Claims,
+    claims: Claims,
     AxumPath(project_id): AxumPath<String>,
 ) -> Result<Json<VerificationResult>, ApiError> {
+    // SECURITY(#7201): no project-scoped role exists in the RBAC model yet,
+    // so an unscoped Operator+ token is the floor -- see the module doc for
+    // why the visibility sidecar below is presentation, not enforcement.
+    require_read_role(&claims, Role::Operator)?;
     load_project_verification(state.planning_root, project_id, None)
         .await
         .map(Json)
@@ -124,16 +138,21 @@ pub(crate) async fn get_verification(
     responses(
         (status = 200, description = "Refreshed verification result"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub(crate) async fn refresh_verification(
     State(state): State<PlanningState>,
-    _claims: Claims,
+    claims: Claims,
     AxumPath(project_id): AxumPath<String>,
     body: Option<Json<RefreshRequest>>,
 ) -> Result<Json<VerificationResult>, ApiError> {
+    // SECURITY(#7201): no project-scoped role exists in the RBAC model yet,
+    // so an unscoped Operator+ token is the floor -- see the module doc for
+    // why the visibility sidecar below is presentation, not enforcement.
+    require_read_role(&claims, Role::Operator)?;
     let criteria = body.map(|Json(request)| request.criteria);
     load_project_verification(state.planning_root, project_id, criteria)
         .await

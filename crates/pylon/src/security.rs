@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use koina::secret::SecretString;
 use taxis::config::{GatewayConfig, PerUserRateLimitConfig};
 
@@ -41,8 +42,8 @@ impl Default for CsrfConfig {
         Self {
             enabled: true,
             disable_acknowledged: false,
-            header_name: "x-requested-with".to_owned(),
-            header_value: SecretString::from("aletheia"),
+            header_name: CSRF_HEADER_NAME.to_owned(),
+            header_value: SecretString::from(DEFAULT_CSRF_HEADER_VALUE),
         }
     }
 }

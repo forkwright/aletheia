@@ -17,6 +17,14 @@ use super::{InFlightTask, TaskRunner};
 // results). Tasks that exceed the window are force-aborted to bound teardown.
 const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
 
+// WHY(#7206): how often the running scheduler re-reads its attached
+// `TaskStateStore` to pick up an external write (the pylon daemon-task admin
+// API, or `aletheia maintenance reset`) without requiring a restart. Every 1s
+// scheduler tick would make an fjall read the common case instead of the
+// exception; a few seconds of latency for an operator-triggered enable/
+// disable/retry to take effect is an acceptable trade for that.
+const EXTERNAL_STATE_SYNC_INTERVAL: Duration = Duration::from_secs(5);
+
 impl TaskRunner {
     /// Run the event loop. Checks for due tasks every second, executes them.
     /// Returns when the shutdown token is cancelled.
@@ -46,6 +54,7 @@ impl TaskRunner {
         let process_watchdog_interval = self.process_watchdog_interval();
         let mut process_watchdog_tick =
             tokio::time::interval(process_watchdog_interval.unwrap_or(Duration::from_secs(30)));
+        let mut external_sync_tick = tokio::time::interval(EXTERNAL_STATE_SYNC_INTERVAL);
 
         loop {
             tokio::select! {
@@ -67,6 +76,11 @@ impl TaskRunner {
                 _ = process_watchdog_tick.tick(), if process_watchdog_interval.is_some() => {
                     self.check_task_watchdog().await;
                 }
+                // WHY(#7206): pick up an external store write (admin API,
+                // CLI reset) live. `sync_external_state` has no `.await`.
+                _ = external_sync_tick.tick() => {
+                    self.sync_external_state();
+                }
                 // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
                 // dropping the future before it fires has no side effects.
                 () = self.shutdown.cancelled() => {
@@ -76,14 +90,20 @@ impl TaskRunner {
             }
         }
 
-        // WHY: cancel all in-flight tasks and drain them with a bounded grace
-        // window before the runner returns. Cooperating tasks observe their
-        // cancellation token and self-terminate cleanly within the window,
-        // preserving their cleanup bodies (flush state, record results). Tasks
-        // that do not cooperate within the grace window are force-aborted to
-        // bound teardown time. Aborting immediately (before the grace window)
-        // would prevent cooperating tasks from running their cleanup body,
-        // violating the graceful-drain contract encoded in the shutdown path.
+        self.drain_on_shutdown().await;
+    }
+
+    /// Drain in-flight tasks and self-prompt work after the event loop exits.
+    ///
+    /// WHY: cancel all in-flight tasks and drain them with a bounded grace
+    /// window before the runner returns. Cooperating tasks observe their
+    /// cancellation token and self-terminate cleanly within the window,
+    /// preserving their cleanup bodies (flush state, record results). Tasks
+    /// that do not cooperate within the grace window are force-aborted to
+    /// bound teardown time. Aborting immediately (before the grace window)
+    /// would prevent cooperating tasks from running their cleanup body,
+    /// violating the graceful-drain contract encoded in the shutdown path.
+    async fn drain_on_shutdown(&mut self) {
         let in_flight_count = self.in_flight.len();
         let drained: Vec<_> = self.in_flight.drain().collect();
 

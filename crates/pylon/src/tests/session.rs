@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest};
+use mneme::store::test_support::inject_raw_tool_audit_row;
+use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore};
 use mneme::types::{Role as MnemeRole, UsageRecord};
 use tower::ServiceExt;
 use tracing::Instrument;
@@ -471,6 +472,77 @@ async fn list_sessions_limit_param_returns_n_sessions() {
     );
 }
 
+/// Regression for #7219: paging through `nous_id`-filtered sessions with
+/// `limit` + `after` must visit every session exactly once and report a
+/// `total` consistent with the distinct ids actually returned. A duplicate
+/// row at a page boundary previously both repeated an id and desynced the
+/// cursor, silently dropping whichever session would have been last.
+#[tokio::test]
+async fn list_sessions_paginates_n_plus_one_without_duplicates() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let n_plus_one = 11_u32;
+    for i in 0..n_plus_one {
+        let req = authed_request(
+            "POST",
+            "/api/v1/sessions",
+            Some(serde_json::json!({
+                "nous_id": "syn",
+                "session_key": format!("page-test-{i}")
+            })),
+        );
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut after: Option<String> = None;
+    let mut pages = 0;
+    loop {
+        pages += 1;
+        assert!(
+            pages <= n_plus_one + 1,
+            "pagination must terminate within a bounded number of pages"
+        );
+
+        let uri = match &after {
+            Some(cursor) => format!("/api/v1/sessions?nous_id=syn&limit=5&after={cursor}"),
+            None => "/api/v1/sessions?nous_id=syn&limit=5".to_owned(),
+        };
+        let resp = router.clone().oneshot(authed_get(&uri)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+
+        assert_eq!(
+            body["total"].as_u64(),
+            Some(u64::from(n_plus_one)),
+            "total must equal the distinct session count on every page"
+        );
+
+        let items = body["items"].as_array().unwrap();
+        for item in items {
+            let id = item["id"].as_str().unwrap().to_owned();
+            assert!(
+                seen_ids.insert(id.clone()),
+                "session id {id} was returned on more than one page"
+            );
+        }
+
+        if body["has_more"].as_bool().unwrap_or(false) {
+            after = Some(body["next_cursor"].as_str().unwrap().to_owned());
+        } else {
+            break;
+        }
+    }
+
+    assert_eq!(
+        seen_ids.len(),
+        usize::try_from(n_plus_one).expect("n_plus_one fits in usize"),
+        "every one of the N+1 sessions must be visited exactly once across all pages"
+    );
+}
+
 #[tokio::test]
 async fn archive_via_post_returns_204() {
     let (router, _dir) = app().await;
@@ -817,6 +889,62 @@ async fn replay_export_includes_tool_usage_turn_and_failure_fields() {
 }
 
 #[tokio::test]
+async fn replay_survives_a_corrupt_tool_audit_row_elsewhere_in_the_partition() {
+    // WHY(#7217): `/replay` used to 500 the moment ANY row anywhere in the
+    // shared `tool_audit` partition failed to decode -- including for a
+    // session, like this one, that never itself used a tool. That is the
+    // issue's own repro (`ops/tools` 500'd before any message was even
+    // sent in the reporting session).
+    let session_dir = tempfile::TempDir::new().expect("session store tempdir");
+    let store_path = session_dir.path().join("sessions");
+    {
+        let store = SessionStore::open(&store_path).expect("open store");
+        store
+            .create_session("ses-replay-survives", "syn", "main", None, None)
+            .expect("create session");
+        // `store` drops here, releasing the fjall lock, before the raw
+        // injection below opens its own handle on the same path.
+    }
+    inject_raw_tool_audit_row(
+        &store_path,
+        "00000000000000099999",
+        br#"{"id":99999,"session_id":"ses-other","nous_id":"syn","turn_seq":1,
+             "tool_call_id":"tc-unrelated","tool_name":null,"duration_ms":1,
+             "is_error":false,"outcome":"error","result":null,"approval":null,
+             "receipt":"","created_at":"2026-09-06T00:00:00.000Z"}"#,
+    )
+    .expect("raw corrupt tool_audit row injected");
+    let corrupt_store = SessionStore::open(&store_path).expect("corrupt session store opens");
+
+    let (state, _dir) = test_state().await;
+    {
+        let mut store = state.session_store.lock().await;
+        *store = corrupt_store;
+    }
+    let app = build_router(state, &test_security_config());
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/sessions/ses-replay-survives/replay"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["session"]["id"], "ses-replay-survives");
+    assert!(
+        body["toolAuditRecords"]
+            .as_array()
+            .expect("toolAuditRecords array")
+            .is_empty(),
+        "ses-replay-survives has no tool_audit rows of its own"
+    );
+    assert_eq!(
+        body["toolAuditCorruptCount"], 1,
+        "the unrelated corrupt row must be disclosed, not hidden"
+    );
+}
+
+#[tokio::test]
 async fn create_session_empty_nous_id_returns_422() {
     let (app, _dir) = app().await;
     let req = authed_request(
@@ -1155,4 +1283,143 @@ async fn list_sessions_implicitly_filters_to_scope_when_no_query() {
     );
     assert_eq!(items[0]["id"], id);
     assert_eq!(items[0]["nous_id"], "syn");
+}
+
+// ── role floor enforcement on session reads (#7200) ────────────────────────
+
+/// Every session read route this crate serves, given a session id.
+///
+/// WHY(#7200): `Role::Readonly` is documented as dashboard-only
+/// (`symbolon::types::Role`); session content (list, detail, replay,
+/// history) is `Agent`-or-above, scoped to the caller's own `nous_id`. This
+/// table is the enforcement surface for that floor -- a future session
+/// read handler that forgets `require_role` will not appear here; see the
+/// PR description for the follow-up that walks the full `OpenAPI` document
+/// instead of this hand-maintained list.
+fn session_read_routes(id: &str) -> [String; 5] {
+    [
+        "/api/v1/sessions".to_owned(),
+        format!("/api/v1/sessions/{id}"),
+        format!("/api/v1/sessions/{id}/replay"),
+        format!("/api/v1/sessions/{id}/history"),
+        // WHY(#7207): the pending-approval reconciliation read is session
+        // content the same way history/replay are -- it belongs in this
+        // table for the same reason they do.
+        format!("/api/v1/sessions/{id}/approvals"),
+    ]
+}
+
+/// Error path (#7200): a `Role::Readonly` token must be rejected by every
+/// session read route, unscoped or scoped to the session's own agent.
+#[tokio::test]
+async fn session_read_routes_reject_readonly_role() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    for path in session_read_routes(id) {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_as(&path, symbolon::types::Role::Readonly))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden", "{path}");
+
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(
+                &path,
+                symbolon::types::Role::Readonly,
+                "syn",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path} (scoped)");
+    }
+}
+
+/// Happy path (#7200): an `Agent`-role token scoped to its own nous keeps
+/// reading its own sessions -- the new role floor is additive, not a
+/// regression for the documented "access own sessions" grant.
+#[tokio::test]
+async fn session_read_routes_admit_agent_role_scoped_to_own_nous() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    for path in session_read_routes(id) {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(
+                &path,
+                symbolon::types::Role::Agent,
+                "syn",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+    }
+}
+
+/// Regression test (#7234): the exact path the full-stack smoke test
+/// (`crates/aletheia/tests/integration_server.rs`) runs against a real
+/// `auth.mode = "none"` server -- an unauthenticated `GET
+/// /api/v1/sessions`, no Bearer token at all -- must return 200 regardless
+/// of `none_role`'s configured value. `none_role` schema-defaults to the
+/// least-privileged `"readonly"` (SECURITY #5169, #5342); before #7227
+/// this route checked no role at all, so a production instance already
+/// running `auth.mode = "none"` (there is one) must not be locked out of
+/// its own sessions by a read floor added after the fact.
+/// `require_read_role` (`crates/pylon/src/extract.rs`) is what exempts
+/// this synthetic identity; this test pins the resolved role to
+/// `"readonly"` specifically so the assertion cannot pass merely because
+/// the test harness's usual none-mode role happens to already clear the
+/// floor.
+#[tokio::test]
+async fn list_sessions_under_auth_none_ignores_none_role_floor() {
+    let (mut state, _dir) = test_state_with_auth_mode("none").await;
+    match Arc::get_mut(&mut state) {
+        Some(inner) => "readonly".clone_into(&mut inner.none_role),
+        None => panic!("expected sole ownership of a freshly constructed AppState"),
+    }
+    let router = build_router(state, &test_security_config());
+
+    let resp = router
+        .oneshot(
+            axum::http::Request::get("/api/v1/sessions")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Regression test (#7234): the protection #7200 actually added must
+/// survive the `auth.mode = "none"` exemption above -- a real, validated
+/// Bearer token (not the synthetic none-mode identity) presenting a role
+/// below what the route requires is still rejected. Scoped to its own
+/// nous, not just unscoped, so this cannot pass by accident of scope
+/// rather than role.
+#[tokio::test]
+async fn session_read_routes_reject_scoped_token_without_read_role() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    for path in session_read_routes(id) {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(
+                &path,
+                symbolon::types::Role::Readonly,
+                "syn",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+    }
 }

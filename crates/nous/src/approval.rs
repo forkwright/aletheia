@@ -13,12 +13,57 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tracing::warn;
 
+use organon::types::ApprovalRequirement;
+use taxis::config::{AgentBehaviorDefaults, ApprovalPosture};
+
 /// Default timeout for awaiting a user decision on a Required/Mandatory tool call.
 ///
 /// 120s matches the desktop daily-driver UX: long enough to read the
 /// overlay, short enough that a dropped client connection denies the
 /// irreversible action rather than letting it hang the pipeline.
 pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_mins(2);
+
+/// Per-tier approval postures resolved from config for one turn's dispatch.
+///
+/// Resolved once per turn from `NousConfig::behavior` and consulted at the
+/// ADR-005 decision boundary in `nous::execute::dispatch`: a tier configured
+/// [`ApprovalPosture::AutoApprove`] executes without a wired gate (daemon and
+/// non-streaming REST turns carry none), while [`ApprovalPosture::Gate`]
+/// keeps the fail-closed default-deny when no gate is attached.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ApprovalPostures {
+    /// Posture applied to [`ApprovalRequirement::Required`] (high-risk) calls.
+    pub required: ApprovalPosture,
+    /// Posture applied to [`ApprovalRequirement::Mandatory`] (critical-risk)
+    /// calls.
+    pub mandatory: ApprovalPosture,
+}
+
+impl ApprovalPostures {
+    /// Resolve the posture pair from the nous's behavior config.
+    #[must_use]
+    pub fn from_behavior(behavior: &AgentBehaviorDefaults) -> Self {
+        Self {
+            required: behavior.tool_approval_required_policy,
+            mandatory: behavior.tool_approval_mandatory_policy,
+        }
+    }
+
+    /// The posture for one resolved approval requirement.
+    ///
+    /// `None`/`Advisory` calls never reach the gate path, so they have no
+    /// posture to resolve; any requirement outside `Required`/`Mandatory`
+    /// (including variants added to the `#[non_exhaustive]` enum later)
+    /// fails closed to [`ApprovalPosture::Gate`].
+    #[must_use]
+    pub(crate) fn posture_for(self, requirement: ApprovalRequirement) -> ApprovalPosture {
+        match requirement {
+            ApprovalRequirement::Required => self.required,
+            ApprovalRequirement::Mandatory => self.mandatory,
+            _ => ApprovalPosture::Gate,
+        }
+    }
+}
 
 /// A user's decision on a single tool approval request.
 #[derive(Debug, Clone)]
@@ -288,5 +333,58 @@ mod tests {
     fn wire_strings() {
         assert_eq!(ApprovalChoice::Approved.as_wire_str(), "approved");
         assert_eq!(ApprovalChoice::Denied.as_wire_str(), "denied");
+    }
+
+    // ── ApprovalPostures: policy resolution per tier ──
+
+    #[test]
+    fn postures_default_to_gate_for_both_tiers() {
+        let postures = ApprovalPostures::default();
+        assert_eq!(
+            postures.posture_for(ApprovalRequirement::Required),
+            ApprovalPosture::Gate
+        );
+        assert_eq!(
+            postures.posture_for(ApprovalRequirement::Mandatory),
+            ApprovalPosture::Gate
+        );
+    }
+
+    #[test]
+    fn postures_from_behavior_read_the_configured_fields() {
+        let behavior = AgentBehaviorDefaults {
+            tool_approval_required_policy: ApprovalPosture::AutoApprove,
+            tool_approval_mandatory_policy: ApprovalPosture::Gate,
+            ..AgentBehaviorDefaults::default()
+        };
+        let postures = ApprovalPostures::from_behavior(&behavior);
+        assert_eq!(
+            postures.posture_for(ApprovalRequirement::Required),
+            ApprovalPosture::AutoApprove
+        );
+        assert_eq!(
+            postures.posture_for(ApprovalRequirement::Mandatory),
+            ApprovalPosture::Gate,
+            "the mandatory tier must not inherit a required-tier relaxation"
+        );
+    }
+
+    #[test]
+    fn posture_for_fails_closed_on_non_gated_requirements() {
+        let postures = ApprovalPostures {
+            required: ApprovalPosture::AutoApprove,
+            mandatory: ApprovalPosture::AutoApprove,
+        };
+        // WHY: None/Advisory never reach the gate path at all, and any
+        // future ApprovalRequirement variant must not silently inherit a
+        // relaxed posture it was never configured for.
+        assert_eq!(
+            postures.posture_for(ApprovalRequirement::None),
+            ApprovalPosture::Gate
+        );
+        assert_eq!(
+            postures.posture_for(ApprovalRequirement::Advisory),
+            ApprovalPosture::Gate
+        );
     }
 }

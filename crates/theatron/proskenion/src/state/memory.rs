@@ -249,6 +249,56 @@ fn default_entity_type() -> EntityType {
     EntityType::Other("Unknown".to_string())
 }
 
+// WHY(#4565): boundary between skene's wire DTOs and this view-model type,
+// sourcing `views/memory/mod.rs` from `ApiClient::knowledge_entities`/
+// `knowledge_entity` instead of a hand-built `/api/v1/knowledge/entities`
+// request. `properties`/`created_by`/`flagged` have no equivalent on either
+// skene source type -- pylon's own `EntityListItem`/`Entity` wire shapes
+// never carry them either, so the pre-migration `EntityRaw` deserialize
+// (`#[serde(default)]` on every one of these fields) always produced the
+// same defaults used here. `confidence`/`page_rank`/`memory_count`/
+// `relationship_count` are list-row-only fields; the single-entity source
+// (`knowledge_entity`) has no equivalent either, matching the pre-migration
+// behavior of deserializing that endpoint's narrower body through the same
+// `EntityRaw` shape.
+impl From<skene::api::types::EntityListItem> for Entity {
+    fn from(item: skene::api::types::EntityListItem) -> Self {
+        Self {
+            id: item.id,
+            name: item.name,
+            entity_type: EntityType::from_raw(item.entity_type),
+            confidence: item.confidence,
+            page_rank: item.page_rank,
+            memory_count: item.memory_count,
+            relationship_count: item.relationship_count,
+            properties: Vec::new(),
+            updated_at: Some(item.updated_at),
+            created_by: None,
+            created_at: Some(item.created_at),
+            flagged: false,
+        }
+    }
+}
+
+impl From<skene::api::types::Entity> for Entity {
+    fn from(item: skene::api::types::Entity) -> Self {
+        Self {
+            id: item.id,
+            name: item.name,
+            entity_type: EntityType::from_raw(item.entity_type),
+            confidence: 0.0,
+            page_rank: 0.0,
+            memory_count: 0,
+            relationship_count: 0,
+            properties: Vec::new(),
+            updated_at: Some(item.updated_at),
+            created_by: None,
+            created_at: Some(item.created_at),
+            flagged: false,
+        }
+    }
+}
+
 /// A key-value property on an entity.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub(crate) struct EntityProperty {
@@ -296,6 +346,28 @@ impl RelationshipDirection {
     }
 }
 
+impl From<skene::api::types::RelationshipDirection> for RelationshipDirection {
+    fn from(value: skene::api::types::RelationshipDirection) -> Self {
+        match value {
+            skene::api::types::RelationshipDirection::Outgoing => Self::Outgoing,
+            skene::api::types::RelationshipDirection::Incoming => Self::Incoming,
+        }
+    }
+}
+
+impl From<skene::api::types::EntityRelationship> for Relationship {
+    fn from(value: skene::api::types::EntityRelationship) -> Self {
+        Self {
+            id: value.id,
+            entity_id: value.entity_id,
+            entity_name: value.entity_name,
+            relationship_type: value.relationship_type,
+            direction: value.direction.into(),
+            confidence: value.confidence,
+        }
+    }
+}
+
 /// A memory associated with an entity.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct EntityMemory {
@@ -316,6 +388,19 @@ pub(crate) struct EntityMemory {
     /// Creation timestamp.
     #[serde(default)]
     pub created_at: Option<String>,
+}
+
+impl From<skene::api::types::EntityMemory> for EntityMemory {
+    fn from(value: skene::api::types::EntityMemory) -> Self {
+        Self {
+            id: value.id,
+            content: value.content,
+            agent: value.agent,
+            session: value.session,
+            confidence: value.confidence,
+            created_at: value.created_at,
+        }
+    }
 }
 
 /// Paginated entity list with sort and filter state.
@@ -1096,6 +1181,58 @@ impl From<FactRaw> for Fact {
     }
 }
 
+// WHY(#4565): boundary between skene's `Fact` wire DTO and this view-model
+// type, sourcing `views/memory/mod.rs`/`views/meta/mod.rs` from
+// `ApiClient::knowledge_facts` instead of a hand-built
+// `/api/v1/knowledge/facts` request. Reuses the same `from_raw` classifiers
+// `FactRaw`'s conversion above uses, rather than duplicating the
+// case-insensitive matching -- `tier`/`sensitivity`/`visibility` are already
+// closed enums on the skene side (no unknown-value fallback needed there),
+// so those three convert with a direct match instead of a round trip
+// through a string.
+impl From<skene::api::types::Fact> for Fact {
+    fn from(value: skene::api::types::Fact) -> Self {
+        Self {
+            id: value.id,
+            nous_id: value.nous_id,
+            content: value.content,
+            fact_type: FactType::from_raw(&value.fact_type),
+            tier: match value.tier {
+                skene::api::types::EpistemicTier::Verified => FactTier::Verified,
+                skene::api::types::EpistemicTier::Reflected => FactTier::Reflected,
+                skene::api::types::EpistemicTier::Inferred => FactTier::Inferred,
+                skene::api::types::EpistemicTier::Assumed => FactTier::Assumed,
+                skene::api::types::EpistemicTier::Training => FactTier::Training,
+            },
+            confidence: value.confidence,
+            sensitivity: match value.sensitivity {
+                skene::api::types::FactSensitivity::Public => FactSensitivity::Public,
+                skene::api::types::FactSensitivity::Internal => FactSensitivity::Internal,
+                skene::api::types::FactSensitivity::Confidential => FactSensitivity::Confidential,
+            },
+            visibility: match value.visibility {
+                skene::api::types::FactVisibility::Private => FactVisibility::Private,
+                skene::api::types::FactVisibility::Shared => FactVisibility::Shared,
+                skene::api::types::FactVisibility::Restricted => FactVisibility::Restricted,
+                skene::api::types::FactVisibility::Published => FactVisibility::Published,
+            },
+            recorded_at: value.recorded_at,
+            access_count: value.access_count,
+            is_forgotten: value.is_forgotten,
+            source_session_id: value.source_session_id,
+            valid_from: value.valid_from,
+            valid_to: value.valid_to,
+            stability_hours: value.stability_hours,
+            superseded_by: value.superseded_by,
+            forgotten_at: value.forgotten_at,
+            forget_reason: value.forget_reason.as_deref().map(ForgetReason::from_raw),
+            last_accessed_at: value.last_accessed_at,
+            scope: value.scope.as_deref().map(MemoryScope::from_raw),
+            project_id: value.project_id,
+        }
+    }
+}
+
 /// Sort field for the fact list. Maps directly to the route's `sort` param.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum FactSort {
@@ -1314,6 +1451,19 @@ impl GraphCheckStatus {
     }
 }
 
+impl From<skene::api::types::GraphCheckReport> for GraphCheckReport {
+    fn from(value: skene::api::types::GraphCheckReport) -> Self {
+        Self {
+            fact_count: value.fact_count,
+            entity_count: value.entity_count,
+            relationship_count: value.relationship_count,
+            orphaned_entity_count: value.orphaned_entity_count,
+            dangling_edge_count: value.dangling_edge_count,
+            status: GraphCheckStatus::from_raw(&value.status),
+        }
+    }
+}
+
 /// Which facts the operator wants to review.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum FactReviewMode {
@@ -1398,7 +1548,7 @@ impl Default for FactListStore {
 
 impl FactListStore {
     /// Maximum facts fetched per request (the store is ~hundreds of facts).
-    pub(crate) const FETCH_LIMIT: usize = 500;
+    pub(crate) const FETCH_LIMIT: u32 = 500;
 
     /// Replace the fact list with fresh data.
     ///

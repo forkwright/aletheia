@@ -23,6 +23,16 @@ pub struct CreateSessionRequest {
     pub model: Option<String>,
 }
 
+/// Body for `POST /api/v1/sessions/resolve` (get-or-create by key).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResolveSessionRequest {
+    /// Target nous agent that owns the session.
+    pub nous_id: String,
+    /// Stable client-chosen key identifying the ongoing conversation
+    /// (e.g. `"syn:default"` for the desktop app's per-nous chat).
+    pub session_key: String,
+}
+
 /// Body for `PUT /api/v1/sessions/{id}/name`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenameSessionRequest {
@@ -187,6 +197,13 @@ pub struct SessionReplayResponse {
     pub usage_records: Vec<ReplayUsageRecord>,
     /// Structured tool audit rows keyed by turn sequence.
     pub tool_audit_records: Vec<ReplayToolAuditRecord>,
+    /// Count of `tool_audit` rows encountered while building this export
+    /// that failed to decode and were omitted from `tool_audit_records`
+    /// (aletheia#7217). Partition-wide, not session-scoped: a row that
+    /// fails to decode has no readable session id, so this can include
+    /// corruption that belongs to a different session. `0` when none were
+    /// corrupt.
+    pub tool_audit_corrupt_count: usize,
     /// Durable turn lifecycle records parsed from the session note log.
     pub turn_attempts: Vec<ReplayTurnAttempt>,
 }

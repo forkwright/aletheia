@@ -55,21 +55,21 @@ install_hint() {
         . /etc/os-release
         case "${ID:-}" in
             debian|ubuntu)
-                echo "sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev"
+                echo "sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev"
                 return
                 ;;
             fedora)
-                echo "sudo dnf install gtk3-devel webkit2gtk4.1-devel libxdo-devel"
+                echo "sudo dnf install webkit2gtk4.1-devel gtk3-devel libxdo-devel librsvg2-devel"
                 return
                 ;;
         esac
         case " ${ID_LIKE:-} " in
             *" debian "*)
-                echo "sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev"
+                echo "sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev"
                 return
                 ;;
             *" fedora "*|*" rhel "*)
-                echo "sudo dnf install gtk3-devel webkit2gtk4.1-devel libxdo-devel"
+                echo "sudo dnf install webkit2gtk4.1-devel gtk3-devel libxdo-devel librsvg2-devel"
                 return
                 ;;
         esac

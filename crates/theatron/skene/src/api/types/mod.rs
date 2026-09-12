@@ -3,17 +3,25 @@
 pub mod providers;
 pub use providers::{ProviderInfo, ProviderListResponse, ProviderRouteResponse};
 
+pub mod approvals;
+pub use approvals::{PendingApproval, PendingApprovalsResponse};
+
 pub mod knowledge;
 pub use knowledge::{
-    EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier, Fact,
-    FactDetailResponse, FactSensitivity, FactVisibility, FactsResponse, Relationship,
-    RelationshipDirection, RelationshipsResponse, SimilarFact, TimelineEvent, TimelineResponse,
+    EntitiesResponse, Entity, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier,
+    ExplainCandidate, ExplainDecision, ExplainResponse, Fact, FactDetailResponse, FactSensitivity,
+    FactVisibility, FactorScoreBreakdown, FactsResponse, FlagRequest, FlagSeverity,
+    GraphCheckReport, KnowledgeEntitiesRequest, KnowledgeFactsRequest, MemoryHealthResponse,
+    MergeRequest, RecallWeightsView, Relationship, RelationshipDirection, RelationshipsResponse,
+    SearchResponse, SearchResult, SimilarFact, TimelineEvent, TimelineResponse,
 };
 
 pub mod insights;
 pub use insights::{
-    AgentCostRow, AgentTokenRow, CostMetricsResponse, CostSeriesPoint, ModelTokenRow,
-    TokenMetricsResponse, TokenSeriesPoint, UnavailableMetric,
+    AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow, AnomalyAlert,
+    CostMetricsResponse, CostSeriesPoint, JournalEvent, JournalResponse, ModelTokenRow,
+    QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse, TokenSeriesPoint,
+    UnavailableMetric,
 };
 
 pub mod verification;
@@ -22,9 +30,33 @@ pub use verification::{
     VerificationGap, VerificationStatus,
 };
 
-use serde::{Deserialize, Serialize};
+pub mod workspace;
+pub use workspace::{
+    FileEntry, GitStatusEntry, OpenFileResponse, WorkspaceSearchResult, WriteContentRequest,
+    WriteContentResponse,
+};
 
-use koina::secret::SecretString;
+pub mod credentials;
+pub use credentials::{
+    AddCredentialRequest, CredentialMutationEffect, CredentialRemoveResponse, CredentialResponse,
+    CredentialUsageCounters, CredentialValidationState, CredentialsListResponse,
+};
+
+pub mod nous;
+pub use nous::{
+    AddressMaskStatus, ModelProviderReadiness, NousStatus, NousSummary, RecoverResponse,
+};
+
+pub mod config;
+pub use config::{ConfigReloadResponse, ConfigUpdateResponse};
+
+pub mod daemon;
+pub use daemon::{DaemonTask, DaemonTaskListResponse};
+
+pub mod ops;
+pub use ops::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry, ToolHistoryEntry};
+
+use serde::{Deserialize, Serialize};
 
 use crate::id::{ApiNousId, ApiSessionId, GitSha, PlanId, TurnId};
 
@@ -96,6 +128,15 @@ pub struct Agent {
     /// `pylon::handlers::nous_dto::NousSummary::status` (#4641).
     #[serde(default)]
     pub status: Option<String>,
+    /// Whether the agent is enabled in the operator surface, mirroring
+    /// `pylon::handlers::nous_dto::NousSummary::enabled`.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// Tool toggle summaries for the agent, mirroring
+    /// `pylon::handlers::nous_dto::NousSummary::tools`. Empty for servers
+    /// old enough to omit the field.
+    #[serde(default)]
+    pub tools: Vec<NousTool>,
 }
 
 impl Agent {
@@ -255,6 +296,10 @@ pub struct SessionReplayResponse {
     pub usage_records: Vec<ReplayUsageRecord>,
     /// Structured tool audit rows keyed by turn sequence.
     pub tool_audit_records: Vec<ReplayToolAuditRecord>,
+    /// Count of `tool_audit` rows that failed to decode and were omitted
+    /// from `tool_audit_records` (aletheia#7217). `0` when none were
+    /// corrupt.
+    pub tool_audit_corrupt_count: usize,
     /// Durable turn lifecycle records parsed from the session note log.
     pub turn_attempts: Vec<ReplayTurnAttempt>,
 }
@@ -721,28 +766,6 @@ pub struct ActiveTurn {
     pub turn_id: TurnId,
 }
 
-/// Server authentication mode.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthMode {
-    /// Authentication mode (e.g. "token", "none").
-    pub mode: String,
-}
-
-/// Response from the login endpoint.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct LoginResponse {
-    /// Authentication token.
-    pub token: SecretString,
-}
-
-impl std::fmt::Debug for LoginResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LoginResponse")
-            .field("token", &self.token)
-            .finish()
-    }
-}
-
 /// Wrapper for the agents list endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentsResponse {
@@ -830,10 +853,26 @@ fn default_true() -> bool {
 }
 
 /// Wrapper for the tools list endpoint.
+///
+/// The `*_applied`/`*_required` fields are only populated by the `PATCH`
+/// toggle endpoints (`GET /api/v1/nous/{id}/tools` always sends `None`);
+/// mirrors `pylon::handlers::nous_dto::ToolsResponse`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousToolsResponse {
     /// List of tools.
     pub tools: Vec<NousTool>,
+    /// Whether the requested config change was persisted.
+    #[serde(default)]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(default)]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(default)]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(default)]
+    pub restart_required: Option<bool>,
 }
 
 /// Server liveness response from `GET /api/health`.

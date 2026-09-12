@@ -42,7 +42,7 @@ use self::resolve::{
     gate_turn_sensitivity, process_response_blocks, resolve_active_server_tools,
     resolve_provider_checked, resolve_turn_model, resolve_turn_route, route_admits_sensitivity,
 };
-use crate::approval::ApprovalGate;
+use crate::approval::{ApprovalGate, ApprovalPostures};
 use crate::config::{ClientDisconnectPolicy, ModelProviderRoute, NousConfig};
 use crate::error;
 use crate::hooks::registry::HookRegistry;
@@ -729,6 +729,11 @@ async fn run_execute_loop(
         });
     let fallback_config = fallback_config(config, providers, turn_sensitivity);
 
+    // WHY: resolve the operator's per-tier approval posture once per turn —
+    // it cannot change mid-turn, and a single resolution point keeps every
+    // iteration's Required/Mandatory dispatch on the same policy.
+    let approval_postures = ApprovalPostures::from_behavior(&config.behavior);
+
     // WHY: hoist the config server_tools Vec into an Arc once per turn so the
     // per-iteration backward-compat clone becomes a pointer bump (#3389).
     // Cloning the Arc once at the boundary keeps downstream helpers pure of
@@ -1113,6 +1118,7 @@ async fn run_execute_loop(
             iterations,
             stream_tx,
             approval_gate,
+            approval_postures,
             &dispatch_policy,
             config.limits.max_tool_result_bytes,
             &session.receipt_signer,

@@ -315,7 +315,7 @@ impl rmcp::handler::server::ServerHandler for MemoryServer {
     fn get_info(&self) -> ServerInfo {
         InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(
-                "aletheia-memory-mcp",
+                "xenodocheion",
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(

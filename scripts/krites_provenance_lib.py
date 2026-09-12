@@ -188,7 +188,6 @@ NO_PREDECESSOR_REASONS: dict[str, str] = {
         "krites-native reference-semantics tests for the land-dark cfg mechanism, "
         "which cozo-core does not have"
     ),
-    "fixed_rule/utilities/rrf.rs": "krites-native reciprocal-rank-fusion utility with no upstream equivalent",
     "fts/error.rs": "cozo-core has no error.rs anywhere",
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py": (
         "UCD/CLDR table-generation tool; cozo-core's fold table is hand-authored "

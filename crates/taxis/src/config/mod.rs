@@ -10,8 +10,8 @@ mod tools;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentToolGroupPolicy, AgentsConfig,
-    CachingConfig, ModelRoute, ModelSpec, NousDefinition, RecallProfile, RecallSettings,
-    RecallWeights,
+    ApprovalPosture, CachingConfig, ModelRoute, ModelSpec, NousDefinition, RecallProfile,
+    RecallSettings, RecallWeights,
 };
 pub use behavior::{
     AcademicSourceConfig, AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig,

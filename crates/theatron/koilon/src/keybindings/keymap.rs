@@ -207,6 +207,21 @@ impl KeyMap {
         self.dispatch.get(&(modifiers, code)).copied()
     }
 
+    /// Human-readable form of an action's *first* default key combo (e.g.
+    /// `"Ctrl+S"`, `"F1"`), or `None` if the default keymap binds nothing to it.
+    ///
+    /// WHY(#7222): the command-palette's shortcut badges used to be hand-typed
+    /// string literals on each `Command`, independent of what was actually
+    /// bound -- `:clear` claimed `Ctrl+N` (the *separate* `:new` command's real
+    /// binding) and drifted silently. Deriving the badge from the same
+    /// `defaults()` table `KeyMap::lookup` dispatches from means a palette
+    /// entry can never claim a chord that isn't genuinely wired to its action.
+    pub(crate) fn default_shortcut_display(action: Action) -> Option<String> {
+        let (_, keys) = Self::defaults().into_iter().find(|(a, _)| *a == action)?;
+        let (modifiers, code) = *keys.first()?;
+        Some(display_key_combo(modifiers, code))
+    }
+
     /// Default bindings; `pub(super)` so the registry drift test can walk them (#6819).
     pub(super) fn defaults() -> Vec<(Action, Vec<(KeyModifiers, KeyCode)>)> {
         vec![
@@ -238,13 +253,25 @@ impl KeyMap {
                 Action::OpenAgentPicker,
                 vec![(KeyModifiers::CONTROL, KeyCode::Char('a'))],
             ),
+            // WHY(#7220): Ctrl+I and Ctrl+M are CR/HT at the raw terminal-byte level
+            // (0x09/0x0D), identical to Tab/Enter in every terminal that doesn't speak
+            // the Kitty keyboard-enhancement protocol (koilon doesn't enable it). A
+            // legacy terminal can never report these as `(CONTROL, Char('i'/'m'))`, so
+            // binding them here was dead-or-worse: Ctrl+M never fired (Enter's own arm
+            // intercepted the byte first) and Ctrl+I silently fell through to plain
+            // Tab's `NextAgent` binding instead, switching the focused agent as a side
+            // effect of trying to open System Status. F3/F4 use full CSI escape
+            // sequences with no such alias, so opening these views can never again
+            // decode as a different, unrelated keystroke; see
+            // `no_registered_control_chord_aliases_a_reserved_key` in
+            // `keybindings/mod.rs` for the regression guard.
             (
                 Action::OpenSystemStatus,
-                vec![(KeyModifiers::CONTROL, KeyCode::Char('i'))],
+                vec![(KeyModifiers::NONE, KeyCode::F(4))],
             ),
             (
                 Action::MemoryOpen,
-                vec![(KeyModifiers::CONTROL, KeyCode::Char('m'))],
+                vec![(KeyModifiers::NONE, KeyCode::F(3))],
             ),
             (
                 Action::MetricsOpen,
@@ -326,4 +353,37 @@ impl KeyMap {
             ),
         ]
     }
+}
+
+/// Render a `(modifiers, code)` combo the way the Help overlay and command
+/// palette display keys (e.g. `"Ctrl+S"`, `"F1"`, `"Shift+Up"`).
+fn display_key_combo(modifiers: KeyModifiers, code: KeyCode) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if modifiers.contains(KeyModifiers::CONTROL) {
+        parts.push("Ctrl".to_string());
+    }
+    if modifiers.contains(KeyModifiers::ALT) {
+        parts.push("Alt".to_string());
+    }
+    if modifiers.contains(KeyModifiers::SHIFT) {
+        parts.push("Shift".to_string());
+    }
+    let key = match code {
+        KeyCode::Char(c) => c.to_ascii_uppercase().to_string(),
+        KeyCode::F(n) => format!("F{n}"),
+        KeyCode::PageUp => "PageUp".to_string(),
+        KeyCode::PageDown => "PageDown".to_string(),
+        KeyCode::Up => "Up".to_string(),
+        KeyCode::Down => "Down".to_string(),
+        KeyCode::Left => "Left".to_string(),
+        KeyCode::Right => "Right".to_string(),
+        KeyCode::Enter => "Enter".to_string(),
+        KeyCode::Esc => "Esc".to_string(),
+        KeyCode::Tab => "Tab".to_string(),
+        KeyCode::BackTab => "Shift+Tab".to_string(),
+        KeyCode::Backspace => "Backspace".to_string(),
+        other => format!("{other:?}"),
+    };
+    parts.push(key);
+    parts.join("+")
 }

@@ -37,6 +37,19 @@ crash-injection = []
 reranker = ["dep:reqwest", "dep:rustls", "dep:tokio", "koina/rustls-provider"]
 gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 nuextract = ["dep:ort", "dep:tokio", "dep:tokenizers"]
+# WHY(#6862): `ort`'s `download-binaries` default (see the `ort`
+# dependency below, unchanged by this feature) fetches a prebuilt onnxruntime
+# and links it statically. `cargo check`/`clippy` never link, so that step
+# passes in CI; the first command that actually links (`cargo test`/`nextest
+# run`) fails on a GitHub-hosted runner with "could not find native static
+# library `onnxruntime`" because the download never lands there. `load-dynamic`
+# (`ort-sys/disable-linking`) defers native linking to a runtime `dlopen`,
+# needing no native library at link time — sufficient for gate-coverage's
+# nextest step, whose gliner/nuextract tests never construct a real
+# `ort::session::Session` in CI (the smoke-inference tests self-skip when no
+# ONNX model is staged). CI-only: gliner/nuextract's own feature list above is
+# untouched, so production linkage is unaffected unless a caller opts in.
+ort-load-dynamic = ["ort?/load-dynamic"]
 test-support = []
 # WHY: mneme-engine brings in the Datalog knowledge store via krites and the
 # tokio blocking-task utilities graphe's engine errors need.

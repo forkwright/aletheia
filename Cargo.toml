@@ -5,7 +5,7 @@ members = [
     "crates/aletheia",
     "crates/aletheia-classify",
     "crates/aletheia-lexica",
-    "crates/aletheia-memory-mcp",
+    "crates/xenodocheion",
     "crates/aletheia-routing",
     "crates/diaporeia",
     "crates/dianoia",
@@ -294,6 +294,23 @@ tag = "v0.4.0"
 # WHY: version pin lets cargo-deny resolve the git workspace dep in the graph
 # (without it, deny emits bug[unresolved-workspace-dependency] for every user).
 version = "0.4.0"
+
+[workspace.dependencies.heurema]
+git = "https://github.com/forkwright/heurema.git"
+tag = "v0.2.0"
+# WHY: version pin lets cargo-deny resolve the git workspace dep in the graph
+# (without it, deny emits bug[unresolved-workspace-dependency] for every user).
+version = "0.2.0"
+
+# WHY telemetry-only: xenodocheion is the sole consumer today and only needs
+# koinon::telemetry::init_with_writer (stderr, so stdout stays pure MCP
+# JSON-RPC) — no CLI flags or TOML config to route through bootstrap/cli/config.
+[workspace.dependencies.koinon]
+git = "https://github.com/forkwright/koinon.git"
+tag = "v0.3.0"
+version = "0.3.0"
+default-features = false
+features = ["telemetry"]
 
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"

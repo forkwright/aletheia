@@ -76,7 +76,7 @@ pub(crate) fn current_contexts(app: &App) -> Vec<KeyContext> {
     }
 
     match &app.layout.overlay {
-        Some(Overlay::Help) | None => {
+        Some(Overlay::Help { .. }) | None => {
             if app.interaction.command_palette.active {
                 contexts.push(KeyContext::CommandPalette);
             } else if app.interaction.filter.active {
@@ -96,10 +96,6 @@ pub(crate) fn current_contexts(app: &App) -> Vec<KeyContext> {
             contexts.push(KeyContext::ToolApproval);
             contexts.push(KeyContext::Overlay);
         }
-        Some(Overlay::PlanApproval(_)) => {
-            contexts.push(KeyContext::PlanApproval);
-            contexts.push(KeyContext::Overlay);
-        }
         Some(Overlay::Settings(_)) => {
             contexts.push(KeyContext::Settings);
         }
@@ -114,7 +110,7 @@ pub(crate) fn current_contexts(app: &App) -> Vec<KeyContext> {
 /// Label for the help overlay title: reflects the source context, not the overlay itself.
 pub(crate) fn context_label(app: &App) -> &'static str {
     match &app.layout.overlay {
-        Some(Overlay::Help) | None => {
+        Some(Overlay::Help { .. }) | None => {
             if app.interaction.command_palette.active {
                 "Command Palette"
             } else if app.interaction.filter.active {
@@ -132,14 +128,12 @@ pub(crate) fn context_label(app: &App) -> &'static str {
         Some(Overlay::AgentPicker { .. }) => "Agent Picker",
         Some(Overlay::SessionPicker(_)) => "Session List",
         Some(Overlay::ToolApproval(_)) => "Tool Approval",
-        Some(Overlay::PlanApproval(_)) => "Plan Approval",
         Some(Overlay::SystemStatus) => "System Status",
         Some(Overlay::ContextBudget) => "Context Budget",
         Some(Overlay::Settings(_)) => "Settings",
         Some(Overlay::ContextActions(_)) => "Context Actions",
         Some(Overlay::DiffView(_)) => "Diff Viewer",
         Some(Overlay::SessionSearch(_)) => "Session Search",
-        Some(Overlay::DecisionCard(_)) => "Decision",
         Some(Overlay::NotificationHistory { .. }) => "Notifications",
     }
 }

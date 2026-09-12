@@ -9,7 +9,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use aletheia_memory_mcp::server::MemoryServer;
 use mneme::engine::DataValue;
 use mneme::id::FactId;
 use mneme::knowledge::{
@@ -19,6 +18,7 @@ use mneme::knowledge::{
 use mneme::knowledge_store::KnowledgeStore;
 use rmcp::ServiceExt;
 use rmcp::model::{CallToolRequestParams, ClientCapabilities, ClientInfo, Implementation};
+use xenodocheion::server::MemoryServer;
 
 /// Valid write token for tests. Must be at least 32 characters to satisfy
 /// `MemoryServer::MIN_WRITE_TOKEN_LEN`.

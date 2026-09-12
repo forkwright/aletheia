@@ -38,7 +38,10 @@ pub(crate) fn handle_open(app: &mut App) {
 fn fetch_backend_metrics(app: &mut App) {
     let client = app.client.clone();
     app.background_tasks.spawn(async move {
-        let (tokens, costs) = tokio::join!(client.token_metrics(), client.cost_metrics());
+        let (tokens, costs) = tokio::join!(
+            client.token_metrics(None, None, None),
+            client.cost_metrics(None, None, None)
+        );
         Msg::BackendMetricsLoaded {
             tokens: tokens.map_err(|e| e.to_string()),
             costs: costs.map_err(|e| e.to_string()),

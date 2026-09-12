@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
@@ -35,43 +34,6 @@ enum OpsTab {
 
 // ── API response types ──
 
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct AgentEntry {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    emoji: Option<String>,
-    #[serde(default)]
-    enabled: Option<bool>,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    tools: Vec<ToolEntryResp>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(untagged)]
-enum AgentListResponse {
-    Wrapped {
-        #[serde(default)]
-        nous: Vec<AgentEntry>,
-    },
-    Bare(Vec<AgentEntry>),
-}
-
-impl AgentListResponse {
-    fn into_agents(self) -> Vec<AgentEntry> {
-        match self {
-            Self::Wrapped { nous } => nous,
-            Self::Bare(agents) => agents,
-        }
-    }
-}
-
 /// Build one dashboard card from a `GET /api/v1/nous` list entry and its
 /// (possibly absent) per-agent capability fetch result.
 ///
@@ -84,11 +46,14 @@ impl AgentListResponse {
 /// status is normalized to that same `"unknown"` sentinel here so `health`
 /// and `connected` derive from one fact instead of two independent,
 /// driftable fallbacks.
-fn build_agent_card(entry: &AgentEntry, capabilities: Option<AgentCapabilities>) -> AgentCardData {
+fn build_agent_card(
+    entry: &skene::api::types::Agent,
+    capabilities: Option<AgentCapabilities>,
+) -> AgentCardData {
     let live_status = entry.status.as_deref().unwrap_or("unknown");
     AgentCardData {
-        id: entry.id.as_str().into(),
-        name: entry.name.clone().unwrap_or_else(|| entry.id.clone()),
+        id: entry.id.clone(),
+        name: entry.display_name().to_owned(),
         emoji: entry.emoji.clone(),
         health: health_from_status(live_status),
         model: entry.model.clone().unwrap_or_else(|| "-".to_string()),
@@ -99,75 +64,27 @@ fn build_agent_card(entry: &AgentEntry, capabilities: Option<AgentCapabilities>)
     }
 }
 
-/// Capability subset of the `NousStatus` body returned by
-/// `GET /api/v1/nous/{id}`.
+/// Narrow the full `NousStatus` body returned by `ApiClient::agent_status`
+/// (`GET /api/v1/nous/{id}`) down to the capability fields this card needs.
 ///
-/// WARNING: `pylon::handlers::nous_dto::NousStatus` carries no
-/// `rename_all`, so these field names must stay verbatim-identical to the
-/// server's Rust field names. A rename on either side silently deserializes
-/// every field to its `Default`, rendering a card full of zeroes rather than
-/// failing.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct AgentDetailResp {
-    #[serde(default)]
-    context_window: u32,
-    #[serde(default)]
-    max_output_tokens: u32,
-    #[serde(default)]
-    thinking_enabled: bool,
-    #[serde(default)]
-    thinking_budget: u32,
-    #[serde(default)]
-    max_tool_iterations: u32,
-}
-
-impl From<AgentDetailResp> for AgentCapabilities {
-    fn from(resp: AgentDetailResp) -> Self {
+/// WHY(#4565): previously deserialized into a hand-rolled `AgentDetailResp`
+/// subset with `#[serde(default)]` on every field -- a field-name drift
+/// against `pylon::handlers::nous_dto::NousStatus` (which carries no
+/// `rename_all`) would have silently zeroed the card rather than failing.
+/// `NousStatus` is skene's canonical typed mirror of that same DTO with its
+/// required fields left required, so the same drift now fails the request
+/// (surfaced as `None` capabilities, see `refresh_dashboard`) instead of
+/// rendering a quietly-wrong card.
+impl From<skene::api::types::NousStatus> for AgentCapabilities {
+    fn from(status: skene::api::types::NousStatus) -> Self {
         Self {
-            context_window: resp.context_window,
-            max_output_tokens: resp.max_output_tokens,
-            thinking_enabled: resp.thinking_enabled,
-            thinking_budget: resp.thinking_budget,
-            max_tool_iterations: resp.max_tool_iterations,
+            context_window: status.context_window,
+            max_output_tokens: status.max_output_tokens,
+            thinking_enabled: status.thinking_enabled,
+            thinking_budget: status.thinking_budget,
+            max_tool_iterations: status.max_tool_iterations,
         }
     }
-}
-
-/// Client-side mirror of `pylon::handlers::nous_dto::ToolSummary`.
-///
-/// WARNING: `ToolSummary` carries no `rename_all`, so these field names
-/// must stay verbatim-identical to the server's Rust field names (see the
-/// same warning on `AgentDetailResp` above).
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct ToolEntryResp {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    enabled: bool,
-    /// Effective policy state for this agent: `"callable"`, `"inactive"`, or `"denied"`.
-    #[serde(default)]
-    policy_state: String,
-    /// Reason the tool is unavailable under the current agent policy.
-    #[serde(default)]
-    unavailable_reason: Option<String>,
-    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
-    #[serde(default)]
-    source_plane: String,
-    /// Reversibility metadata used to derive approval policy.
-    #[serde(default)]
-    reversibility: String,
-    /// Approval requirement derived from reversibility/capability metadata.
-    #[serde(default)]
-    approval: String,
-    /// Tool groups used by policy resolution.
-    #[serde(default)]
-    groups: Vec<String>,
-    /// Whether the tool's default metadata marks it as side-effecting or destructive.
-    #[serde(default)]
-    destructive: bool,
-    /// Whether the tool activates automatically without explicit configuration.
-    #[serde(default)]
-    auto_activate: bool,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -224,53 +141,40 @@ struct ToolHistoryEntry {
     created_at: String,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-struct OpsResponse {
-    #[serde(default)]
-    catalog: Vec<OpsCatalogTool>,
-    #[serde(default)]
-    live_invocations: Vec<OpsLiveInvocation>,
-    /// Recent durable tool-call audit records, newest first (#4990).
-    #[serde(default)]
-    history: Vec<OpsHistoryEntry>,
-    #[serde(default)]
-    total_calls: u64,
-    #[serde(default)]
-    total_errors: u64,
-    #[serde(default)]
-    history_unavailable: bool,
+// WHY(#4565): boundary between skene's `OpsToolsResponse` wire DTOs
+// (`ApiClient::ops_tools`) and this view's narrower display types -- the
+// view only ever rendered name/id/description for the catalog, so the
+// local type stays a deliberate subset rather than growing to match every
+// field skene's `ToolCatalogEntry` carries.
+impl From<skene::api::types::ToolCatalogEntry> for ToolCatalogEntry {
+    fn from(value: skene::api::types::ToolCatalogEntry) -> Self {
+        Self {
+            name: value.name,
+            id: value.id,
+            description: value.description,
+        }
+    }
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-struct OpsHistoryEntry {
-    #[serde(default)]
-    tool_name: String,
-    #[serde(default)]
-    outcome: String,
-    #[serde(default)]
-    duration_ms: u64,
-    #[serde(default)]
-    created_at: String,
+impl From<skene::api::types::LiveInvocationEntry> for LiveInvocationEntry {
+    fn from(value: skene::api::types::LiveInvocationEntry) -> Self {
+        Self {
+            id: value.id,
+            tool_name: value.tool_name,
+            elapsed_ms: value.elapsed_ms,
+        }
+    }
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-struct OpsCatalogTool {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    description: String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct OpsLiveInvocation {
-    #[serde(default)]
-    id: u64,
-    #[serde(default)]
-    tool_name: String,
-    #[serde(default)]
-    elapsed_ms: u64,
+impl From<skene::api::types::ToolHistoryEntry> for ToolHistoryEntry {
+    fn from(value: skene::api::types::ToolHistoryEntry) -> Self {
+        Self {
+            tool_name: value.tool_name,
+            outcome: value.outcome,
+            duration_ms: value.duration_ms,
+            created_at: value.created_at,
+        }
+    }
 }
 
 // ── Style constants ──
@@ -433,82 +337,40 @@ pub(crate) fn Ops() -> Element {
         dash_fetch.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    dash_fetch.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let base = cfg.server_url.trim_end_matches('/');
-
-            let agents_url = format!("{base}/api/v1/nous");
-            let health_url = format!("{base}/api/v1/system/health");
-            let config_url = format!("{base}/api/v1/config");
-
-            let (agents_res, health_res, config_res) = tokio::join!(
-                client.get(&agents_url).send(),
-                client.get(&health_url).send(),
-                client.get(&config_url).send(),
-            );
-
-            let agents_data: Vec<AgentEntry> = match agents_res {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<AgentListResponse>().await {
-                        Ok(data) => data.into_agents(),
-                        Err(err) => {
-                            tracing::warn!(error = %err, "failed to parse ops agent response");
-                            Vec::new()
-                        }
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        dash_fetch.set(FetchState::Error(err.to_string()));
+                        return;
                     }
-                }
-                Ok(resp) => {
-                    dash_fetch.set(FetchState::Error(format!(
-                        "agents endpoint returned {}",
-                        resp.status()
-                    )));
-                    return;
-                }
-                Err(e) => {
-                    dash_fetch.set(FetchState::Error(format!("connection error: {e}")));
+                };
+
+            let (agents_res, health_res, config_res) =
+                tokio::join!(client.agents(), client.health_details(), client.config());
+
+            let agents_data: Vec<skene::api::types::Agent> = match agents_res {
+                Ok(agents) => agents,
+                Err(err) => {
+                    dash_fetch.set(FetchState::Error(format!("agents request failed: {err}")));
                     return;
                 }
             };
 
-            // WHY: capability limits live only on the per-agent detail
-            // endpoint, so one request per agent is unavoidable. They are
-            // issued concurrently rather than in sequence, and a failure on
-            // any single agent degrades that card to `None` instead of
-            // failing the whole dashboard refresh.
+            // WHY(#4565): capability limits live only on the per-agent detail
+            // endpoint, so one request per agent is unavoidable -- issued
+            // through skene's typed `ApiClient` (`agent_status`) rather than
+            // a hand-built `/api/v1/nous/{id}` request, matching ruling B.
+            // Requests still run concurrently rather than in sequence, and a
+            // failure on any single agent degrades that card to `None`
+            // instead of failing the whole dashboard refresh.
             let capabilities: Vec<Option<AgentCapabilities>> =
-                futures_util::future::join_all(agents_data.iter().map(|a| {
-                    let url = format!("{base}/api/v1/nous/{}", a.id);
-                    let client = &client;
-                    async move {
-                        match client.get(&url).send().await {
-                            Ok(resp) if resp.status().is_success() => {
-                                match resp.json::<AgentDetailResp>().await {
-                                    Ok(detail) => Some(detail.into()),
-                                    Err(err) => {
-                                        tracing::warn!(
-                                            error = %err,
-                                            "failed to parse nous detail response"
-                                        );
-                                        None
-                                    }
-                                }
-                            }
-                            Ok(resp) => {
-                                tracing::warn!(
-                                    status = %resp.status(),
-                                    "nous detail endpoint returned non-success"
-                                );
-                                None
-                            }
-                            Err(err) => {
-                                tracing::warn!(error = %err, "nous detail request failed");
-                                None
-                            }
+                futures_util::future::join_all(agents_data.iter().map(|a| async {
+                    match client.agent_status(&a.id).await {
+                        Ok(status) => Some(status.into()),
+                        Err(err) => {
+                            tracing::warn!(error = %err, "nous detail request failed");
+                            None
                         }
                     }
                 }))
@@ -524,8 +386,8 @@ pub(crate) fn Ops() -> Element {
             let agent_toggles: Vec<AgentToggle> = agents_data
                 .iter()
                 .map(|a| AgentToggle {
-                    id: a.id.as_str().into(),
-                    name: a.name.clone().unwrap_or_else(|| a.id.clone()),
+                    id: a.id.clone(),
+                    name: a.display_name().to_owned(),
                     enabled: a.enabled.unwrap_or(true),
                     pending: false,
                     apply_state: ToggleApplyState::Synced,
@@ -537,7 +399,7 @@ pub(crate) fn Ops() -> Element {
             let tool_toggles: Vec<ToolToggle> = agents_data
                 .iter()
                 .flat_map(|a| {
-                    let aid: skene::id::ApiNousId = a.id.as_str().into();
+                    let aid = a.id.clone();
                     a.tools.iter().map(move |t| ToolToggle {
                         agent_id: aid.clone(),
                         tool_name: t.name.clone(),
@@ -545,11 +407,11 @@ pub(crate) fn Ops() -> Element {
                         pending: false,
                         apply_state: ToggleApplyState::Synced,
                         error: None,
-                        policy_state: t.policy_state.clone(),
+                        policy_state: t.policy_state.clone().unwrap_or_default(),
                         unavailable_reason: t.unavailable_reason.clone(),
-                        source_plane: t.source_plane.clone(),
-                        reversibility: t.reversibility.clone(),
-                        approval: t.approval.clone(),
+                        source_plane: t.source_plane.clone().unwrap_or_default(),
+                        reversibility: t.reversibility.clone().unwrap_or_default(),
+                        approval: t.approval.clone().unwrap_or_default(),
                         groups: t.groups.clone(),
                         destructive: t.destructive,
                         auto_activate: t.auto_activate,
@@ -562,36 +424,38 @@ pub(crate) fn Ops() -> Element {
             // returns a JSON body even when the backend is unhealthy. Parse failures
             // and non-2xx/unparseable responses are stored as reachability errors
             // so the UI distinguishes server reachability from backend health.
-            let health_store_data =
-                match skene::api::health::fetch_health_response(health_res).await {
-                    Ok(data) => ServiceHealthStore::from_response(data),
-                    Err(err) => ServiceHealthStore::unreachable(err.to_string()),
-                };
+            // `ApiClient::health_details` already implements that same
+            // accept-503 semantics internally.
+            let health_store_data = match health_res {
+                Ok(data) => ServiceHealthStore::from_response(data),
+                Err(err) => ServiceHealthStore::unreachable(err.to_string()),
+            };
 
             health_store.set(health_store_data);
 
             // ── Feature flags ──
             let feature_flags: Vec<FeatureFlag> = match config_res {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<ConfigResponse>().await {
-                        Ok(c) => c
-                            .feature_flags
-                            .into_iter()
-                            .map(|f| FeatureFlag {
-                                key: f.key,
-                                description: f.description,
-                                enabled: f.enabled,
-                                pending: false,
-                                error: None,
-                            })
-                            .collect(),
-                        Err(err) => {
-                            tracing::warn!(error = %err, "failed to parse ops config response");
-                            Vec::new()
-                        }
+                Ok(value) => match serde_json::from_value::<ConfigResponse>(value) {
+                    Ok(c) => c
+                        .feature_flags
+                        .into_iter()
+                        .map(|f| FeatureFlag {
+                            key: f.key,
+                            description: f.description,
+                            enabled: f.enabled,
+                            pending: false,
+                            error: None,
+                        })
+                        .collect(),
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to parse ops config response");
+                        Vec::new()
                     }
+                },
+                Err(err) => {
+                    tracing::warn!(error = %err, "ops config request failed");
+                    Vec::new()
                 }
-                _ => Vec::new(),
             };
 
             {
@@ -611,64 +475,34 @@ pub(crate) fn Ops() -> Element {
         tools_fetch.set(FetchState::Loading);
 
         spawn(async move {
-            let client = match authenticated_client(&cfg) {
-                Ok(client) => client,
-                Err(err) => {
-                    tools_fetch.set(FetchState::Error(err.to_string()));
-                    return;
-                }
-            };
-            let url = format!("{}/api/v1/ops/tools", cfg.server_url.trim_end_matches('/'));
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.json::<OpsResponse>().await {
-                    Ok(data) => {
-                        let succeeded = data.total_calls.saturating_sub(data.total_errors);
-                        stats.set(ToolStats {
-                            total: data.total_calls,
-                            succeeded,
-                            failed: data.total_errors,
-                            catalog: data
-                                .catalog
-                                .into_iter()
-                                .map(|t| ToolCatalogEntry {
-                                    name: t.name,
-                                    id: t.id,
-                                    description: t.description,
-                                })
-                                .collect(),
-                            live_invocations: data
-                                .live_invocations
-                                .into_iter()
-                                .map(|i| LiveInvocationEntry {
-                                    id: i.id,
-                                    tool_name: i.tool_name,
-                                    elapsed_ms: i.elapsed_ms,
-                                })
-                                .collect(),
-                            history: data
-                                .history
-                                .into_iter()
-                                .map(|h| ToolHistoryEntry {
-                                    tool_name: h.tool_name,
-                                    outcome: h.outcome,
-                                    duration_ms: h.duration_ms,
-                                    created_at: h.created_at,
-                                })
-                                .collect(),
-                            history_unavailable: data.history_unavailable,
-                        });
-                        tools_fetch.set(FetchState::Loaded(()));
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        tools_fetch.set(FetchState::Error(err.to_string()));
+                        return;
                     }
-                    Err(e) => tools_fetch.set(FetchState::Error(format!("parse error: {e}"))),
-                },
-                Ok(resp) => {
-                    let status = resp.status();
-                    tools_fetch.set(FetchState::Error(format!("server returned {status}")));
+                };
+
+            match client.ops_tools().await {
+                Ok(data) => {
+                    let succeeded = data.total_calls.saturating_sub(data.total_errors);
+                    stats.set(ToolStats {
+                        total: data.total_calls,
+                        succeeded,
+                        failed: data.total_errors,
+                        catalog: data.catalog.into_iter().map(Into::into).collect(),
+                        live_invocations: data
+                            .live_invocations
+                            .into_iter()
+                            .map(Into::into)
+                            .collect(),
+                        history: data.history.into_iter().map(Into::into).collect(),
+                        history_unavailable: data.history_unavailable,
+                    });
+                    tools_fetch.set(FetchState::Loaded(()));
                 }
-                Err(e) => {
-                    tools_fetch.set(FetchState::Error(format!("connection error: {e}")));
-                }
+                Err(err) => tools_fetch.set(FetchState::Error(err.to_string())),
             }
         });
     };
@@ -1000,58 +834,61 @@ pub(crate) fn Ops() -> Element {
 
 #[cfg(test)]
 mod tests {
+    use skene::api::types::{Agent, OpsToolsResponse};
+    use skene::id::ApiNousId;
+
     use super::*;
     use crate::state::ops::HealthTier;
 
-    /// WHY: this payload is the `pylon::handlers::nous_dto::NousStatus`
-    /// wire shape. `NousStatus` carries no `rename_all`, so serde emits the
-    /// Rust field names verbatim. Every field here is deliberately
-    /// non-`Default`, so a rename on either side turns this green assertion
-    /// red instead of silently producing a card of zeroes.
+    fn test_agent(id: &str) -> Agent {
+        Agent {
+            id: ApiNousId::from(id),
+            name: None,
+            model: None,
+            emoji: None,
+            status: None,
+            tools: Vec::new(),
+            enabled: None,
+        }
+    }
+
+    /// A complete `pylon::handlers::nous_dto::NousStatus` wire body.
+    ///
+    /// WHY(#4565): field-name-verbatim contract coverage for `NousStatus`
+    /// itself now lives with the type in
+    /// `skene::api::types::tests::nous_status_matches_server_field_names`
+    /// -- this crate only needs enough of a valid body to exercise the
+    /// `From<NousStatus> for AgentCapabilities` conversion below. The five
+    /// capability fields are deliberately non-default so a dropped or
+    /// transposed field turns this green assertion red.
     const NOUS_STATUS_BODY: &str = r#"{
         "id": "scholiast",
         "model": "claude-opus-5",
-        "status": "active",
+        "fallback_models": [],
+        "fallback_providers": [],
+        "retries_before_fallback": 2,
+        "complexity_routing_enabled": false,
+        "complexity_no_llm_threshold": 0,
+        "complexity_low_threshold": 1000,
+        "complexity_high_threshold": 5000,
         "context_window": 200000,
         "max_output_tokens": 64000,
         "thinking_enabled": true,
         "thinking_budget": 10000,
-        "max_tool_iterations": 25
+        "max_tool_iterations": 25,
+        "status": "active",
+        "background_failure_total_count": 0,
+        "background_failure_recent_count": 0,
+        "background_health_degraded": false,
+        "address_mask": {"kind": "public", "allowed_senders": []}
     }"#;
 
-    #[test]
-    fn agent_detail_resp_matches_server_field_names() {
-        let detail: AgentDetailResp =
-            serde_json::from_str(NOUS_STATUS_BODY).expect("NousStatus body must deserialize");
-
-        assert_eq!(detail.context_window, 200_000, "context_window must map");
-        assert_eq!(
-            detail.max_output_tokens, 64_000,
-            "max_output_tokens must map"
-        );
-        assert!(detail.thinking_enabled, "thinking_enabled must map");
-        assert_eq!(detail.thinking_budget, 10_000, "thinking_budget must map");
-        assert_eq!(
-            detail.max_tool_iterations, 25,
-            "max_tool_iterations must map"
-        );
-    }
-
-    #[test]
-    fn agent_detail_resp_tolerates_absent_capability_fields() {
-        let detail: AgentDetailResp = serde_json::from_str(r#"{"id":"scholiast"}"#)
-            .expect("a NousStatus without capability fields must still deserialize");
-
-        assert_eq!(detail.context_window, 0, "absent field falls back to zero");
-        assert!(!detail.thinking_enabled, "absent bool falls back to false");
-    }
-
-    /// WHY(#4772): this payload is the `pylon::handlers::nous_dto::ToolSummary`
-    /// wire shape (no `rename_all`, so serde emits the Rust field names
-    /// verbatim). Before this fix `ToolEntryResp` only kept `name`+`enabled`
-    /// -- every other field here would silently vanish at the deserialize
-    /// boundary rather than fail loudly, since `#[serde(default)]` makes a
-    /// dropped field indistinguishable from an absent one.
+    /// WHY(#4772, #4565): this payload is the
+    /// `pylon::handlers::nous_dto::ToolSummary` wire shape (no `rename_all`,
+    /// so serde emits the Rust field names verbatim) -- these tests guard
+    /// `skene::api::types::NousTool` (used by `Agent.tools` in the
+    /// dashboard fetch above) against a silent field-name drift the same
+    /// way the pre-migration local `ToolEntryResp` type was guarded.
     const TOOL_SUMMARY_BODY: &str = r#"{
         "name": "read_file",
         "enabled": true,
@@ -1069,17 +906,17 @@ mod tests {
     }"#;
 
     #[test]
-    fn tool_entry_resp_matches_server_field_names() {
-        let tool: ToolEntryResp =
+    fn nous_tool_matches_server_field_names() {
+        let tool: skene::api::types::NousTool =
             serde_json::from_str(TOOL_SUMMARY_BODY).expect("ToolSummary body must deserialize");
 
         assert_eq!(tool.name, "read_file");
         assert!(tool.enabled);
-        assert_eq!(tool.policy_state, "callable");
+        assert_eq!(tool.policy_state.as_deref(), Some("callable"));
         assert_eq!(tool.unavailable_reason, None);
-        assert_eq!(tool.source_plane, "organon_builtin");
-        assert_eq!(tool.reversibility, "reversible");
-        assert_eq!(tool.approval, "none");
+        assert_eq!(tool.source_plane.as_deref(), Some("organon_builtin"));
+        assert_eq!(tool.reversibility.as_deref(), Some("reversible"));
+        assert_eq!(tool.approval.as_deref(), Some("none"));
         assert_eq!(
             tool.groups,
             vec!["workspace".to_string(), "files".to_string()]
@@ -1091,7 +928,7 @@ mod tests {
     /// The primary use case this issue asks for: a denied tool must carry
     /// enough to explain WHY, not just that `enabled` is false.
     #[test]
-    fn tool_entry_resp_carries_a_deny_reason_when_denied() {
+    fn nous_tool_carries_a_deny_reason_when_denied() {
         let body = r#"{
             "name": "shell_exec",
             "enabled": false,
@@ -1104,9 +941,10 @@ mod tests {
             "destructive": true,
             "auto_activate": false
         }"#;
-        let tool: ToolEntryResp = serde_json::from_str(body).expect("must deserialize");
+        let tool: skene::api::types::NousTool =
+            serde_json::from_str(body).expect("must deserialize");
 
-        assert_eq!(tool.policy_state, "denied");
+        assert_eq!(tool.policy_state.as_deref(), Some("denied"));
         assert_eq!(
             tool.unavailable_reason.as_deref(),
             Some("requires operator approval group")
@@ -1116,9 +954,9 @@ mod tests {
 
     #[test]
     fn agent_capabilities_conversion_preserves_every_field() {
-        let detail: AgentDetailResp =
+        let status: skene::api::types::NousStatus =
             serde_json::from_str(NOUS_STATUS_BODY).expect("NousStatus body must deserialize");
-        let caps = AgentCapabilities::from(detail);
+        let caps = AgentCapabilities::from(status);
 
         assert_eq!(
             caps,
@@ -1135,10 +973,9 @@ mod tests {
 
     #[test]
     fn build_agent_card_maps_a_live_lifecycle_status_to_healthy_and_connected() {
-        let entry = AgentEntry {
-            id: "scholiast".to_owned(),
+        let entry = Agent {
             status: Some("active".to_owned()),
-            ..AgentEntry::default()
+            ..test_agent("scholiast")
         };
 
         let card = build_agent_card(&entry, None);
@@ -1157,10 +994,9 @@ mod tests {
     /// hardcoding is ever reintroduced.
     #[test]
     fn build_agent_card_never_renders_an_unknown_status_as_healthy() {
-        let entry = AgentEntry {
-            id: "ghost".to_owned(),
+        let entry = Agent {
             status: Some("unknown".to_owned()),
-            ..AgentEntry::default()
+            ..test_agent("ghost")
         };
 
         let card = build_agent_card(&entry, None);
@@ -1178,11 +1014,7 @@ mod tests {
     /// so `health` and `connected` derive from one normalized value.
     #[test]
     fn build_agent_card_treats_a_missing_status_the_same_as_unknown() {
-        let entry = AgentEntry {
-            id: "legacy".to_owned(),
-            status: None,
-            ..AgentEntry::default()
-        };
+        let entry = test_agent("legacy");
 
         let card = build_agent_card(&entry, None);
 
@@ -1190,7 +1022,7 @@ mod tests {
         assert!(!card.connected);
     }
 
-    /// WHY(#4990): before this fix, `OpsResponse` had no `history` field at
+    /// WHY(#4990): before this fix, `OpsToolsResponse` had no `history` field at
     /// all, so pylon's real `history` array silently vanished at
     /// deserialization (`#[serde(default)]` on a struct with no matching
     /// field is indistinguishable from an absent one). This fails if that
@@ -1220,7 +1052,8 @@ mod tests {
             "total_errors": 0,
             "history_unavailable": false
         }"#;
-        let resp: OpsResponse = serde_json::from_str(body).expect("real OpsResponse must parse");
+        let resp: OpsToolsResponse =
+            serde_json::from_str(body).expect("real OpsToolsResponse must parse");
 
         assert_eq!(
             resp.history.len(),

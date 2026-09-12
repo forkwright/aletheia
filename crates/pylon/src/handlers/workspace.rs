@@ -69,6 +69,7 @@ const WRITABLE_EXTENSIONS: &[&str] = &[
     responses(
         (status = 200, description = "Workspace directory listing", body = [FileEntry]),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 400, description = "Invalid workspace path", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -140,6 +141,7 @@ pub async fn list_files(
     responses(
         (status = 200, description = "Normalized git status entries", body = [GitStatusEntry]),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -201,6 +203,7 @@ pub async fn git_status(
     responses(
         (status = 200, description = "Raw file content", content_type = "text/plain", body = String),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 400, description = "Invalid workspace path", body = crate::error::ErrorResponse),
         (status = 404, description = "Workspace file not found", body = crate::error::ErrorResponse),
         (status = 413, description = "File too large", body = crate::error::ErrorResponse),
@@ -281,6 +284,7 @@ pub async fn file_content(
         (status = 200, description = "File written", body = WriteContentResponse),
         (status = 400, description = "Invalid workspace path or extension", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 409, description = "Concurrent modification conflict", body = crate::error::ErrorResponse),
         (status = 413, description = "Content too large", body = crate::error::ErrorResponse),
     ),
@@ -377,6 +381,7 @@ pub async fn write_file_content(
         (status = 200, description = "Open dispatched", body = OpenResponse),
         (status = 400, description = "Invalid workspace path", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Workspace file not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -458,6 +463,7 @@ pub async fn open_file(
     responses(
         (status = 200, description = "Unified diff text", content_type = "text/plain", body = String),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 400, description = "Invalid workspace path", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -517,6 +523,7 @@ pub async fn file_diff(
     responses(
         (status = 200, description = "Workspace search results", body = [SearchResult]),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 400, description = "Invalid workspace path", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

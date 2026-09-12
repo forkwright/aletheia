@@ -10,7 +10,7 @@
 //! Koilon (the TUI) manages exactly one connection at a time and addresses
 //! it with a single fixed `token_ref`; proskenion (the desktop app)
 //! addresses multiple server token references. That is the one place the
-//! two clients legitimately differ. [`TokenStore`] takes each client's
+//! two clients legitimately differ. `TokenStore` (below) takes each client's
 //! keyring service name, fallback directory name, fallback file sentinel,
 //! and test-mode predicate, and owns everything else: the error taxonomy,
 //! the keyring state machine, cipher framing/versioning, key
@@ -18,6 +18,11 @@
 //! `koilon::secret_store` and `proskenion::services::secret_store` are thin
 //! wrappers that fix those parameters for their own client.
 //!
+//! WHY: `TokenStore` above was an intra-doc link; `rustdoc::broken-intra-doc-links`
+//! under `-D warnings` reported it unresolved from this crate-inner doc
+//! comment (pre-existing, unrelated to #4565) even though the struct is
+//! defined `pub` later in this same file. De-linking to plain code-span
+//! prose is the fix.
 //! WARNING: the fallback's AES key is stored beside its ciphertext, both
 //! `0o600` inside a `0o700` directory. Confidentiality therefore rests on
 //! filesystem permissions, not on the cipher — anyone who can read the

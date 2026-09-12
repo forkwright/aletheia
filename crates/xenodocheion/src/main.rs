@@ -1,4 +1,4 @@
-//! `aletheia-memory-mcp` — stdio MCP binary.
+//! `xenodocheion` — stdio MCP binary.
 //!
 //! Opens a fjall-backed knowledge store and serves read tools plus token-gated
 //! write tools over stdio JSON-RPC. Configuration:
@@ -26,19 +26,17 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use aletheia_memory_mcp::error;
-use aletheia_memory_mcp::server::MemoryServer;
 use taxis::oikos::Oikos;
-use tracing_subscriber::EnvFilter;
+use xenodocheion::error;
+use xenodocheion::server::MemoryServer;
 
 fn main() -> ExitCode {
     // WHY: tracing must go to stderr because stdout is the MCP JSON-RPC
     // transport. A stray INFO log on stdout would corrupt the protocol.
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .init();
+    // koinon::telemetry::init_with_writer resolves RUST_LOG (falling back to
+    // "info") exactly as the hand-rolled EnvFilter/fmt() setup this replaced
+    // did — see koinon#61 for the writer-target seam this depends on.
+    koinon::telemetry::init_with_writer("info", std::io::stderr);
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -54,7 +52,7 @@ fn main() -> ExitCode {
     match runtime.block_on(run()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            tracing::error!(error = %e, "aletheia-memory-mcp exited with error");
+            tracing::error!(error = %e, "xenodocheion exited with error");
             ExitCode::FAILURE
         }
     }

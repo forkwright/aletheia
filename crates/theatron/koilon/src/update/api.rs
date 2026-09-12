@@ -567,6 +567,8 @@ mod tests {
             model: Some("claude-opus-4-6".to_string()),
             emoji: Some("\u{1F9E0}".to_string()),
             status: Some("degraded".to_string()),
+            tools: Vec::new(),
+            enabled: None,
         }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.dashboard.agents.len(), 1);

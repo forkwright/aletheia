@@ -205,7 +205,17 @@ impl OpsState {
         self.thinking.text.push_str(text);
     }
 
-    /// Start a new tool call.
+    /// Start a new tool call with no lifecycle id.
+    ///
+    /// WHY(#7203): production code only ever starts a tool call with a real
+    /// `ToolId` from a stream `ToolStart` event (`push_tool_start_with_id`,
+    /// called from `handle_stream_tool_start`) -- this id-less convenience
+    /// existed solely for the ops-pane entries the plan-approval feature's
+    /// `handle_stream_plan_step_start`/`handle_stream_plan_complete` pushed,
+    /// which were deleted as unreachable (no pylon route ever emits a plan
+    /// stream event). Kept test-only: it is still a convenient constructor
+    /// for the many `OpsState` tests below that do not care about tool ids.
+    #[cfg(test)]
     pub(crate) fn push_tool_start(&mut self, name: String, input_json: Option<String>) {
         self.push_tool_start_with_id(name, None, input_json);
     }

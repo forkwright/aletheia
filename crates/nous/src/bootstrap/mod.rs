@@ -1079,12 +1079,26 @@ impl<'a> BootstrapAssembler<'a> {
     ) -> Result<(Vec<BootstrapSection>, Vec<String>)> {
         let mut sections = Vec::new();
         let mut filtered = Vec::new();
+        // Files that are absent from every cascade tier (not merely filtered
+        // out of this turn's prompt by the task hint). Feeds the synthesized
+        // `workspace-files-absent` section appended after the loop.
+        let mut absent = Vec::new();
 
         for spec in WORKSPACE_FILES {
             // NOTE: always-tier files load unconditionally; conditional files check relevance
             if spec.load_tier == LoadTier::Conditional && !is_file_relevant(spec.filename, hint) {
                 debug!(file = spec.filename, ?hint, "skipped by task hint filter");
                 filtered.push(spec.filename.to_owned());
+                // WHY: the absent roster is a statement about disk state, not
+                // about this turn's hint — a hint-filtered file that does not
+                // exist still belongs on it, so the model never confuses
+                // "not loaded into the prompt" with "readable from disk".
+                if self
+                    .resolve_workspace_path(nous_id, spec.filename)
+                    .is_none()
+                {
+                    absent.push(spec.filename);
+                }
                 continue;
             }
 
@@ -1096,6 +1110,7 @@ impl<'a> BootstrapAssembler<'a> {
                     .build());
                 }
                 debug!(file = spec.filename, "not found in cascade, skipping");
+                absent.push(spec.filename);
                 continue;
             };
 
@@ -1235,6 +1250,40 @@ impl<'a> BootstrapAssembler<'a> {
             slot: BootstrapSlot::Context,
         });
         debug!("injected output-style section ({style_tokens} tokens)");
+
+        // WHY: an agent whose persona or memory documents reference a file
+        // that does not exist (e.g. a GOALS.md listed in a layout table but
+        // never created) will otherwise burn tool calls reading it and
+        // failing with "file not found" — repeatedly, because nothing in
+        // the prompt ever tells the model the file is absent. This roster
+        // carries the negative knowledge. A file lands on the roster only
+        // when no cascade tier has it: present-but-empty files and
+        // hint-filtered-but-existing files are correctly excluded, since a
+        // `read` on either would succeed.
+        if !absent.is_empty() {
+            let absent_content = format!(
+                "These optional workspace files do not exist anywhere in this agent's workspace \
+                 cascade: {}.\n\
+                 They are absent from disk, not merely unloaded from this prompt. Do not call \
+                 `read` on them — the call will fail with \"file not found\". A reference to one \
+                 of them in identity or memory documents describes a file that was never created; \
+                 treat it as unconfigured and continue without it.",
+                absent.join(", ")
+            );
+            let absent_tokens = self.estimator.estimate(&absent_content);
+            sections.push(BootstrapSection {
+                name: "workspace-files-absent".to_owned(),
+                // WHY Optional: under budget pressure this advisory drops
+                // first — it only ever repeats what a failed `read` would
+                // have told the model anyway.
+                priority: SectionPriority::Optional,
+                content: absent_content,
+                tokens: absent_tokens,
+                truncatable: false,
+                slot: BootstrapSlot::Context,
+            });
+            debug!(files = %absent.join(", "), "injected workspace-files-absent section");
+        }
 
         Ok((sections, filtered))
     }

@@ -74,6 +74,17 @@ allow = [
 ]
 confidence-threshold = 0.8
 
+# WHY a per-crate exception, not a blanket `allow` entry: koinon is
+# forkwright's own fleet-scaffolding crate, licensed
+# LicenseRef-PolyForm-Noncommercial-1.0.0 — that term is a deliberate choice
+# for this crate specifically, not a license class any third-party
+# dependency should get to walk in under. Scoping the allowance to `koinon`
+# by name keeps a genuinely unusual (and, for a random future dependency,
+# disqualifying) license from silently passing for anything else.
+[[licenses.exceptions]]
+name = "koinon"
+allow = ["LicenseRef-PolyForm-Noncommercial-1.0.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"

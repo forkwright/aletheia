@@ -259,9 +259,13 @@ impl crate::app::App {
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
             }
-            (KeyModifiers::CONTROL, KeyCode::Char('i')) => {
-                Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
-            }
+            // WHY(#7220): this table hardcodes Selection mode's Global
+            // bindings rather than falling through to `self.interaction.keymap`
+            // (unlike the Chat-context dispatcher in `map_key`), so it needed
+            // its own copy of the System Status rebind: F4, not the
+            // byte-colliding Ctrl+I this arm used to bind (see `keymap.rs`
+            // for why Ctrl+I can never be distinguished from plain Tab).
+            (_, KeyCode::F(4)) => Some(Msg::OpenOverlay(OverlayKind::SystemStatus)),
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
             (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
@@ -534,6 +538,17 @@ impl crate::app::App {
             };
         }
 
+        // WHY(#7197): search results (rendered in place of the fact table,
+        // `view::memory::render_search_results`) have no selection cursor of
+        // their own -- Esc must clear them back to the normal fact list
+        // instead of falling through to `Msg::MemoryClose`, which would pop
+        // the whole inspector. Placed after the FactDetail/EntityDetail
+        // checks above so drilling into a fact or entity and pressing Esc
+        // still pops back normally, even if stale search results linger.
+        if !self.layout.memory.search.search_results.is_empty() && key.code == KeyCode::Esc {
+            return Some(Msg::MemorySearchClose);
+        }
+
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) => Some(Msg::MemoryClose),
             (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
@@ -551,11 +566,10 @@ impl crate::app::App {
             (_, KeyCode::Enter) => Some(Msg::MemoryDrillIn),
             (KeyModifiers::NONE, KeyCode::Char('s')) => Some(Msg::MemorySortCycle),
             (KeyModifiers::NONE, KeyCode::Char('f')) => Some(Msg::MemoryFilterOpen),
-            // WHY(#5815): `/` intentionally has no binding here. Semantic recall
-            // has no pylon endpoint, so opening the search overlay could only
-            // ever end in a failure toast. The overlay's state, messages, and
-            // handlers are retained for wiring once the endpoint exists; rebind
-            // `/` to `Msg::MemorySearchOpen` at that point.
+            // WHY(#7197): wired to skene's knowledge_search (GET
+            // /api/v1/knowledge/search) once it existed -- the endpoint was
+            // never missing, only this client method was.
+            (KeyModifiers::NONE, KeyCode::Char('/')) => Some(Msg::MemorySearchOpen),
             (KeyModifiers::NONE, KeyCode::Char('d')) => Some(Msg::MemoryForget),
             (KeyModifiers::NONE, KeyCode::Char('r')) => Some(Msg::MemoryRestore),
             (KeyModifiers::NONE, KeyCode::Char('e')) => Some(Msg::MemoryEditConfidence),
@@ -604,7 +618,7 @@ impl crate::app::App {
         }
 
         // WHY: `?` toggles help overlay: pressing it again closes it.
-        if matches!(&self.layout.overlay, Some(Overlay::Help))
+        if matches!(&self.layout.overlay, Some(Overlay::Help { .. }))
             && matches!(
                 (key.modifiers, key.code),
                 (KeyModifiers::NONE, KeyCode::Char('?'))
@@ -617,6 +631,11 @@ impl crate::app::App {
             (_, KeyCode::Esc) => Some(Msg::CloseOverlay),
             (_, KeyCode::Up) => Some(Msg::OverlayUp),
             (_, KeyCode::Down) => Some(Msg::OverlayDown),
+            // WHY(#7221): PageUp/PageDown only move a scroll-offset-carrying
+            // overlay (Help, Notification History) -- `handle_overlay_page_up/down`
+            // no-op harmlessly for cursor-based overlays (AgentPicker, etc.).
+            (_, KeyCode::PageUp) => Some(Msg::OverlayPageUp),
+            (_, KeyCode::PageDown) => Some(Msg::OverlayPageDown),
             (_, KeyCode::Enter) => Some(Msg::OverlaySelect),
 
             (_, KeyCode::Char('j')) if self.is_context_actions_overlay() => Some(Msg::OverlayDown),
@@ -639,24 +658,12 @@ impl crate::app::App {
                 Some(Msg::ToolApprovalAlwaysAllow)
             }
 
-            (_, KeyCode::Char(' ')) if self.is_plan_approval_overlay() => Some(Msg::OverlaySelect),
-            (_, KeyCode::Char('a' | 'A')) if self.is_plan_approval_overlay() => {
-                Some(Msg::OverlaySelect)
-            }
-            (_, KeyCode::Char('c' | 'C')) if self.is_plan_approval_overlay() => {
-                Some(Msg::CloseOverlay)
-            }
-
             _ => None,
         }
     }
 
     pub(crate) fn is_tool_approval_overlay(&self) -> bool {
         matches!(&self.layout.overlay, Some(Overlay::ToolApproval(_)))
-    }
-
-    fn is_plan_approval_overlay(&self) -> bool {
-        matches!(&self.layout.overlay, Some(Overlay::PlanApproval(_)))
     }
 
     #[expect(
