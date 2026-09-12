@@ -17,13 +17,13 @@ pub use behavior::{
     AcademicSourceConfig, AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig,
     BookkeepingProviderKind, CapacityConfig, CompactionStrategyKind, CronTaskConfig,
     DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
-    DispatchSpecConfig, ExtractionConfig, InboundMessagePolicy, JwtSettings, KnowledgeConfig,
-    LOCAL_ADMISSION_MAX_RUNNING, LOCAL_ADMISSION_MAX_WAITING, LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS,
-    LOCAL_BUDGET_CONTEXT_TOKENS, LOCAL_BUDGET_MAX_OUTPUT_TOKENS, LlmProviderConfig,
-    MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy, PromptCacheMode,
-    ProviderAdmissionConfig, ProviderAdmissionMode, ProviderBehaviorConfig, ProviderBudgetsConfig,
-    ProviderKind, RawPayloadPolicy, RecallSourcesConfig, RetrySettings, ServerToolVersions,
-    ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    DispatchSpecConfig, ExtractionConfig, GroupParticipantPolicy, InboundMessagePolicy,
+    JwtSettings, KnowledgeConfig, LOCAL_ADMISSION_MAX_RUNNING, LOCAL_ADMISSION_MAX_WAITING,
+    LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS, LOCAL_BUDGET_CONTEXT_TOKENS, LOCAL_BUDGET_MAX_OUTPUT_TOKENS,
+    LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy,
+    PromptCacheMode, ProviderAdmissionConfig, ProviderAdmissionMode, ProviderBehaviorConfig,
+    ProviderBudgetsConfig, ProviderKind, RawPayloadPolicy, RecallSourcesConfig, RetrySettings,
+    ServerToolVersions, ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
