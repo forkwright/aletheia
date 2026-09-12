@@ -8,6 +8,8 @@
 
 use std::sync::Arc;
 
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
+
 use super::super::*;
 
 #[test]
@@ -89,13 +91,13 @@ fn defaults_are_sensible() {
         "csrf disable acknowledgement should be false by default"
     );
     assert_eq!(
-        config.gateway.csrf.header_name, "x-requested-with",
-        "default csrf header name should be x-requested-with"
+        config.gateway.csrf.header_name, CSRF_HEADER_NAME,
+        "default csrf header name should match koina's compiled default"
     );
     assert_eq!(
         config.gateway.csrf.header_value.expose_secret(),
-        "aletheia",
-        "default csrf header value should be aletheia"
+        DEFAULT_CSRF_HEADER_VALUE,
+        "default csrf header value should match koina's compiled default"
     );
     assert!(
         !config.gateway.rate_limit.enabled,

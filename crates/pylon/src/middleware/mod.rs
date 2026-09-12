@@ -25,9 +25,9 @@ pub struct CsrfState {
     /// When disabled, mutating requests still receive same-origin enforcement
     /// so routes are not left fully unprotected in browser-facing deployments.
     pub enabled: bool,
-    /// HTTP header name to check (e.g. `"x-requested-with"`).
+    /// HTTP header name to check (defaults to [`koina::http::CSRF_HEADER_NAME`]).
     pub header_name: String,
-    /// Expected header value (e.g. `"aletheia"`).
+    /// Expected header value (defaults to [`koina::http::DEFAULT_CSRF_HEADER_VALUE`]).
     pub header_value: SecretString,
 }
 

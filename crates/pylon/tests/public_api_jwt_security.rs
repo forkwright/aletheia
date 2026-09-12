@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use koina::http::API_V1;
+use koina::http::{API_V1, CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use koina::secret::SecretString;
 use pylon::router::build_router;
 use pylon::security::{CorsConfig, CsrfConfig, RateLimitConfig, SecurityConfig, TlsConfig};
@@ -151,7 +151,7 @@ fn security_config_default_enables_csrf() {
         !config.csrf.disable_acknowledged,
         "CSRF disable acknowledgement defaults to false"
     );
-    assert_eq!(config.csrf.header_name, "x-requested-with");
+    assert_eq!(config.csrf.header_name, CSRF_HEADER_NAME);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn csrf_config_default_uses_documented_bootstrap_header_value() {
     let csrf = CsrfConfig::default();
     assert_eq!(
         csrf.header_value.expose_secret(),
-        "aletheia",
+        DEFAULT_CSRF_HEADER_VALUE,
         "default CSRF header value must match the documented first-party client header"
     );
 }
