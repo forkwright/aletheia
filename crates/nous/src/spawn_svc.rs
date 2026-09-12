@@ -106,6 +106,32 @@ fn compose_soul_content(
     )
 }
 
+/// Resolve a spawned actor's model together with a label naming which
+/// precedence tier supplied it.
+///
+/// WHY(wave 3.3): precedence is `request.model -> contract.model ->
+/// template.model -> SONNET_MODEL`. `build_spawn_config` and the
+/// `spawn_sub_agent` span's `spawn.model_source` field (`spawn_and_run`)
+/// both call this single definition so the logged source can never drift
+/// from the model actually selected — a pure function so the label is
+/// testable without the full async spawn lifecycle.
+fn resolve_model(
+    request: &SpawnRequest,
+    contract: Option<&crate::roles::contract::RoleContract>,
+    template: Option<&crate::roles::RoleTemplate>,
+) -> (String, &'static str) {
+    if let Some(model) = request.model.clone() {
+        return (model, "request");
+    }
+    if let Some(model) = contract.and_then(|c| c.model.clone()) {
+        return (model, "contract");
+    }
+    if let Some(model) = template.map(|t| t.model.to_owned()) {
+        return (model, "template");
+    }
+    (SONNET_MODEL.to_owned(), "fallback")
+}
+
 /// Concrete [`SpawnService`] that bridges to `actor::spawn`.
 pub struct SpawnServiceImpl {
     providers: Arc<ProviderRegistry>,
@@ -243,12 +269,6 @@ impl SpawnServiceImpl {
     /// WHY(#5555): keep config construction deterministic and testable so the
     /// spawned `allowed_roots` can be asserted independently of the actor
     /// lifecycle.
-    // NOTE: sequential field-by-field config derivation (model, tool policy,
-    // spawn policy, workspace, generation limits) -- already extracted the
-    // largest cohesive slice into `ResolvedGeneration`; what remains is each
-    // `NousConfig`/`NousLimits` field's own independent derivation rule and
-    // splitting further would fragment one config into scattered pieces.
-    #[expect(clippy::too_many_lines, reason = "sequential config-field derivation")]
     fn build_spawn_config(
         &self,
         request: &SpawnRequest,
@@ -264,11 +284,16 @@ impl SpawnServiceImpl {
         let template = role.map(Role::template);
         let contract = role.and_then(|r| self.resolve_contract(parent_nous_id, r));
 
-        let model = request.model.clone().unwrap_or_else(|| {
-            template
-                .as_ref()
-                .map_or_else(|| SONNET_MODEL.to_owned(), |t| t.model.to_owned())
-        });
+        // WHY(wave 3.3): `resolve_model` is the one definition of this
+        // precedence (`request.model -> contract.model -> template.model ->
+        // SONNET_MODEL`); `spawn_and_run` calls the same function for the
+        // `spawn_sub_agent` span's `spawn.model_source` field, so the two
+        // can never disagree. An unrecognized role's `contract` is `None`
+        // (ADR-005's conservative fallback resolves `contract` from a
+        // known `Role` only), so its roles.toml entries, if any, are never
+        // consulted here. Byte-identical to the pre-3.3 chain when no
+        // contract sets `model`.
+        let (model, _model_source) = resolve_model(request, contract.as_ref(), template.as_ref());
 
         // WHY(#3958, ADR-005): spawned actors with neither an explicit
         // `allowed_tools` nor a recognized role template MUST fall back to a
@@ -431,6 +456,20 @@ impl SpawnService for SpawnServiceImpl {
         let template = role.map(Role::template);
         let contract = role.and_then(|r| self.resolve_contract(&parent_nous_id, r));
 
+        // WHY(wave 3.3): `resolve_model` (shared with `build_spawn_config`)
+        // labels which source actually won, so an operator pinning a model
+        // in `roles.toml` can see whether it applied versus a template or
+        // `SONNET_MODEL` fallback -- the motivating failure (a local-
+        // provider instance silently reaching for a compiled Anthropic
+        // model id) is exactly the case this must make visible. Calling it
+        // again here (rather than threading the label out of
+        // `build_spawn_config`) is not a re-parse: `role`/`template`/
+        // `contract` are already re-resolved on this line for
+        // `compose_soul_content` below (pre-dating this field), so
+        // `resolve_model` runs a second time only over values already in
+        // hand -- a cheap pure match, not an oikos/roles.toml re-read.
+        let (_, model_source) = resolve_model(&request, contract.as_ref(), template.as_ref());
+
         // WHY: ephemeral sub-agents do not capture training data or propose
         // tuning changes — their turns are internal delegation, not
         // user-facing conversation, and should not shift global parameters.
@@ -463,6 +502,8 @@ impl SpawnService for SpawnServiceImpl {
             "spawn_sub_agent",
             spawn.id = %spawn_id,
             spawn.role = %request.role,
+            spawn.model = %config.generation.model,
+            spawn.model_source = %model_source,
         );
 
         let soul_content =
@@ -936,6 +977,216 @@ domains = ["medical"]
         assert_eq!(config.domains, vec!["medical".to_owned()]);
     }
 
+    // WHY(wave 3.3): `RoleContract.model` is the operator-configurable
+    // per-role model pin — this proves the override actually reaches
+    // `NousConfig.generation.model` ahead of the compiled template default.
+    #[test]
+    fn spawn_config_model_follows_roles_toml_override() {
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[reviewer]
+version = 2
+model = "test-role-model-override"
+"#,
+        )
+        .expect("write roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "reviewer".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        assert_eq!(
+            config.generation.model, "test-role-model-override",
+            "roles.toml model override must reach the spawned NousConfig"
+        );
+        assert_ne!(
+            config.generation.model,
+            Role::Reviewer.template().model,
+            "override must differ from the template default for this test to be meaningful"
+        );
+    }
+
+    // WHY(wave 3.3): an explicit `request.model` is a per-call override and
+    // must still win over a roles.toml contract pin -- the resolution chain
+    // is `request.model -> contract.model -> template.model -> SONNET_MODEL`,
+    // not the reverse.
+    #[test]
+    fn spawn_config_request_model_wins_over_roles_toml_override() {
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[reviewer]
+version = 2
+model = "test-role-model-override"
+"#,
+        )
+        .expect("write roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "reviewer".to_owned(),
+                task: "Test task".to_owned(),
+                model: Some("claude-haiku-explicit".to_owned()),
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        assert_eq!(
+            config.generation.model, "claude-haiku-explicit",
+            "an explicit request.model must win over a roles.toml contract override"
+        );
+    }
+
+    // WHY(wave 3.3, ADR-005): a model override configured under a role name
+    // with no Rust `Role` variant must never apply -- `resolve_contract` is
+    // only reached for a spawn request whose role string resolves to a
+    // known `Role`, so an unrecognized role's spawn must fall through to
+    // `SONNET_MODEL` exactly as it did before this field existed. Config
+    // parsing fails closed on unknown roles: the override is parsed and
+    // stored in the registry (custom role names are otherwise allowed, see
+    // `contract.rs::from_toml_allows_custom_roles`), but it can never be
+    // read back through an unrecognized spawn role.
+    #[test]
+    fn spawn_config_model_override_ignored_for_unknown_role() {
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[analyst]
+version = 1
+model = "test-role-model-override"
+"#,
+        )
+        .expect("write roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "analyst".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        assert_eq!(
+            config.generation.model, SONNET_MODEL,
+            "an unrecognized role must fall back to SONNET_MODEL, never a roles.toml override"
+        );
+    }
+
+    // WHY(wave 3.3): `resolve_model` is the single definition backing both
+    // `build_spawn_config`'s resolved model and the `spawn_sub_agent`
+    // span's `spawn.model_source` field -- these prove the label matches
+    // the precedence `request.model -> contract.model -> template.model ->
+    // SONNET_MODEL` directly, without going through the full async spawn
+    // lifecycle.
+    #[test]
+    fn resolve_model_source_is_request_when_request_model_set() {
+        let request = SpawnRequest {
+            role: "reviewer".to_owned(),
+            task: "t".to_owned(),
+            model: Some("explicit-model".to_owned()),
+            allowed_tools: None,
+            timeout_secs: 30,
+        };
+        let mut contract = crate::roles::contract::ContractRegistry::defaults()
+            .get("reviewer")
+            .expect("reviewer has a default contract")
+            .clone();
+        contract.model = Some("contract-model".to_owned());
+        let template = Role::Reviewer.template();
+
+        let (model, source) = resolve_model(&request, Some(&contract), Some(&template));
+        assert_eq!(model, "explicit-model");
+        assert_eq!(source, "request", "an explicit request.model must win");
+    }
+
+    #[test]
+    fn resolve_model_source_is_contract_when_contract_model_set() {
+        let request = SpawnRequest {
+            role: "reviewer".to_owned(),
+            task: "t".to_owned(),
+            model: None,
+            allowed_tools: None,
+            timeout_secs: 30,
+        };
+        let mut contract = crate::roles::contract::ContractRegistry::defaults()
+            .get("reviewer")
+            .expect("reviewer has a default contract")
+            .clone();
+        contract.model = Some("contract-model".to_owned());
+        let template = Role::Reviewer.template();
+
+        let (model, source) = resolve_model(&request, Some(&contract), Some(&template));
+        assert_eq!(model, "contract-model");
+        assert_eq!(
+            source, "contract",
+            "a roles.toml contract override must win over the template default"
+        );
+    }
+
+    #[test]
+    fn resolve_model_source_is_template_when_neither_request_nor_contract_set_model() {
+        let request = SpawnRequest {
+            role: "reviewer".to_owned(),
+            task: "t".to_owned(),
+            model: None,
+            allowed_tools: None,
+            timeout_secs: 30,
+        };
+        let contract = crate::roles::contract::ContractRegistry::defaults()
+            .get("reviewer")
+            .expect("reviewer has a default contract")
+            .clone();
+        assert_eq!(contract.model, None, "fixture must not itself set model");
+        let template = Role::Reviewer.template();
+
+        let (model, source) = resolve_model(&request, Some(&contract), Some(&template));
+        assert_eq!(model, template.model);
+        assert_eq!(
+            source, "template",
+            "absent request and contract overrides, the compiled template model must win"
+        );
+    }
+
+    #[test]
+    fn resolve_model_source_is_fallback_when_no_template_or_contract() {
+        let request = SpawnRequest {
+            role: "unknown-role".to_owned(),
+            task: "t".to_owned(),
+            model: None,
+            allowed_tools: None,
+            timeout_secs: 30,
+        };
+
+        let (model, source) = resolve_model(&request, None, None);
+        assert_eq!(model, SONNET_MODEL);
+        assert_eq!(
+            source, "fallback",
+            "an unrecognized role with neither contract nor template must fall back"
+        );
+    }
+
     // WHY: wiring `ContractRegistry` into production must not change
     // default spawned-agent behavior when the operator has not touched
     // `roles.toml` — the exact tempdir fixture every other test in this
@@ -966,6 +1217,12 @@ domains = ["medical"]
         assert_eq!(&*config.episteme_cohort, "shared");
         assert!(!config.private);
         assert!(config.domains.is_empty());
+        assert_eq!(
+            config.generation.model,
+            Role::Coder.template().model,
+            "with no roles.toml, an absent contract.model must fall back to the role's own \
+             primary (template) model, not silently pick a different one"
+        );
     }
 
     // WHY(#4775 "missing or invalid role contracts fail visibly"): a
@@ -998,6 +1255,47 @@ domains = ["medical"]
             config.tool_groups,
             Role::Coder.template().tool_groups,
             "malformed roles.toml must fall back to hardcoded defaults, not fail the spawn"
+        );
+        assert_eq!(
+            config.generation.model,
+            Role::Coder.template().model,
+            "malformed roles.toml must not leak a partially-parsed model override"
+        );
+    }
+
+    // WHY(wave 3.3, #4775): the whole-file-garbage case above never touches
+    // `model` at all, so it cannot prove the degrade-to-defaults path holds
+    // for a malformed `model` field specifically. A non-string `model`
+    // (`from_toml_rejects_non_string_model` proves `RoleContractToml`
+    // itself rejects this at parse time) must still surface here as the
+    // same warn-and-degrade fallback, not a spawn-time panic or a silently
+    // coerced value.
+    #[test]
+    fn spawn_config_malformed_model_field_falls_back_to_template_default() {
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            "[coder]\nversion = 1\nmodel = 6\n",
+        )
+        .expect("write roles.toml with non-string model");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        assert_eq!(
+            config.generation.model,
+            Role::Coder.template().model,
+            "a non-string model field must degrade to the template default, not panic or coerce"
         );
     }
 
