@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use crate::error;
 
 use super::{
-    BackupBuild, EntryManifestMetadata, OptionalStoreRecord, STATUS_OK, StoreEntry, copy_path,
-    copy_path_excluding, ensure_relative_manifest_path, hash_path,
+    BackupBuild, EntryManifestMetadata, OptionalStoreRecord, STATUS_EXCLUDED, STATUS_OK,
+    StoreEntry, copy_path, copy_path_excluding, ensure_relative_manifest_path, hash_path,
+    is_excluded_backup_symlink_name,
 };
 
 impl BackupBuild {
@@ -19,6 +20,7 @@ impl BackupBuild {
             total_bytes: 0,
             total_files: 0,
             credential_keys_excluded: 0,
+            planning_symlinks_excluded: 0,
             snapshot_time: jiff::Zoned::now().to_string(),
             first_entry_copied_at: None,
             last_entry_copied_at: None,
@@ -54,12 +56,13 @@ impl BackupBuild {
         backup_path: PathBuf,
         optional: bool,
     ) -> error::Result<()> {
-        let (bytes, files) = copy_path(&src, dst)?;
+        let (bytes, files, planning_excluded) = copy_path(&src, dst)?;
         let sha256 = Some(hash_path(dst)?);
         let file_count = u64::from(files);
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
+        self.planning_symlinks_excluded += planning_excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
@@ -99,13 +102,15 @@ impl BackupBuild {
         optional: bool,
         exclude: &F,
     ) -> error::Result<()> {
-        let (bytes, files, excluded) = copy_path_excluding(&src, dst, exclude)?;
+        let (bytes, files, excluded, planning_excluded) =
+            copy_path_excluding(&src, dst, exclude)?;
         let sha256 = Some(hash_path(dst)?);
         let file_count = u64::from(files);
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
         self.credential_keys_excluded += excluded;
+        self.planning_symlinks_excluded += planning_excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
@@ -143,12 +148,39 @@ impl BackupBuild {
         agent_id: String,
         workspace_source_class: String,
     ) -> error::Result<()> {
-        let (bytes, files) = copy_path(&src, dst)?;
+        // WHY(#7246): an operator-configured workspace path is the one
+        // caller here where `src` itself (not merely something nested
+        // under it) could be named `.planning` -- guard the same as a
+        // nested one so it is excluded and recorded, not routed into
+        // `copy_path` (which would report an empty copy) or `hash_path`
+        // (which would error: nothing was ever written to `dst`).
+        if is_excluded_backup_symlink_name(&src) {
+            self.planning_symlinks_excluded += 1;
+            self.record_optional_entry(OptionalStoreRecord {
+                name: String::from(name),
+                source_path: src,
+                backup_path,
+                restore_path: None,
+                status: String::from(STATUS_EXCLUDED),
+                agent_id: Some(agent_id),
+                workspace_source_class: Some(workspace_source_class),
+                exclusion_reason: Some(String::from(
+                    "configured workspace is a `.planning` symlink, excluded from backups and \
+                     never dereferenced",
+                )),
+                byte_count: 0,
+                file_count: 0,
+                sha256: None,
+            });
+            return Ok(());
+        }
+        let (bytes, files, planning_excluded) = copy_path(&src, dst)?;
         let sha256 = Some(hash_path(dst)?);
         let file_count = u64::from(files);
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
+        self.planning_symlinks_excluded += planning_excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),

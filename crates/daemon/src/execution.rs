@@ -984,16 +984,30 @@ async fn execute_lesson_extraction(
 
 /// Resolve the after-action log directory from `ALETHEIA_ROOT`.
 ///
-/// Mirrors `default_prosoche_audit_dir`'s resolution below, and
-/// `energeia::pipeline::after_action`'s `oikos.logs().join("after-actions")`
-/// path — without a direct daemon -> energeia crate dependency (episteme
-/// sits below energeia in the crate layering; the JSONL file on disk is the
-/// contract between the two, not a shared Rust type).
+/// WHY(#7246): a thin wrapper over [`after_action_log_dir_with`] that
+/// supplies [`RealSystem`], so the real daemon path and the test path
+/// (which injects a fake [`Environment`]) run the identical resolution
+/// logic. Mirrors `default_prosoche_audit_dir`'s `ALETHEIA_ROOT` resolution
+/// below.
 fn after_action_log_dir() -> PathBuf {
-    let root = RealSystem
-        .var("ALETHEIA_ROOT")
-        .map_or_else(|| PathBuf::from("instance"), PathBuf::from);
-    root.join("logs").join("after-actions")
+    after_action_log_dir_with(&RealSystem)
+}
+
+/// Resolve the after-action log directory from the given [`Environment`].
+///
+/// WHY(#7246): delegates to `taxis::oikos::Oikos::after_action_log_dir`, the
+/// one path authority every writer and reader of this directory now shares
+/// — daemon already depends on `taxis` (unlike energeia, which this
+/// function's old doc comment carved out to avoid a daemon -> energeia
+/// crate dependency; that reasoning never applied to taxis, the shared
+/// path-resolution crate both energeia and this file already sit on top
+/// of). Parameterized over `Environment` (rather than calling
+/// `Oikos::discover()` directly) so `after_action_log_dir_is_one_path_authority`
+/// below can exercise this exact call site — the one the field incident was
+/// in — against a fake root instead of only asserting `taxis::oikos::Oikos`
+/// agrees with itself.
+fn after_action_log_dir_with(env: &impl Environment) -> PathBuf {
+    taxis::oikos::Oikos::discover_with(env).after_action_log_dir()
 }
 
 /// Extract operational metrics into knowledge graph facts.

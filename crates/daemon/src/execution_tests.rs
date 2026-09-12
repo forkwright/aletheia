@@ -839,3 +839,29 @@ async fn a_failed_backup_still_republishes_persisted_state() {
         "the attempt is still recorded as an error"
     );
 }
+
+/// WHY(#7246): the field incident this regresses was a
+/// `routing-store-refresh` reader (this file's `after_action_log_dir`,
+/// consumed by `execute_lesson_extraction` above) whose after-action log
+/// path could drift from the writer's (`aletheia::runtime::RuntimeBuilder`,
+/// which now also calls `Oikos::after_action_log_dir`) because each
+/// independently spelled out `logs().join("after-actions")`. This test
+/// exercises the actual call site fixed for that incident --
+/// `after_action_log_dir_with`, the function `after_action_log_dir` itself
+/// delegates to -- against an injected root, and would fail the moment
+/// someone respells the literal directly in this file again instead of
+/// deriving it from `taxis::oikos::Oikos`.
+#[test]
+fn after_action_log_dir_is_one_path_authority() {
+    use koina::system::TestSystem;
+
+    for root in ["/srv/instance", "/tmp/aletheia-nonexistent-root-xyz-12345"] {
+        let env = TestSystem::new().with_env("ALETHEIA_ROOT", root);
+        assert_eq!(
+            after_action_log_dir_with(&env),
+            taxis::oikos::Oikos::discover_with(&env).after_action_log_dir(),
+            "daemon's after_action_log_dir_with must agree with taxis::oikos::Oikos's \
+             after_action_log_dir for root {root}"
+        );
+    }
+}

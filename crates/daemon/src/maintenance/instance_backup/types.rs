@@ -307,6 +307,9 @@ pub(crate) struct BackupBuild {
     /// Count of credential decryption-key sidecars excluded from this
     /// backup set. See [`BackupManifest::credential_keys_excluded`]. (#5353)
     pub(crate) credential_keys_excluded: u32,
+    /// Count of `.planning` symlinks excluded from this backup set, never
+    /// dereferenced. See [`super::EXCLUDED_BACKUP_SYMLINK_NAME`]. (#7246)
+    pub(crate) planning_symlinks_excluded: u32,
     pub(crate) snapshot_time: String,
     /// Monotonic instant sampled around the first entry actually copied.
     ///
