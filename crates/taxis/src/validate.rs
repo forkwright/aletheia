@@ -1049,9 +1049,12 @@ const STAGE_BUDGET_FIELDS: &[&str] = &[
 fn validate_stage_budget(value: &Value, errors: &mut Vec<String>) {
     // WHY(aletheia#7296): `0` means "no limit for that stage" (see
     // `StageBudgetConfig`'s field docs), so only a positive value can be out
-    // of range. Cap matches the runaway-prevention ceiling used elsewhere
-    // (`timeouts.approvalTimeoutSecs`'s 3600s max).
-    const MAX_STAGE_SECS: u64 = 3600;
+    // of range. Cap is defined once as `registry::STAGE_BUDGET_MAX_SECS`
+    // (matching the registered `stageBudget.*` `ParameterSpec` bounds and
+    // the runaway-prevention ceiling used elsewhere,
+    // `timeouts.approvalTimeoutSecs`'s 3600s max) so this check and that
+    // metadata cannot drift apart.
+    const MAX_STAGE_SECS: u64 = crate::registry::STAGE_BUDGET_MAX_SECS;
 
     for field in STAGE_BUDGET_FIELDS {
         if let Some(val) = value.get(*field).and_then(Value::as_u64)

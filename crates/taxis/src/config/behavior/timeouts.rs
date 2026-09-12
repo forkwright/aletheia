@@ -108,6 +108,10 @@ impl Default for RetrySettings {
 /// no limit for that stage. Defaults match the compile-time constants
 /// `nous::config::StageBudget` previously hardcoded, so omitting
 /// `[stageBudget]` from `aletheia.toml` produces identical behaviour.
+///
+/// NOTE: this section does not yet govern ephemeral sub-agent turns; see
+/// the `stage_budget` field doc on the config struct that embeds this one
+/// (aletheia#7306).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]

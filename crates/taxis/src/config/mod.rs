@@ -238,6 +238,11 @@ pub struct AletheiaConfig {
     /// `nous::config::StageBudget`; deployments with slower providers or
     /// larger knowledge stores need to raise them (or lower them to fail
     /// fast) without a rebuild. Defaults match the prior hardcoded values.
+    ///
+    /// NOTE: this section does not yet govern ephemeral sub-agent turns —
+    /// `SpawnServiceImpl` (`nous::spawn_svc`) still hardcodes
+    /// `StageBudget::default()` for spawned sub-agents rather than
+    /// cascading this config (aletheia#7306).
     pub stage_budget: StageBudgetConfig,
     /// Deployment-tunable capacity limits for tool output and context windows.
     ///

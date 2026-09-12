@@ -107,6 +107,20 @@ pub struct ParameterSpec {
     pub direction_hint: TuningDirection,
 }
 
+/// Ceiling for every `stageBudget.*` field, in seconds (aletheia#7296).
+///
+/// `validate::validate_stage_budget` uses this exact value for its
+/// per-field range check, so the ceiling is defined once and the two
+/// checks (registry metadata, config validation) cannot drift apart.
+pub const STAGE_BUDGET_MAX_SECS: u64 = 3600;
+
+/// [`STAGE_BUDGET_MAX_SECS`] as the `f64` unit [`ParameterSpec::bounds`]
+/// uses. Kept as its own named constant, rather than an `as` cast at each
+/// of the eight `stageBudget.*` specs below, because clippy's numeric-cast
+/// lints run `-D warnings` in CI; `registry_tests` asserts the two values
+/// agree, so update both together.
+pub const STAGE_BUDGET_MAX_SECS_F64: f64 = 3600.0;
+
 /// Return every registered parameter spec.
 #[must_use]
 pub fn all_specs() -> &'static [ParameterSpec] {
@@ -993,6 +1007,123 @@ fn build_registry() -> Vec<ParameterSpec> {
             affects: "llm_reliability",
             outcome_signal: "retry_success_rate",
             evidence_required: "Backoff ceiling vs. retry outcome analysis",
+            direction_hint: TuningDirection::Contextual,
+        },
+        // ── Stage budget (aletheia#7296) ──
+        //
+        // WHY registered: `validate::validate_stage_budget` bounds each of
+        // these fields at `STAGE_BUDGET_MAX_SECS` (below) individually, and
+        // cross-checks each against `stageBudget.totalSecs`; without a
+        // `ParameterSpec`, that invariant was invisible to registry
+        // consumers (restart classification, `aletheia config` tooling,
+        // tuning metadata) even though its sibling `timeouts.approvalTimeoutSecs`
+        // was registered.
+        ParameterSpec {
+            key: "stageBudget.contextSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(10),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "Context-assembly pipeline stage limit, in seconds; 0 means unlimited",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "context_stage_timeout_rate",
+            evidence_required: "Context-assembly stage duration distribution vs. timeout rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.recallSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(15),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "Semantic recall pipeline stage limit, in seconds; also bounds the \
+                          query-rewrite and side-query-ranking LLM calls the recall stage \
+                          makes (aletheia#7295); 0 means unlimited",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "recall_stage_timeout_rate",
+            evidence_required: "Recall stage duration distribution vs. timeout/fallback rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.historySecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(5),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "History-retrieval pipeline stage limit, in seconds; 0 means unlimited",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "history_stage_timeout_rate",
+            evidence_required: "History-retrieval stage duration distribution vs. timeout rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.guardSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(2),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "Guard-evaluation pipeline stage limit, in seconds; 0 means unlimited",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "guard_stage_timeout_rate",
+            evidence_required: "Guard-evaluation stage duration distribution vs. timeout rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.executeSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(0),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "LLM execution pipeline stage limit, in seconds; 0 means unlimited \
+                          (the provider controls its own timeout)",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "execute_stage_timeout_rate",
+            evidence_required: "Execute stage duration distribution vs. timeout rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.finalizeSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(10),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "Finalization pipeline stage limit, in seconds; 0 means unlimited",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "finalize_stage_timeout_rate",
+            evidence_required: "Finalization stage duration distribution vs. timeout rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.reflectionSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(30),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "Reflection pipeline stage limit, in seconds; 0 means unlimited",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "reflection_stage_timeout_rate",
+            evidence_required: "Reflection stage duration distribution vs. timeout rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "stageBudget.totalSecs",
+            section: "stageBudget",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(300),
+            bounds: Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            hot_reloadable: true,
+            description: "Hard cap on total pipeline wall-clock time, in seconds; 0 means \
+                          unlimited; every other stageBudget field must fit within this total",
+            affects: "pipeline_stage_timeout",
+            outcome_signal: "turn_budget_exceeded_rate",
+            evidence_required: "Total turn duration distribution vs. TurnBudgetExceeded rate",
             direction_hint: TuningDirection::Contextual,
         },
         // ── Safety ──
