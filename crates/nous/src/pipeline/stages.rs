@@ -4,6 +4,7 @@
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest as _, Sha256};
@@ -78,12 +79,60 @@ fn recall_enhancement_call_budget(recall_stage_secs: u32) -> Duration {
     Duration::from_secs(per_call.max(RECALL_ENHANCEMENT_MIN_CALL_SECS))
 }
 
+/// Outcome of a failed recall-enhancement provider round trip.
+///
+/// Distinguishes "the call exceeded its own [`ProviderRecallBridge::call_budget`]"
+/// — recoverable, callers can fall back to an unenhanced path — from any
+/// other provider failure, while still rendering into the same message text
+/// either way (aletheia#7295). Kept as a typed enum rather than a bare
+/// `String` so `run_recall_stage` can act on *which* failure this was
+/// without re-parsing formatted error text.
+enum CompletionCallError {
+    /// The provider call did not return within `call_budget`.
+    TimedOut {
+        component: String,
+        model: String,
+        secs: u64,
+    },
+    /// The provider call returned, but failed, or returned no usable text.
+    Failed(String),
+}
+
+impl CompletionCallError {
+    /// Whether this failure was specifically a `call_budget` timeout, as
+    /// opposed to any other provider or response failure.
+    fn is_timeout(&self) -> bool {
+        matches!(self, Self::TimedOut { .. })
+    }
+}
+
+impl std::fmt::Display for CompletionCallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TimedOut {
+                component,
+                model,
+                secs,
+            } => write!(
+                f,
+                "recall {component} call to model '{model}' exceeded its {secs}s budget"
+            ),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
 struct ProviderRecallBridge<'a> {
     providers: &'a ProviderRegistry,
     model: &'a str,
     /// Per-call budget enforced around the provider round trip. See
     /// [`recall_enhancement_call_budget`].
     call_budget: Duration,
+    /// Set when the query-rewrite completion call specifically times out
+    /// (as opposed to any other recall-enhancement failure), so
+    /// `run_recall_stage` can fall back to an unenhanced, raw-query search
+    /// instead of failing the whole recall stage (aletheia#7295).
+    rewrite_timed_out: &'a AtomicBool,
 }
 
 impl ProviderRecallBridge<'_> {
@@ -92,11 +141,10 @@ impl ProviderRecallBridge<'_> {
         component: &str,
         system: &str,
         user_message: &str,
-    ) -> Result<String, String> {
-        let provider = self
-            .providers
-            .find_provider(self.model)
-            .ok_or_else(|| format!("no provider registered for model {}", self.model))?;
+    ) -> Result<String, CompletionCallError> {
+        let provider = self.providers.find_provider(self.model).ok_or_else(|| {
+            CompletionCallError::Failed(format!("no provider registered for model {}", self.model))
+        })?;
         let request = CompletionRequest {
             model: self.model.to_owned(),
             system: Some(system.to_owned()),
@@ -130,14 +178,12 @@ impl ProviderRecallBridge<'_> {
                 self.call_budget,
                 provider.complete(&request),
             ))
-            .map_err(|_elapsed| {
-                format!(
-                    "recall {component} call to model '{}' exceeded its {}s budget",
-                    self.model,
-                    self.call_budget.as_secs()
-                )
+            .map_err(|_elapsed| CompletionCallError::TimedOut {
+                component: component.to_owned(),
+                model: self.model.to_owned(),
+                secs: self.call_budget.as_secs(),
             })?
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CompletionCallError::Failed(e.to_string()))?;
         let text = response
             .content
             .iter()
@@ -148,7 +194,9 @@ impl ProviderRecallBridge<'_> {
             .collect::<Vec<_>>()
             .join("\n");
         if text.trim().is_empty() {
-            Err("provider returned no text content".to_owned())
+            Err(CompletionCallError::Failed(
+                "provider returned no text content".to_owned(),
+            ))
         } else {
             Ok(text)
         }
@@ -162,7 +210,18 @@ impl mneme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
         user_message: &str,
     ) -> Result<String, mneme::query_rewrite::RewriteError> {
         self.complete_blocking("query rewrite", system, user_message)
-            .map_err(mneme::query_rewrite::RewriteError::LlmCall)
+            .map_err(|err| {
+                // WHY(aletheia#7295): a rewrite-call timeout is
+                // recoverable — flag it so `run_recall_stage` can retry with
+                // the raw (unrewritten) query instead of failing the whole
+                // recall stage. Any other rewrite failure (bad response,
+                // provider error) is not flagged and still fails the stage
+                // as before.
+                if err.is_timeout() {
+                    self.rewrite_timed_out.store(true, Ordering::Relaxed);
+                }
+                mneme::query_rewrite::RewriteError::LlmCall(err.to_string())
+            })
     }
 }
 
@@ -179,7 +238,12 @@ impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
         let user = format!("Query: {query}\n\nMemory manifest:\n{manifest_text}");
         let text = self
             .complete_blocking("side-query ranking", &system, &user)
-            .map_err(|message| mneme::side_query::RankerFailedSnafu { message }.build())?;
+            .map_err(|err| {
+                mneme::side_query::RankerFailedSnafu {
+                    message: err.to_string(),
+                }
+                .build()
+            })?;
         let ids: Vec<String> = serde_json::from_str(text.trim()).map_err(|e| {
             mneme::side_query::RankerFailedSnafu {
                 message: e.to_string(),
@@ -404,12 +468,14 @@ pub(super) async fn run_recall_stage(
                 .with_deployment_target(deployment_target)
                 .with_project_scope(project_scope)
                 .with_surprise_calculator(surprise_calc);
+            let rewrite_timed_out = AtomicBool::new(false);
             let recall_bridge = ProviderRecallBridge {
                 providers: &providers,
                 model: model.as_str(),
                 call_budget,
+                rewrite_timed_out: &rewrite_timed_out,
             };
-            recall_stage.run_with_recall_enhancements(
+            let enhanced = recall_stage.run_with_recall_enhancements(
                 &content,
                 &nous_id,
                 ep.as_ref(),
@@ -417,7 +483,21 @@ pub(super) async fn run_recall_stage(
                 budget,
                 Some(&recall_bridge),
                 Some(&recall_bridge),
-            )
+            );
+            match enhanced {
+                // WHY(aletheia#7295): a query-rewrite timeout used to
+                // fail the whole recall stage even though a plain, unrewritten
+                // search was still possible. Fall back to the raw query
+                // instead of returning nothing for the turn.
+                Err(e) if rewrite_timed_out.load(Ordering::Relaxed) => {
+                    warn!(
+                        error = %e,
+                        "recall query-rewrite timed out; falling back to raw-query recall"
+                    );
+                    recall_stage.run(&content, &nous_id, ep.as_ref(), vs.as_ref(), budget)
+                }
+                other => other,
+            }
         })
         .await
         .map_err(|e| {
