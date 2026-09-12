@@ -219,7 +219,7 @@ pub(crate) fn inject_credential_evidence(
     };
     object.insert(
         String::from(MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD),
-        serde_json::Value::from(build.credential_keys_excluded),
+        serde_json::Value::from(build.exclusions.credential_keys),
     );
 }
 
@@ -229,13 +229,16 @@ pub(crate) fn inject_credential_evidence(
 /// WHY: mirrors `inject_credential_evidence` -- not a `BackupManifest`
 /// struct field so out-of-crate `BackupManifest { .. }` literals are
 /// unaffected.
-pub(crate) fn inject_planning_evidence(manifest_value: &mut serde_json::Value, build: &BackupBuild) {
+pub(crate) fn inject_planning_evidence(
+    manifest_value: &mut serde_json::Value,
+    build: &BackupBuild,
+) {
     let Some(object) = manifest_value.as_object_mut() else {
         return;
     };
     object.insert(
         String::from(MANIFEST_PLANNING_SYMLINKS_EXCLUDED_FIELD),
-        serde_json::Value::from(build.planning_symlinks_excluded),
+        serde_json::Value::from(build.exclusions.planning_symlinks),
     );
 }
 

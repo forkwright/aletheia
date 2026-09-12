@@ -294,6 +294,20 @@ pub struct InstanceBackup {
     pub(crate) config: InstanceBackupConfig,
 }
 
+/// Counts of source entries deliberately excluded from a backup set, never
+/// counted as failures. Grouped into one field on [`BackupBuild`] (rather
+/// than one `u32` field per exclusion kind) to keep `BackupBuild` under the
+/// struct field-count limit as exclusion kinds are added. (#7246)
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ExclusionCounts {
+    /// Count of credential decryption-key sidecars excluded from this
+    /// backup set. See [`BackupManifest::credential_keys_excluded`]. (#5353)
+    pub(crate) credential_keys: u32,
+    /// Count of `.planning` symlinks excluded from this backup set, never
+    /// dereferenced. See [`super::EXCLUDED_BACKUP_SYMLINK_NAME`]. (#7246)
+    pub(crate) planning_symlinks: u32,
+}
+
 #[derive(Clone)]
 pub(crate) struct BackupBuild {
     pub(crate) source_root: PathBuf,
@@ -304,12 +318,8 @@ pub(crate) struct BackupBuild {
     pub(crate) workspace_omissions: Vec<WorkspaceOmission>,
     pub(crate) total_bytes: u64,
     pub(crate) total_files: u64,
-    /// Count of credential decryption-key sidecars excluded from this
-    /// backup set. See [`BackupManifest::credential_keys_excluded`]. (#5353)
-    pub(crate) credential_keys_excluded: u32,
-    /// Count of `.planning` symlinks excluded from this backup set, never
-    /// dereferenced. See [`super::EXCLUDED_BACKUP_SYMLINK_NAME`]. (#7246)
-    pub(crate) planning_symlinks_excluded: u32,
+    /// See [`ExclusionCounts`].
+    pub(crate) exclusions: ExclusionCounts,
     pub(crate) snapshot_time: String,
     /// Monotonic instant sampled around the first entry actually copied.
     ///

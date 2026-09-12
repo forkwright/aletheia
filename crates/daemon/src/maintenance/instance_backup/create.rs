@@ -14,9 +14,8 @@ use super::{
     MANIFEST_VERSION, OptionalStoreRecord, SNAPSHOT_PROTOCOL_VERSION, STAGING_DIR_PREFIX,
     STATUS_EXCLUDED, SYMLINK_POLICY, WorkspaceOmission, classify_workspace_source, dir_size,
     inject_credential_evidence, inject_manifest_evidence, inject_planning_evidence,
-    inject_quiesce_evidence,
-    is_credential_key_sidecar, manifest_created_time, resolve_workspace_source,
-    set_dir_restrictive, set_files_restrictive, write_text_file,
+    inject_quiesce_evidence, is_credential_key_sidecar, manifest_created_time,
+    resolve_workspace_source, set_dir_restrictive, set_files_restrictive, write_text_file,
 };
 
 static BACKUP_SEQ: AtomicU64 = AtomicU64::new(0);

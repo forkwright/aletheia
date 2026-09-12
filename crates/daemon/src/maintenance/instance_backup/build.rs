@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use crate::error;
 
 use super::{
-    BackupBuild, EntryManifestMetadata, OptionalStoreRecord, STATUS_EXCLUDED, STATUS_OK,
-    StoreEntry, copy_path, copy_path_excluding, ensure_relative_manifest_path, hash_path,
-    is_excluded_backup_symlink_name,
+    BackupBuild, EntryManifestMetadata, ExclusionCounts, OptionalStoreRecord, STATUS_EXCLUDED,
+    STATUS_OK, StoreEntry, copy_path, copy_path_excluding, ensure_relative_manifest_path,
+    hash_path, is_excluded_backup_symlink_name,
 };
 
 impl BackupBuild {
@@ -19,8 +19,7 @@ impl BackupBuild {
             workspace_omissions: Vec::new(),
             total_bytes: 0,
             total_files: 0,
-            credential_keys_excluded: 0,
-            planning_symlinks_excluded: 0,
+            exclusions: ExclusionCounts::default(),
             snapshot_time: jiff::Zoned::now().to_string(),
             first_entry_copied_at: None,
             last_entry_copied_at: None,
@@ -62,7 +61,7 @@ impl BackupBuild {
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
-        self.planning_symlinks_excluded += planning_excluded;
+        self.exclusions.planning_symlinks += planning_excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
@@ -92,7 +91,7 @@ impl BackupBuild {
 
     /// Like [`Self::copy_entry`], but skips any source file for which
     /// `exclude` returns `true` and tallies how many were skipped into
-    /// [`BackupBuild::credential_keys_excluded`]. (#5353)
+    /// [`ExclusionCounts::credential_keys`]. (#5353)
     pub(crate) fn copy_entry_excluding<F: Fn(&Path) -> bool>(
         &mut self,
         name: &str,
@@ -102,15 +101,14 @@ impl BackupBuild {
         optional: bool,
         exclude: &F,
     ) -> error::Result<()> {
-        let (bytes, files, excluded, planning_excluded) =
-            copy_path_excluding(&src, dst, exclude)?;
+        let (bytes, files, excluded, planning_excluded) = copy_path_excluding(&src, dst, exclude)?;
         let sha256 = Some(hash_path(dst)?);
         let file_count = u64::from(files);
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
-        self.credential_keys_excluded += excluded;
-        self.planning_symlinks_excluded += planning_excluded;
+        self.exclusions.credential_keys += excluded;
+        self.exclusions.planning_symlinks += planning_excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
@@ -155,7 +153,7 @@ impl BackupBuild {
         // `copy_path` (which would report an empty copy) or `hash_path`
         // (which would error: nothing was ever written to `dst`).
         if is_excluded_backup_symlink_name(&src) {
-            self.planning_symlinks_excluded += 1;
+            self.exclusions.planning_symlinks += 1;
             self.record_optional_entry(OptionalStoreRecord {
                 name: String::from(name),
                 source_path: src,
@@ -180,7 +178,7 @@ impl BackupBuild {
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
-        self.planning_symlinks_excluded += planning_excluded;
+        self.exclusions.planning_symlinks += planning_excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
