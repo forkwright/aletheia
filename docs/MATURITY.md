@@ -31,7 +31,6 @@ place to register it.
 | `aletheia-classify` | `crates/aletheia-classify` | Undeclared | — | — |
 | `aletheia-lexica` | `crates/aletheia-lexica` | Undeclared | — | — |
 | `aletheia-routing` | `crates/aletheia-routing` | Undeclared | — | — |
-| `aletheia-sessions-migrate` | `crates/aletheia-sessions-migrate` | Undeclared | — | — |
 | `dianoia` | `crates/dianoia` | Undeclared | — | — |
 | `diaporeia` | `crates/diaporeia` | Undeclared | — | — |
 | `dokimion` | `crates/eval` | Undeclared | — | — |
@@ -75,7 +74,7 @@ place to register it.
 | `thesauros` | `crates/thesauros` | Undeclared | — | — |
 | `xenodocheion` | `crates/xenodocheion` | Undeclared | — | — |
 
-9 of 48 crates declare `[package.metadata.kanon]` maturity metadata. The rest render `Undeclared`, not an implicit `Stable` -- declare maturity in the crate's own `Cargo.toml` to close that gap for one crate at a time.
+9 of 47 crates declare `[package.metadata.kanon]` maturity metadata. The rest render `Undeclared`, not an implicit `Stable` -- declare maturity in the crate's own `Cargo.toml` to close that gap for one crate at a time.
 
 <!-- END GENERATED CRATE MATURITY -->
 

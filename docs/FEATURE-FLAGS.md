@@ -202,7 +202,7 @@ Cargo metadata cannot infer.
 | **poiesis-text** | `pdf` | no | PDF backend | `dep:krilla` |
 | **poiesis-text** | `odt` | no | ODT backend | `dep:zip` |
 
-Workspace crates not listed define no feature flags: `aletheia-classify`, `aletheia-lexica`, `aletheia-sessions-migrate`, `xenodocheion`, `theatron`, `proskenion`, `poiesis-core`, and the remaining poiesis members (`deck`, `diff`, `inspect`, `intake`, `lint`, `scaffold`, `theme`, `typst`, `verify`).
+Workspace crates not listed define no feature flags: `aletheia-classify`, `aletheia-lexica`, `xenodocheion`, `theatron`, `proskenion`, `poiesis-core`, and the remaining poiesis members (`deck`, `diff`, `inspect`, `intake`, `lint`, `scaffold`, `theme`, `typst`, `verify`).
 
 
 ## Cross-crate feature interactions
