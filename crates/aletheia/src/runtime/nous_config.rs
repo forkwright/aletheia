@@ -317,6 +317,11 @@ pub(super) fn build_nous_runtime_config(
             extraction: Some(extraction_cfg),
             training: config.training.clone(),
             tuning: config.tuning.clone(),
+            // WHY(aletheia#7296): stage budgets were a compile-time
+            // StageBudget::default() here regardless of the operator's
+            // config; route the deployment-tunable [stageBudget] section
+            // through instead.
+            stage_budget: config.stage_budget.clone().into(),
             ..PipelineConfig::default()
         },
     )
@@ -513,6 +518,52 @@ mod tests {
         assert!(
             (pipeline_config.tuning.significance_threshold - 2.5).abs() < f64::EPSILON,
             "significance_threshold must cascade unchanged"
+        );
+    }
+
+    #[test]
+    fn stage_budget_config_cascades_into_pipeline_config() {
+        // WHY(aletheia#7296): stage budgets were `StageBudget::default()`
+        // here regardless of operator config; this asserts the [stageBudget]
+        // section actually reaches the pipeline the recall/execute/etc.
+        // stages read their deadlines from.
+        let mut config = AletheiaConfig::default();
+        config.stage_budget.recall_secs = 42;
+        config.stage_budget.execute_secs = 90;
+
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (_nous_config, pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &[], "custom");
+
+        assert_eq!(
+            pipeline_config.stage_budget.recall_secs, 42,
+            "operator's [stageBudget] recall_secs must reach PipelineConfig, not the compiled default"
+        );
+        assert_eq!(pipeline_config.stage_budget.execute_secs, 90);
+    }
+
+    #[test]
+    fn stage_budget_config_defaults_leave_pipeline_config_unchanged() {
+        // WHY(aletheia#7296): omitting [stageBudget] must reproduce the
+        // exact previously-hardcoded StageBudget::default() values.
+        let config = AletheiaConfig::default();
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (_nous_config, pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &[], "custom");
+
+        let compiled = nous::config::StageBudget::default();
+        assert_eq!(
+            pipeline_config.stage_budget.recall_secs,
+            compiled.recall_secs
+        );
+        assert_eq!(pipeline_config.stage_budget.total_secs, compiled.total_secs);
+        assert_eq!(
+            pipeline_config.stage_budget.execute_secs,
+            compiled.execute_secs
         );
     }
 

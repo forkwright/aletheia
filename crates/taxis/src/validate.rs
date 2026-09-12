@@ -216,6 +216,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "feature_flags" => validate_feature_flags(value, &mut errors),
         "credential" => validate_credential(value, &mut errors),
         "timeouts" => validate_timeouts(value, &mut errors),
+        "stageBudget" => validate_stage_budget(value, &mut errors),
         "capacity" => validate_capacity(value, &mut errors),
         "retry" => validate_retry(value, &mut errors),
         "nousBehavior" => validate_nous_behavior(value, &mut errors),
@@ -1028,6 +1029,59 @@ fn validate_timeouts(value: &Value, errors: &mut Vec<String>) {
         }
         if val > 3600 {
             errors.push("timeouts.approvalTimeoutSecs must not exceed 3600 seconds".to_owned());
+        }
+    }
+}
+
+/// Field names of `StageBudgetConfig`, in `camelCase` (matches the JSON this
+/// validator receives), that are bounded by [`MAX_STAGE_SECS`] individually.
+const STAGE_BUDGET_FIELDS: &[&str] = &[
+    "contextSecs",
+    "recallSecs",
+    "historySecs",
+    "guardSecs",
+    "executeSecs",
+    "finalizeSecs",
+    "reflectionSecs",
+    "totalSecs",
+];
+
+fn validate_stage_budget(value: &Value, errors: &mut Vec<String>) {
+    // WHY(aletheia#7296): `0` means "no limit for that stage" (see
+    // `StageBudgetConfig`'s field docs), so only a positive value can be out
+    // of range. Cap matches the runaway-prevention ceiling used elsewhere
+    // (`timeouts.approvalTimeoutSecs`'s 3600s max).
+    const MAX_STAGE_SECS: u64 = 3600;
+
+    for field in STAGE_BUDGET_FIELDS {
+        if let Some(val) = value.get(*field).and_then(Value::as_u64)
+            && val > MAX_STAGE_SECS
+        {
+            errors.push(format!(
+                "stageBudget.{field} must not exceed {MAX_STAGE_SECS} seconds (1 hour)"
+            ));
+        }
+    }
+
+    // INVARIANT: `TimeBudget::stage_limit` already caps every per-stage
+    // budget at `total_secs` when it is set (nonzero), so a per-stage value
+    // above it is silently unreachable rather than honored -- flag it as
+    // likely misconfiguration instead of accepting a value that can never
+    // take effect.
+    if let Some(total) = value.get("totalSecs").and_then(Value::as_u64)
+        && total > 0
+    {
+        for field in STAGE_BUDGET_FIELDS {
+            if *field == "totalSecs" {
+                continue;
+            }
+            if let Some(val) = value.get(*field).and_then(Value::as_u64)
+                && val > total
+            {
+                errors.push(format!(
+                    "stageBudget.{field} ({val}s) exceeds stageBudget.totalSecs ({total}s) and can never be reached"
+                ));
+            }
         }
     }
 }

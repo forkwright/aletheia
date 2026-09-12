@@ -23,7 +23,8 @@ pub use behavior::{
     LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy,
     PromptCacheMode, ProviderAdmissionConfig, ProviderAdmissionMode, ProviderBehaviorConfig,
     ProviderBudgetsConfig, ProviderKind, RawPayloadPolicy, RecallSourcesConfig, RetrySettings,
-    ServerToolVersions, ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    ServerToolVersions, ServerToolsConfig, StageBudgetConfig, TimeoutsConfig, ToolLimitsConfig,
+    TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
@@ -230,6 +231,14 @@ pub struct AletheiaConfig {
     /// NOTE: real LLM-call wall-clock timeouts are controlled by
     /// `providerBehavior.nonStreamingTimeoutSecs`, not by this section.
     pub timeouts: TimeoutsConfig,
+    /// Deployment-tunable per-stage wall-clock budgets for the nous turn
+    /// pipeline (aletheia#7296).
+    ///
+    /// WHY configurable: stage budgets were compile-time constants in
+    /// `nous::config::StageBudget`; deployments with slower providers or
+    /// larger knowledge stores need to raise them (or lower them to fail
+    /// fast) without a rebuild. Defaults match the prior hardcoded values.
+    pub stage_budget: StageBudgetConfig,
     /// Deployment-tunable capacity limits for tool output and context windows.
     ///
     /// WHY configurable: tool output truncation and Opus context upgrade
