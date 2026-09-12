@@ -1338,6 +1338,23 @@ async fn run_recall_stage_falls_back_to_raw_query_when_rewrite_times_out() {
     let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(FixedEmbeddingProvider);
     let vector_search: Arc<dyn VectorSearch> = Arc::new(RewriteTimesOutVectorSearch);
 
+    // WHY(aletheia#7295): the fallback must be loud and typed to the turn's
+    // caller, not only a server-side trace line — capture every event the
+    // stage emits via a metric sink so the assertions below can prove that,
+    // not just that the fallback content shows up in the recall result.
+    let captured_events: Arc<Mutex<Vec<(String, Vec<(String, String)>)>>> =
+        Arc::new(Mutex::new(Vec::new()));
+    let captured_events_sink = Arc::clone(&captured_events);
+    let emitter = EventEmitter::with_metric_sink(move |name, labels, _value| {
+        captured_events_sink.lock().expect("sink mutex").push((
+            name.to_owned(),
+            labels
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+                .collect(),
+        ));
+    });
+
     let result = run_recall_stage(
         &config,
         &pipeline_config,
@@ -1347,7 +1364,7 @@ async fn run_recall_stage_falls_back_to_raw_query_when_rewrite_times_out() {
         Some(vector_search),
         None,
         providers,
-        &EventEmitter::new(),
+        &emitter,
         None,
     )
     .await;
@@ -1367,6 +1384,28 @@ async fn run_recall_stage_falls_back_to_raw_query_when_rewrite_times_out() {
             .is_some_and(|s| s.contains("raw-query fallback result")),
         "recall section should come from the raw-query fallback, got {:?}",
         recall.recall_section
+    );
+
+    let events = captured_events.lock().expect("sink mutex");
+    let degraded = events
+        .iter()
+        .find(|(name, _)| name == "StageDegraded")
+        .unwrap_or_else(|| {
+            panic!(
+                "rewrite-timeout fallback must emit a typed StageDegraded event, not only a \
+                 server-side warn! trace; captured events: {events:?}"
+            )
+        });
+    assert!(
+        degraded
+            .1
+            .contains(&("reason".to_owned(), "rewrite_timeout".to_owned())),
+        "StageDegraded event must name the reason as rewrite_timeout, got {:?}",
+        degraded.1
+    );
+    assert!(
+        degraded.1.iter().any(|(k, _)| k == "stage"),
+        "StageDegraded event must identify which stage degraded"
     );
 }
 

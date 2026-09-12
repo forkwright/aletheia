@@ -4,7 +4,6 @@
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest as _, Sha256};
@@ -36,7 +35,9 @@ use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
-use super::events::{ReflectionOutcome, StageCompleted, StageError, StageSkipped, StageTimeout};
+use super::events::{
+    ReflectionOutcome, StageCompleted, StageDegraded, StageError, StageSkipped, StageTimeout,
+};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, ReflectionResult,
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
@@ -98,14 +99,6 @@ enum CompletionCallError {
     Failed(String),
 }
 
-impl CompletionCallError {
-    /// Whether this failure was specifically a `call_budget` timeout, as
-    /// opposed to any other provider or response failure.
-    fn is_timeout(&self) -> bool {
-        matches!(self, Self::TimedOut { .. })
-    }
-}
-
 impl std::fmt::Display for CompletionCallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -122,6 +115,17 @@ impl std::fmt::Display for CompletionCallError {
     }
 }
 
+/// Detail captured when the query-rewrite completion call specifically
+/// times out (aletheia#7295), so `run_recall_stage` can name which model
+/// and budget were exceeded on the typed, caller-visible degraded-stage
+/// event, rather than only recording that "some rewrite call" timed out.
+#[derive(Debug, Clone)]
+struct RewriteTimeout {
+    component: String,
+    model: String,
+    secs: u64,
+}
+
 struct ProviderRecallBridge<'a> {
     providers: &'a ProviderRegistry,
     model: &'a str,
@@ -131,8 +135,10 @@ struct ProviderRecallBridge<'a> {
     /// Set when the query-rewrite completion call specifically times out
     /// (as opposed to any other recall-enhancement failure), so
     /// `run_recall_stage` can fall back to an unenhanced, raw-query search
-    /// instead of failing the whole recall stage (aletheia#7295).
-    rewrite_timed_out: &'a AtomicBool,
+    /// instead of failing the whole recall stage, and can report which
+    /// model/budget was exceeded on the typed degraded-stage event
+    /// (aletheia#7295).
+    rewrite_timeout: &'a std::sync::Mutex<Option<RewriteTimeout>>,
 }
 
 impl ProviderRecallBridge<'_> {
@@ -212,13 +218,28 @@ impl mneme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
         self.complete_blocking("query rewrite", system, user_message)
             .map_err(|err| {
                 // WHY(aletheia#7295): a rewrite-call timeout is
-                // recoverable — flag it so `run_recall_stage` can retry with
-                // the raw (unrewritten) query instead of failing the whole
-                // recall stage. Any other rewrite failure (bad response,
-                // provider error) is not flagged and still fails the stage
-                // as before.
-                if err.is_timeout() {
-                    self.rewrite_timed_out.store(true, Ordering::Relaxed);
+                // recoverable — capture which model/budget was exceeded so
+                // `run_recall_stage` can retry with the raw (unrewritten)
+                // query instead of failing the whole recall stage, and can
+                // surface the detail on a typed, caller-visible
+                // degraded-stage event instead of only a server-side trace.
+                // Any other rewrite failure (bad response, provider error)
+                // is not flagged and still fails the stage as before.
+                if let CompletionCallError::TimedOut {
+                    component,
+                    model,
+                    secs,
+                } = &err
+                {
+                    *self
+                        .rewrite_timeout
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        Some(RewriteTimeout {
+                            component: component.clone(),
+                            model: model.clone(),
+                            secs: *secs,
+                        });
                 }
                 mneme::query_rewrite::RewriteError::LlmCall(err.to_string())
             })
@@ -463,17 +484,24 @@ pub(super) async fn run_recall_stage(
         let surprise_calc = surprise_calc.clone();
         let providers = Arc::clone(&providers);
         let call_budget = recall_enhancement_call_budget(pipeline_config.stage_budget.recall_secs);
+        // WHY(aletheia#7295): shared with the blocking task below so the
+        // rewrite-timeout detail (which model, which budget) survives the
+        // `spawn_blocking` boundary and can drive a typed, caller-visible
+        // event once we are back on the async side, rather than only a
+        // fallback log line inside the blocking closure.
+        let rewrite_timeout: Arc<std::sync::Mutex<Option<RewriteTimeout>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let rewrite_timeout_task = Arc::clone(&rewrite_timeout);
         let result = task::spawn_blocking(move || {
             let recall_stage = crate::recall::RecallStage::new(recall_config)
                 .with_deployment_target(deployment_target)
                 .with_project_scope(project_scope)
                 .with_surprise_calculator(surprise_calc);
-            let rewrite_timed_out = AtomicBool::new(false);
             let recall_bridge = ProviderRecallBridge {
                 providers: &providers,
                 model: model.as_str(),
                 call_budget,
-                rewrite_timed_out: &rewrite_timed_out,
+                rewrite_timeout: &rewrite_timeout_task,
             };
             let enhanced = recall_stage.run_with_recall_enhancements(
                 &content,
@@ -484,16 +512,16 @@ pub(super) async fn run_recall_stage(
                 Some(&recall_bridge),
                 Some(&recall_bridge),
             );
+            let timed_out = rewrite_timeout_task
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_some();
             match enhanced {
                 // WHY(aletheia#7295): a query-rewrite timeout used to
                 // fail the whole recall stage even though a plain, unrewritten
                 // search was still possible. Fall back to the raw query
                 // instead of returning nothing for the turn.
-                Err(e) if rewrite_timed_out.load(Ordering::Relaxed) => {
-                    warn!(
-                        error = %e,
-                        "recall query-rewrite timed out; falling back to raw-query recall"
-                    );
+                Err(_) if timed_out => {
                     recall_stage.run(&content, &nous_id, ep.as_ref(), vs.as_ref(), budget)
                 }
                 other => other,
@@ -507,6 +535,23 @@ pub(super) async fn run_recall_stage(
             }
             .build()
         })?;
+        // WHY(aletheia#7295): a rewrite-timeout fallback used to be visible
+        // only as a server-side `warn!`; #7218 established the precedent
+        // (see `DegradedMode::RecallTimedOut`) that recall degradation must
+        // be surfaced on the response the caller actually sees. Emit a
+        // typed event and mark the stage span "degraded" — distinct from
+        // both "ok" (unrewritten recall was never needed) and "error"
+        // (recall produced nothing) — whenever the fallback fired and
+        // still produced a usable result.
+        let rewrite_fallback = rewrite_timeout
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        let recall_succeeded = result.is_ok();
+        // NOTE: `apply_recall_result` records "ok"/"error" on the span itself,
+        // so the "degraded" override (when the fallback both fired and
+        // still produced a usable result) must happen *after* that call, not
+        // before, or it would be immediately stomped back to "ok".
         apply_recall_result(
             result,
             ctx,
@@ -515,6 +560,21 @@ pub(super) async fn run_recall_stage(
             emitter,
             config.id.as_ref(),
         );
+        if let Some(detail) = rewrite_fallback {
+            emitter.emit(&StageDegraded {
+                nous_id: config.id.to_string(),
+                stage: "recall",
+                reason: "rewrite_timeout",
+                detail: format!(
+                    "{} call to model '{}' exceeded its {}s budget; recall fell back to an \
+                     unrewritten (raw) query",
+                    detail.component, detail.model, detail.secs
+                ),
+            });
+            if recall_succeeded {
+                span.record("status", "degraded");
+            }
+        }
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {

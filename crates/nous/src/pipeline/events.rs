@@ -235,6 +235,54 @@ impl InternalEvent for StageSkipped {
     }
 }
 
+/// A pipeline stage completed, but only via a degraded fallback path the
+/// caller should be able to tell apart from a clean run (aletheia#7295).
+///
+/// Distinct from [`StageError`] (the stage produced nothing) and
+/// [`StageCompleted`] (the stage ran exactly as configured): this event
+/// covers the middle case where the stage still produced a usable result,
+/// but not the one it was configured to produce. Precedent:
+/// `DegradedMode::RecallTimedOut` (aletheia#7218) established that recall
+/// degradation must be surfaced on the response the caller actually sees,
+/// not only in server-side traces.
+pub(crate) struct StageDegraded {
+    /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
+    pub(crate) nous_id: String,
+    /// Stage name.
+    pub(crate) stage: &'static str,
+    /// Machine-readable degradation reason (e.g. `"rewrite_timeout"`),
+    /// stable enough to use as a metric label.
+    pub(crate) reason: &'static str,
+    /// Human-readable detail, e.g. naming which model/budget was exceeded.
+    pub(crate) detail: String,
+}
+
+impl InternalEvent for StageDegraded {
+    fn event_name(&self) -> &'static str {
+        "StageDegraded"
+    }
+
+    fn log_level(&self) -> LogLevel {
+        LogLevel::Warn
+    }
+
+    fn log_message(&self) -> String {
+        format!(
+            "stage {} degraded for {} ({}): {}",
+            self.stage, self.nous_id, self.reason, self.detail
+        )
+    }
+
+    fn metric_labels(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("nous_id", self.nous_id.clone()),
+            ("stage", self.stage.to_owned()),
+            ("reason", self.reason.to_owned()),
+        ]
+    }
+}
+
 /// Reflection stage completed with a durable-state outcome.
 pub(crate) struct ReflectionOutcome {
     /// Agent identifier.
@@ -350,6 +398,32 @@ mod tests {
         assert_eq!(event.log_level(), LogLevel::Error);
         let labels = event.metric_labels();
         assert_eq!(labels.len(), 3, "nous_id, stage, error_type labels");
+    }
+
+    #[test]
+    fn stage_degraded_event_fields() {
+        let event = StageDegraded {
+            nous_id: "test-agent".to_owned(),
+            stage: "recall",
+            reason: "rewrite_timeout",
+            detail: "query rewrite call to model 'x' exceeded its 6s budget".to_owned(),
+        };
+        assert_eq!(event.event_name(), "StageDegraded");
+        assert_eq!(event.log_level(), LogLevel::Warn);
+        assert!(
+            event.log_message().contains("rewrite_timeout"),
+            "message names the degradation reason"
+        );
+        assert!(
+            event.log_message().contains("6s budget"),
+            "message includes the detail"
+        );
+        let labels = event.metric_labels();
+        assert_eq!(labels.len(), 3, "nous_id, stage, reason labels");
+        assert!(
+            labels.contains(&("reason", "rewrite_timeout".to_owned())),
+            "reason is a metric label"
+        );
     }
 
     #[test]
