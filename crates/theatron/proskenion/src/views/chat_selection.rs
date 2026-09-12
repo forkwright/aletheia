@@ -53,6 +53,12 @@ pub(crate) fn canonical_agent_selection(agent_id: &ApiNousId, title: String) -> 
 /// control (driven purely by `streaming.is_streaming`) shows up without
 /// waiting on the network. The caller reattaches to the turn's event
 /// stream (`skene::api::streaming::reattach_turn_stream`) to keep it live.
+///
+/// Also stamps `streaming.reattached`, which `InputBar` uses to render a
+/// distinct "Stop watching" control in place of "Abort": cancelling a
+/// reattached turn's connection does not abort it server-side (only the
+/// original submitting connection can), so the control -- and the label --
+/// must not claim otherwise.
 pub(crate) fn apply_active_turn_reattachment(
     chat_state: &mut ChatState,
     session_id: ApiSessionId,
@@ -62,6 +68,7 @@ pub(crate) fn apply_active_turn_reattachment(
     chat_state.streaming.is_streaming = true;
     chat_state.streaming.turn_id = Some(turn_id.clone());
     chat_state.streaming.session_id = Some(session_id);
+    chat_state.streaming.reattached = true;
     Some(turn_id)
 }
 
@@ -668,6 +675,10 @@ mod tests {
             chat_state.streaming.session_id,
             Some(ApiSessionId::from("session-id"))
         );
+        assert!(
+            chat_state.streaming.reattached,
+            "InputBar reads this to render 'Stop watching' instead of 'Abort'"
+        );
     }
 
     #[test]
@@ -680,25 +691,28 @@ mod tests {
         assert_eq!(reattach_turn_id, None);
         assert!(!chat_state.streaming.is_streaming);
         assert_eq!(chat_state.streaming.turn_id, None);
+        assert!(!chat_state.streaming.reattached);
     }
 
+    // WHY: a genuine `TurnAbort` (the server's own replay of how the turn
+    // really ended) still commits an aborted message and ends `is_streaming`
+    // for either kind of turn -- this covers `ChatStateManager`'s handling of
+    // that event in general. It does NOT cover what happens when the
+    // *operator* clicks Abort/Stop watching on a reattached turn: that no
+    // longer goes through `TurnAbort` at all (see
+    // `views/chat.rs::stop_watching_reattached_turn` and the
+    // `reattach_turn_stream` tests in `skene::api::streaming`), because
+    // cancelling a reattached connection does not abort the turn
+    // server-side and must not claim otherwise.
     #[test]
-    fn abort_after_reattachment_ends_the_turn() {
+    fn turn_abort_event_ends_a_self_submitted_turn() {
         use crate::components::chat::ChatStateManager;
         use skene::events::StreamEvent;
 
         let mut chat_state = ChatState::default();
-        apply_active_turn_reattachment(
-            &mut chat_state,
-            ApiSessionId::from("session-id"),
-            Some(TurnId::from("turn-1")),
-        );
-        assert!(chat_state.streaming.is_streaming, "precondition: reattached");
+        chat_state.streaming.is_streaming = true;
+        chat_state.streaming.turn_id = Some(TurnId::from("turn-1"));
 
-        // WHY: this mirrors exactly what `on_abort` triggers in production --
-        // cancelling the shared `cancel_token` makes the stream task apply a
-        // `TurnAbort` before it returns, whether the task is the original
-        // sender or a reattached listener.
         let mut manager = ChatStateManager::new();
         let applied = manager.apply(
             StreamEvent::TurnAbort {

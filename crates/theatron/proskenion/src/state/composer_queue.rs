@@ -9,6 +9,8 @@
 
 use std::collections::VecDeque;
 
+use crate::components::chat::TurnEndKind;
+
 /// FIFO queue of messages submitted while a turn is in flight.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ComposerQueue(VecDeque<String>);
@@ -66,6 +68,23 @@ pub(crate) fn enqueue_if_streaming(queue: &mut ComposerQueue, is_streaming: bool
     }
 }
 
+/// Decide what to dequeue once a turn ends with `kind`.
+///
+/// Shared by `views/chat.rs`'s `send_message` turn loop and
+/// `reattach_active_turn`'s reattached-watch loop (#7299 x #7297) so a
+/// message queued while either kind of turn is in flight drains the same
+/// way once it ends. Returns `None` (leaving `queue` untouched) when
+/// nothing should dispatch yet: either the queue is empty, or the turn
+/// ended [`TurnEndKind::Errored`] -- dispatching then would immediately
+/// clear `streaming.error` (via `send_message`'s own start-of-call reset)
+/// before the operator ever sees the resulting retry banner.
+pub(crate) fn dequeue_after_turn_end(kind: TurnEndKind, queue: &mut ComposerQueue) -> Option<String> {
+    if kind == TurnEndKind::Errored {
+        return None;
+    }
+    queue.pop_front()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +133,50 @@ mod tests {
         assert_eq!(queue.pop_front(), Some("second".to_string()));
         assert!(queue.is_empty());
         assert_eq!(queue.pop_front(), None);
+    }
+
+    #[test]
+    fn dequeue_after_turn_end_dispatches_on_completed() {
+        let mut queue = ComposerQueue::default();
+        queue.push("follow-up".to_string());
+
+        let dispatched = dequeue_after_turn_end(TurnEndKind::Completed, &mut queue);
+
+        assert_eq!(dispatched, Some("follow-up".to_string()));
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn dequeue_after_turn_end_dispatches_on_aborted() {
+        let mut queue = ComposerQueue::default();
+        queue.push("follow-up".to_string());
+
+        let dispatched = dequeue_after_turn_end(TurnEndKind::Aborted, &mut queue);
+
+        assert_eq!(dispatched, Some("follow-up".to_string()));
+        assert!(queue.is_empty());
+    }
+
+    // WHY: dispatching a queued message right after an errored turn wipes
+    // the retry banner before the operator ever sees it -- `send_message`
+    // clears `streaming.error` at its own start regardless of caller.
+    // Leaving the entry queued keeps it visible until the operator retries
+    // or otherwise clears the error themselves.
+    #[test]
+    fn dequeue_after_turn_end_does_not_dispatch_on_errored() {
+        let mut queue = ComposerQueue::default();
+        queue.push("follow-up".to_string());
+
+        let dispatched = dequeue_after_turn_end(TurnEndKind::Errored, &mut queue);
+
+        assert_eq!(dispatched, None);
+        assert_eq!(queue.len(), 1, "the queued entry must survive an errored turn");
+    }
+
+    #[test]
+    fn dequeue_after_turn_end_is_none_when_queue_is_empty() {
+        let mut queue = ComposerQueue::default();
+
+        assert_eq!(dequeue_after_turn_end(TurnEndKind::Completed, &mut queue), None);
     }
 }

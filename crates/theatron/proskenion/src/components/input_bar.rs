@@ -16,11 +16,20 @@ pub(crate) struct InputBarProps {
     /// streaming queues instead of dispatching (`on_submit`'s caller
     /// decides which); it only changes which action buttons render.
     pub is_streaming: bool,
+    /// Whether the in-flight turn (`is_streaming`) is a reattached watch
+    /// rather than one this client submitted.
+    ///
+    /// WHY(#7297): cancelling a reattached turn only stops watching it --
+    /// it does not abort the turn server-side, unlike a self-submitted
+    /// turn -- so the action button reads "Stop watching" instead of
+    /// "Abort" to avoid claiming otherwise. Ignored when `is_streaming` is
+    /// `false`.
+    pub is_reattached: bool,
     /// Callback fired when the user submits a message. Fires regardless of
     /// `is_streaming`; the caller queues it behind the in-flight turn when
     /// appropriate.
     pub on_submit: EventHandler<String>,
-    /// Callback fired when the user clicks the abort button.
+    /// Callback fired when the user clicks the abort/stop-watching button.
     pub on_abort: EventHandler<()>,
 }
 
@@ -30,11 +39,13 @@ pub(crate) struct InputBarProps {
 ///   turn instead of dispatching immediately (#7299)
 /// - Newline: Shift+Enter
 /// - History: Up/Down arrows when cursor is at start/end
-/// - An Abort button joins Send while a turn is streaming
+/// - An Abort button (or Stop watching, for a reattached turn) joins Send
+///   while a turn is streaming
 #[component]
 pub(crate) fn InputBar(props: InputBarProps) -> Element {
     let mut input = props.input;
     let is_streaming = props.is_streaming;
+    let is_reattached = props.is_reattached;
     let on_submit = props.on_submit;
     let on_abort = props.on_abort;
     let mut command_ui = use_context::<Signal<CommandUiState>>();
@@ -162,7 +173,7 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                 button {
                     class: "btn-chat-action btn-abort",
                     onclick: move |_| on_abort.call(()),
-                    "Abort"
+                    if is_reattached { "Stop watching" } else { "Abort" }
                 }
             }
             button {

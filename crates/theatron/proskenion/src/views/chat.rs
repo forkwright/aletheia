@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use crate::api::client::authenticated_streaming_client;
 use crate::app::Route;
 use crate::components::chat::{
-    ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole,
+    ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole, TurnEndKind,
 };
 use crate::components::command_palette::CommandPaletteView;
 use crate::components::distillation::DistillationIndicatorView;
@@ -35,8 +35,9 @@ use crate::state::commands::{
     CommandAction, CommandDestination, CommandExecutionState, CommandResolution, CommandStore,
     CommandUiState,
 };
-use crate::state::composer_queue::{ComposerQueue, enqueue_if_streaming};
+use crate::state::composer_queue::{ComposerQueue, dequeue_after_turn_end, enqueue_if_streaming};
 use crate::state::connection::{ConnectionConfig, ConnectionState};
+use crate::state::events::StreamingState;
 use crate::state::input::InputState;
 use crate::state::pipeline::{PipelineStage, RoutingState};
 use crate::state::platform::WindowState;
@@ -465,6 +466,8 @@ fn resolve_and_fetch_history(
     mut history_state: Signal<ChatHistoryState>,
     mut tab_bar: Signal<TabBar>,
     cancel_token: Signal<CancellationToken>,
+    queued_messages: Signal<ComposerQueue>,
+    pending_dispatch: Signal<Option<String>>,
 ) {
     debug_assert!(selection.session_id.is_none());
     history_state.set(ChatHistoryState::loading_initial(None));
@@ -519,7 +522,15 @@ fn resolve_and_fetch_history(
                     history_state,
                 );
                 if let Some(turn_id) = reattach_turn_id {
-                    reattach_active_turn(cfg, session.id, turn_id, legacy_state, cancel_token);
+                    reattach_active_turn(
+                        cfg,
+                        session.id,
+                        turn_id,
+                        legacy_state,
+                        cancel_token,
+                        queued_messages,
+                        pending_dispatch,
+                    );
                 }
             }
             Err(err) => {
@@ -529,22 +540,54 @@ fn resolve_and_fetch_history(
     });
 }
 
+/// Stop watching a reattached turn without claiming the turn itself ended.
+///
+/// WHY: unlike cancelling a self-submitted stream, cancelling (or losing)
+/// a reattached connection does not abort the turn server-side -- pylon
+/// only treats the *original submitting* connection's disconnect as an
+/// abort signal (see [`skene::api::streaming::reattach_turn_stream`]'s doc
+/// comment). Resets local streaming state to idle so the operator regains
+/// normal input controls, WITHOUT committing a fabricated `TurnAbort`
+/// message into history: the turn may still be running, and a fabricated
+/// abort would both misreport its outcome and collide with the real
+/// terminal message once a future reattach (or a history refetch) catches
+/// up to what actually happened. Tells the operator via toast instead, and
+/// -- deliberately -- never dequeues: the turn has not ended, so nothing
+/// queued behind it should dispatch yet.
+fn stop_watching_reattached_turn(legacy_state: &mut Signal<ChatState>, reason: &str) {
+    legacy_state.write().streaming = StreamingState::default();
+    if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+        toast_store.write().push(
+            ToastSeverity::Info,
+            format!("Stopped watching \u{2014} the turn continues in the background ({reason})"),
+        );
+    }
+}
+
 /// Reattach to a session's already in-progress turn, replaying its
 /// buffered events into local state so the operator regains live progress
 /// and abort control after reloading mid-turn (#7297, PR #7267's
 /// `active_turn_id`).
 ///
-/// Shares `cancel_token` with `send_message`'s own turns, so the existing
-/// `on_abort` handler works unmodified. NOTE: cancelling a *reattached*
-/// stream only stops listening -- unlike cancelling the turn's original
-/// submitting connection, it does not abort the turn server-side (see
-/// [`skene::api::streaming::reattach_turn_stream`]'s doc comment).
+/// Shares `cancel_token` with `send_message`'s own turns: `on_abort` calls
+/// `cancel_token.read().cancel()` unconditionally, and this task -- not
+/// `on_abort` -- decides what that means for a reattached turn (see
+/// [`stop_watching_reattached_turn`]).
+///
+/// Once a *genuine* terminal event replays from the server (the turn
+/// really did complete, abort, or error), this dequeues and dispatches a
+/// message queued behind it exactly as `send_message`'s own turn loop does
+/// (`dequeue_after_turn_end`, shared between both), so a message queued
+/// while watching a reattached turn is not stranded once that turn ends
+/// (#7299 x #7297).
 fn reattach_active_turn(
     cfg: ConnectionConfig,
     session_id: skene::id::ApiSessionId,
     turn_id: skene::id::TurnId,
     mut legacy_state: Signal<ChatState>,
     mut cancel_token: Signal<CancellationToken>,
+    mut queued_messages: Signal<ComposerQueue>,
+    mut pending_dispatch: Signal<Option<String>>,
 ) {
     cancel_token.read().cancel();
     let new_token = CancellationToken::new();
@@ -555,7 +598,7 @@ fn reattach_active_turn(
             Ok(client) => client,
             Err(err) => {
                 let mut state = legacy_state.write();
-                let mut manager = ChatStateManager::new();
+                let mut manager = ChatStateManager::new_reattached();
                 if manager.apply(StreamEvent::Error(err.to_string()), &mut state) {
                     tracing::trace!("applied reattach client-build failure");
                 }
@@ -571,7 +614,7 @@ fn reattach_active_turn(
             new_token.clone(),
         );
 
-        let mut manager = ChatStateManager::new();
+        let mut manager = ChatStateManager::new_reattached();
         let timeout = tokio::time::sleep(UI_STREAM_TIMEOUT);
         tokio::pin!(timeout);
 
@@ -579,27 +622,16 @@ fn reattach_active_turn(
             let event = tokio::select! {
                 biased;
                 _ = new_token.cancelled() => {
-                    let mut state = legacy_state.write();
-                    if manager.apply(
-                        StreamEvent::TurnAbort {
-                            reason: "cancelled by user".to_string(),
-                        },
-                        &mut state,
-                    ) {
-                        tracing::trace!("applied reattached turn cancellation");
-                    }
+                    stop_watching_reattached_turn(&mut legacy_state, "cancelled by the operator");
                     break;
                 }
                 _ = &mut timeout => {
                     new_token.cancel();
-                    let message = format!(
-                        "stream timed out after {} minutes; stream task cancelled",
+                    let reason = format!(
+                        "reattached connection idle past {} minutes",
                         UI_STREAM_TIMEOUT.as_secs() / 60
                     );
-                    let mut state = legacy_state.write();
-                    if manager.apply(StreamEvent::Error(message), &mut state) {
-                        tracing::trace!("applied reattached turn timeout");
-                    }
+                    stop_watching_reattached_turn(&mut legacy_state, &reason);
                     break;
                 }
                 event = rx.recv() => event,
@@ -613,9 +645,17 @@ fn reattach_active_turn(
             };
 
             let Some(event) = event else { break };
-            let mut state = legacy_state.write();
-            if manager.apply(event, &mut state) {
-                tracing::trace!("applied reattached turn event");
+            let end_kind = TurnEndKind::of(&event);
+            {
+                let mut state = legacy_state.write();
+                if manager.apply(event, &mut state) {
+                    tracing::trace!("applied reattached turn event");
+                }
+            }
+            if let Some(kind) = end_kind
+                && let Some(next) = dequeue_after_turn_end(kind, &mut queued_messages.write())
+            {
+                pending_dispatch.set(Some(next));
             }
         }
     });
@@ -730,6 +770,8 @@ pub(crate) fn Chat() -> Element {
                     history_state,
                     tab_bar,
                     cancel_token,
+                    queued_messages,
+                    pending_dispatch,
                 );
             }
         }
@@ -773,6 +815,11 @@ pub(crate) fn Chat() -> Element {
     let active_nous_id = agent_store.read().active_id.clone();
 
     let is_streaming = legacy_state.read().streaming.is_streaming;
+    // WHY(#7297): a reattached turn's abort control reads "Stop watching"
+    // instead of "Abort" -- cancelling it only stops local observation, it
+    // does not abort the turn server-side (see `reattach_active_turn`'s
+    // `stop_watching_reattached_turn`).
+    let is_reattached_turn = legacy_state.read().streaming.reattached;
 
     // WHY: Drive elapsed-time re-renders every second during streaming.
     // The tick signal forces the streaming indicator to re-render with
@@ -984,6 +1031,13 @@ pub(crate) fn Chat() -> Element {
                 &routing_agent_id,
             );
 
+            // WHY(#7299): tracks how the turn ended so the post-loop dequeue
+            // (shared with `reattach_active_turn` via `dequeue_after_turn_end`)
+            // knows whether to dispatch -- `None` for an abnormal channel
+            // close with no terminal event, which is treated like `Errored`
+            // (do not auto-dispatch into unknown state).
+            let mut last_terminal: Option<TurnEndKind> = None;
+
             loop {
                 let event = tokio::select! {
                     biased;
@@ -997,6 +1051,7 @@ pub(crate) fn Chat() -> Element {
                         ) {
                             tracing::trace!("applied chat stream cancellation");
                         }
+                        last_terminal = Some(TurnEndKind::Aborted);
                         break;
                     }
                     _ = &mut timeout => {
@@ -1009,6 +1064,7 @@ pub(crate) fn Chat() -> Element {
                         if manager.apply(StreamEvent::Error(message), &mut state) {
                             tracing::trace!("applied chat stream timeout");
                         }
+                        last_terminal = Some(TurnEndKind::Errored);
                         break;
                     }
                     event = rx.recv() => event,
@@ -1022,6 +1078,7 @@ pub(crate) fn Chat() -> Element {
                 };
 
                 let Some(event) = event else { break };
+                let end_kind = TurnEndKind::of(&event);
 
                 // NOTE: Check for file change events and emit toast notifications.
                 if let Some(change) = file_tracker.process(&event)
@@ -1070,6 +1127,10 @@ pub(crate) fn Chat() -> Element {
                 if manager.apply(event, &mut state) {
                     tracing::trace!("applied chat stream event");
                 }
+                drop(state);
+                if let Some(kind) = end_kind {
+                    last_terminal = Some(kind);
+                }
             }
 
             // WHY: Clear stream start so the elapsed timer stops.
@@ -1086,12 +1147,17 @@ pub(crate) fn Chat() -> Element {
                 &routing_agent_id,
             );
 
-            // WHY(#7299): the turn just ended (complete, aborted, or
-            // errored) -- dispatch whatever queued up behind it. Stashed
-            // in `pending_dispatch` rather than called directly: this
-            // spawned task cannot call `send_message` itself (see the
-            // signal's WHY comment above).
-            if let Some(next) = queued_messages.write().pop_front() {
+            // WHY(#7299): the turn just ended -- dispatch whatever queued up
+            // behind it, UNLESS it ended `Errored`: `send_message` clears
+            // `streaming.error` at its own start, so dispatching immediately
+            // would wipe the retry banner before the operator ever sees it
+            // (shared with `reattach_active_turn` via
+            // `dequeue_after_turn_end`). Stashed in `pending_dispatch` rather
+            // than called directly: this spawned task cannot call
+            // `send_message` itself (see the signal's WHY comment above).
+            if let Some(kind) = last_terminal
+                && let Some(next) = dequeue_after_turn_end(kind, &mut queued_messages.write())
+            {
                 pending_dispatch.set(Some(next));
             }
         });
@@ -1606,6 +1672,7 @@ pub(crate) fn Chat() -> Element {
             InputBar {
                 input: input_state,
                 is_streaming: is_streaming,
+                is_reattached: is_reattached_turn,
                 on_submit: on_submit,
                 on_abort: on_abort,
             }
