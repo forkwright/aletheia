@@ -125,31 +125,124 @@ pub(crate) fn activate_chat_selection(
     ChatActivation { session_changed }
 }
 
+/// Convert one page of history into render-ready messages, collapsing each
+/// turn's raw per-call tool-result messages into one summary row per tool
+/// type.
+///
+/// WHY(#7298): history replay previously rendered one bubble per raw
+/// `role: "tool"` message -- a turn with a dozen `Read` calls filled the
+/// pane with a dozen near-identical rows carrying the raw tool payload.
+/// Turns are delimited by user messages (history carries no per-message
+/// turn id, #4911); within a turn, every tool-result message sharing a
+/// tool name collapses into a single row at the position of that tool's
+/// first call, carrying the total call count. A turn that spans a page
+/// boundary (>100 tool calls) is summarized per page, not across pages --
+/// a rare case given `HISTORY_PAGE_SIZE_QUERY`.
 pub(crate) fn history_messages_to_legacy(messages: &[HistoryMessage]) -> Vec<LegacyChatMessage> {
-    messages
-        .iter()
-        .filter_map(history_message_to_legacy)
-        .collect()
+    let mut out = Vec::with_capacity(messages.len());
+    for turn in split_into_turns(messages) {
+        collapse_turn_tool_calls(turn, &mut out);
+    }
+    out
 }
 
 pub(crate) fn oldest_history_seq(messages: &[HistoryMessage]) -> Option<i64> {
     messages.iter().filter_map(|msg| msg.seq).min()
 }
 
+/// Split a chronological page of history into turns, each starting at a
+/// `user`-role message (the only turn boundary history carries).
+/// Messages preceding the first user message, if any, form their own
+/// leading turn.
+fn split_into_turns(messages: &[HistoryMessage]) -> Vec<&[HistoryMessage]> {
+    let mut turns = Vec::new();
+    let mut start = 0;
+    for (i, message) in messages.iter().enumerate() {
+        if i > start && message.role == "user" {
+            turns.push(&messages[start..i]);
+            start = i;
+        }
+    }
+    if start < messages.len() {
+        turns.push(&messages[start..]);
+    }
+    turns
+}
+
+/// Append one turn's messages to `out`, collapsing tool-result messages
+/// that share a tool name into a single summary row per name.
+fn collapse_turn_tool_calls(turn: &[HistoryMessage], out: &mut Vec<LegacyChatMessage>) {
+    let mut tool_counts: Vec<(String, u32)> = Vec::new();
+    for message in turn {
+        if message.role != "tool" {
+            continue;
+        }
+        let name = tool_display_name(message);
+        match tool_counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => tool_counts.push((name, 1)),
+        }
+    }
+
+    let mut summarized: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for message in turn {
+        if message.role == "tool" {
+            let name = tool_display_name(message);
+            if summarized.insert(name.clone()) {
+                let count = tool_counts
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .map_or(1, |(_, count)| *count);
+                out.push(tool_summary_message(&name, count));
+            }
+            continue;
+        }
+        if let Some(legacy) = history_message_to_legacy(message) {
+            out.push(legacy);
+        }
+    }
+}
+
+fn tool_display_name(message: &HistoryMessage) -> String {
+    message
+        .tool_name
+        .clone()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "tool".to_string())
+}
+
+/// Build the single summary row standing in for `count` raw calls to the
+/// same tool within one turn.
+fn tool_summary_message(tool_name: &str, count: u32) -> LegacyChatMessage {
+    let content = if count == 1 {
+        tool_name.to_string()
+    } else {
+        format!("{tool_name} \u{d7}{count}")
+    };
+    LegacyChatMessage {
+        role: MessageRole::Assistant,
+        content,
+        model: None,
+        tool_calls: count,
+        input_tokens: 0,
+        output_tokens: 0,
+        thinking: None,
+        tool_call_details: Vec::new(),
+        plans: Vec::new(),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
+    }
+}
+
 fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessage> {
     let role = match message.role.as_str() {
         "user" => MessageRole::User,
-        "assistant" | "system" | "tool" => MessageRole::Assistant,
+        "assistant" | "system" => MessageRole::Assistant,
         other => {
             tracing::debug!(role = other, "skipping unsupported history message role");
             return None;
         }
-    };
-
-    let tool_calls = if message.role == "tool" || message.tool_name.is_some() {
-        1
-    } else {
-        0
     };
 
     Some(LegacyChatMessage {
@@ -162,7 +255,7 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
         // conversion has no session in scope, so it leaves the field empty
         // rather than reintroducing a phantom per-message source.
         model: None,
-        tool_calls,
+        tool_calls: 0,
         input_tokens: 0,
         output_tokens: 0,
         thinking: None,
@@ -415,6 +508,91 @@ mod tests {
             "a per-message model must not be sourced from history; got {:?}",
             chat_state.messages[1].model
         );
+    }
+
+    // WHY(#7298): history replay must collapse raw per-call tool messages
+    // into one summary row per tool type per turn instead of rendering one
+    // bubble per call.
+    #[test]
+    fn history_messages_collapse_repeated_tool_calls_into_one_row_per_tool_type() {
+        let json = r#"{
+            "messages": [
+                {"seq": 1, "role": "user", "content": "grep the logs"},
+                {"seq": 2, "role": "tool", "tool_name": "Read", "content": "log line 1"},
+                {"seq": 3, "role": "tool", "tool_name": "Read", "content": "log line 2"},
+                {"seq": 4, "role": "tool", "tool_name": "Read", "content": "log line 3"},
+                {"seq": 5, "role": "tool", "tool_name": "Bash", "content": "exit 0"},
+                {"seq": 6, "role": "assistant", "content": "Found it."}
+            ]
+        }"#;
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
+
+        let legacy = history_messages_to_legacy(&messages);
+
+        // 4 rows, not 6: user, one Read summary, one Bash summary, assistant.
+        assert_eq!(
+            legacy.len(),
+            4,
+            "expected raw per-call tool rows collapsed to one per tool type, got {legacy:?}"
+        );
+        assert_eq!(legacy[0].role, MessageRole::User);
+        assert_eq!(legacy[1].content, "Read \u{d7}3");
+        assert_eq!(legacy[1].tool_calls, 3);
+        assert_eq!(legacy[2].content, "Bash");
+        assert_eq!(legacy[2].tool_calls, 1);
+        assert_eq!(legacy[3].role, MessageRole::Assistant);
+        assert_eq!(legacy[3].content, "Found it.");
+    }
+
+    #[test]
+    fn history_messages_keep_tool_summaries_scoped_to_their_own_turn() {
+        let json = r#"{
+            "messages": [
+                {"seq": 1, "role": "user", "content": "first"},
+                {"seq": 2, "role": "tool", "tool_name": "Read", "content": "a"},
+                {"seq": 3, "role": "tool", "tool_name": "Read", "content": "b"},
+                {"seq": 4, "role": "assistant", "content": "done one"},
+                {"seq": 5, "role": "user", "content": "second"},
+                {"seq": 6, "role": "tool", "tool_name": "Read", "content": "c"},
+                {"seq": 7, "role": "assistant", "content": "done two"}
+            ]
+        }"#;
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
+
+        let legacy = history_messages_to_legacy(&messages);
+
+        let read_summaries: Vec<&str> = legacy
+            .iter()
+            .filter(|m| m.content.starts_with("Read"))
+            .map(|m| m.content.as_str())
+            .collect();
+        assert_eq!(
+            read_summaries,
+            vec!["Read \u{d7}2", "Read"],
+            "each turn's tool calls must summarize independently, not merge across turns"
+        );
+    }
+
+    #[test]
+    fn history_messages_fall_back_to_generic_tool_label_when_name_missing() {
+        let json = r#"{
+            "messages": [
+                {"seq": 1, "role": "user", "content": "run something"},
+                {"seq": 2, "role": "tool", "content": "raw result"}
+            ]
+        }"#;
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
+
+        let legacy = history_messages_to_legacy(&messages);
+
+        assert_eq!(legacy.len(), 2);
+        assert_eq!(legacy[1].content, "tool");
     }
 
     #[test]

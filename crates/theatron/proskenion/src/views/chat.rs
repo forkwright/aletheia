@@ -77,6 +77,14 @@ struct ChatHistoryState {
     status: ChatHistoryStatus,
     total_count: Option<usize>,
     oldest_seq: Option<i64>,
+    /// Count of raw server history rows fetched so far, across all pages.
+    ///
+    /// WHY(#7298): distinct from the *rendered* message count once history
+    /// replay collapses a turn's repeated tool-call rows into one summary
+    /// row per tool type -- comparing `total_count` (a raw server count)
+    /// against the collapsed, smaller rendered count would report more
+    /// history as always available, even once every page was loaded.
+    raw_fetched: usize,
 }
 
 impl Default for ChatHistoryState {
@@ -85,6 +93,7 @@ impl Default for ChatHistoryState {
             status: ChatHistoryStatus::Idle,
             total_count: None,
             oldest_seq: None,
+            raw_fetched: 0,
         }
     }
 }
@@ -95,6 +104,7 @@ impl ChatHistoryState {
             status: ChatHistoryStatus::LoadingInitial,
             total_count,
             oldest_seq: None,
+            raw_fetched: 0,
         }
     }
 
@@ -103,22 +113,30 @@ impl ChatHistoryState {
             status: ChatHistoryStatus::LoadingOlder,
             total_count: self.total_count,
             oldest_seq: self.oldest_seq,
+            raw_fetched: self.raw_fetched,
         }
     }
 
-    fn loaded(total_count: Option<usize>, oldest_seq: Option<i64>) -> Self {
+    fn loaded(total_count: Option<usize>, oldest_seq: Option<i64>, raw_fetched: usize) -> Self {
         Self {
             status: ChatHistoryStatus::Loaded,
             total_count,
             oldest_seq,
+            raw_fetched,
         }
     }
 
-    fn failed(message: String, total_count: Option<usize>, oldest_seq: Option<i64>) -> Self {
+    fn failed(
+        message: String,
+        total_count: Option<usize>,
+        oldest_seq: Option<i64>,
+        raw_fetched: usize,
+    ) -> Self {
         Self {
             status: ChatHistoryStatus::Error(message),
             total_count,
             oldest_seq,
+            raw_fetched,
         }
     }
 
@@ -148,8 +166,8 @@ impl ChatHistoryState {
         }
     }
 
-    fn has_older_server_history(&self, loaded_count: usize) -> bool {
-        self.oldest_seq.is_some() && self.total_count.is_some_and(|total| total > loaded_count)
+    fn has_older_server_history(&self) -> bool {
+        self.oldest_seq.is_some() && self.total_count.is_some_and(|total| total > self.raw_fetched)
     }
 }
 
@@ -348,7 +366,7 @@ fn fetch_chat_history_page(
     mut history_state: Signal<ChatHistoryState>,
 ) {
     let Some(session_id) = selection.session_id.clone() else {
-        history_state.set(ChatHistoryState::loaded(None, None));
+        history_state.set(ChatHistoryState::loaded(None, None, 0));
         return;
     };
 
@@ -368,10 +386,12 @@ fn fetch_chat_history_page(
             match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
                 Ok(client) => client,
                 Err(err) => {
+                    let raw_fetched = history_state.read().raw_fetched;
                     history_state.set(ChatHistoryState::failed(
                         err.to_string(),
                         total_count,
                         before,
+                        raw_fetched,
                     ));
                     return;
                 }
@@ -392,6 +412,15 @@ fn fetch_chat_history_page(
                 let page_oldest_seq = oldest_history_seq(&messages);
                 let oldest_seq =
                     page_oldest_seq.or(if replace { None } else { previous.oldest_seq });
+                // WHY(#7298): raw page length, before tool-call collapsing,
+                // so pagination compares against the server's uncollapsed
+                // `total_count` on the same basis.
+                let page_raw_count = messages.len();
+                let raw_fetched = if replace {
+                    page_raw_count
+                } else {
+                    previous.raw_fetched + page_raw_count
+                };
                 let mut loaded_messages = history_messages_to_legacy(&messages);
 
                 {
@@ -405,13 +434,14 @@ fn fetch_chat_history_page(
                     }
                 }
 
-                history_state.set(ChatHistoryState::loaded(total_count, oldest_seq));
+                history_state.set(ChatHistoryState::loaded(total_count, oldest_seq, raw_fetched));
             }
             Err(message) => {
                 history_state.set(ChatHistoryState::failed(
                     message,
                     total_count,
                     previous.oldest_seq,
+                    previous.raw_fetched,
                 ));
             }
         }
@@ -442,7 +472,7 @@ fn resolve_and_fetch_history(
             match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
                 Ok(client) => client,
                 Err(err) => {
-                    history_state.set(ChatHistoryState::failed(err.to_string(), None, None));
+                    history_state.set(ChatHistoryState::failed(err.to_string(), None, None, 0));
                     return;
                 }
             };
@@ -492,7 +522,7 @@ fn resolve_and_fetch_history(
                 }
             }
             Err(err) => {
-                history_state.set(ChatHistoryState::failed(err.to_string(), None, None));
+                history_state.set(ChatHistoryState::failed(err.to_string(), None, None, 0));
             }
         }
     });
@@ -750,7 +780,7 @@ pub(crate) fn Chat() -> Element {
     let total_message_count = legacy_state.read().messages.len();
     let loaded_limit = loaded_page_count() * PAGE_SIZE;
     let history_snapshot = history_state.read().clone();
-    let server_has_more_history = history_snapshot.has_older_server_history(total_message_count);
+    let server_has_more_history = history_snapshot.has_older_server_history();
     let has_more_history = total_message_count > loaded_limit || server_has_more_history;
     let messages: Vec<ChatMessage> = legacy_state.read().project_messages(Some(loaded_limit));
     let active_history_selection = {
