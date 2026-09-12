@@ -44,8 +44,8 @@ use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::chat_helpers::{format_tool_call, render_approval};
 use crate::views::chat_selection::{
-    activate_chat_selection, canonical_agent_selection, history_messages_to_legacy,
-    oldest_history_seq, resolve_chat_session_key,
+    activate_chat_selection, apply_active_turn_reattachment, canonical_agent_selection,
+    history_messages_to_legacy, oldest_history_seq, resolve_chat_session_key,
 };
 
 /// Estimated message height in pixels for virtual scroll calculations.
@@ -430,9 +430,10 @@ fn fetch_chat_history_page(
 fn resolve_and_fetch_history(
     cfg: ConnectionConfig,
     selection: ChatSelection,
-    legacy_state: Signal<ChatState>,
+    mut legacy_state: Signal<ChatState>,
     mut history_state: Signal<ChatHistoryState>,
     mut tab_bar: Signal<TabBar>,
+    cancel_token: Signal<CancellationToken>,
 ) {
     debug_assert!(selection.session_id.is_none());
     history_state.set(ChatHistoryState::loading_initial(None));
@@ -464,22 +465,126 @@ fn resolve_and_fetch_history(
                     session.id.clone(),
                     Some(session.message_count),
                 );
+                // WHY(#7297): stamp reattachment state before fetching
+                // history so the abort control renders immediately if a
+                // turn is already in flight, then reattach to its event
+                // stream to keep state live.
+                let reattach_turn_id = apply_active_turn_reattachment(
+                    &mut legacy_state.write(),
+                    session.id.clone(),
+                    session.active_turn_id.clone(),
+                );
                 let resolved_selection = ChatSelection {
-                    session_id: Some(session.id),
+                    session_id: Some(session.id.clone()),
                     message_count: Some(session.message_count),
                     ..selection
                 };
                 fetch_chat_history_page(
-                    cfg,
+                    cfg.clone(),
                     resolved_selection,
                     None,
                     true,
                     legacy_state,
                     history_state,
                 );
+                if let Some(turn_id) = reattach_turn_id {
+                    reattach_active_turn(cfg, session.id, turn_id, legacy_state, cancel_token);
+                }
             }
             Err(err) => {
                 history_state.set(ChatHistoryState::failed(err.to_string(), None, None));
+            }
+        }
+    });
+}
+
+/// Reattach to a session's already in-progress turn, replaying its
+/// buffered events into local state so the operator regains live progress
+/// and abort control after reloading mid-turn (#7297, PR #7267's
+/// `active_turn_id`).
+///
+/// Shares `cancel_token` with `send_message`'s own turns, so the existing
+/// `on_abort` handler works unmodified. NOTE: cancelling a *reattached*
+/// stream only stops listening -- unlike cancelling the turn's original
+/// submitting connection, it does not abort the turn server-side (see
+/// [`skene::api::streaming::reattach_turn_stream`]'s doc comment).
+fn reattach_active_turn(
+    cfg: ConnectionConfig,
+    session_id: skene::id::ApiSessionId,
+    turn_id: skene::id::TurnId,
+    mut legacy_state: Signal<ChatState>,
+    mut cancel_token: Signal<CancellationToken>,
+) {
+    cancel_token.read().cancel();
+    let new_token = CancellationToken::new();
+    cancel_token.set(new_token.clone());
+
+    spawn(async move {
+        let client = match authenticated_streaming_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                let mut state = legacy_state.write();
+                let mut manager = ChatStateManager::new();
+                if manager.apply(StreamEvent::Error(err.to_string()), &mut state) {
+                    tracing::trace!("applied reattach client-build failure");
+                }
+                return;
+            }
+        };
+
+        let mut rx = skene::api::streaming::reattach_turn_stream(
+            client,
+            &cfg.server_url,
+            session_id.as_ref(),
+            turn_id.as_ref(),
+            new_token.clone(),
+        );
+
+        let mut manager = ChatStateManager::new();
+        let timeout = tokio::time::sleep(UI_STREAM_TIMEOUT);
+        tokio::pin!(timeout);
+
+        loop {
+            let event = tokio::select! {
+                biased;
+                _ = new_token.cancelled() => {
+                    let mut state = legacy_state.write();
+                    if manager.apply(
+                        StreamEvent::TurnAbort {
+                            reason: "cancelled by user".to_string(),
+                        },
+                        &mut state,
+                    ) {
+                        tracing::trace!("applied reattached turn cancellation");
+                    }
+                    break;
+                }
+                _ = &mut timeout => {
+                    new_token.cancel();
+                    let message = format!(
+                        "stream timed out after {} minutes; stream task cancelled",
+                        UI_STREAM_TIMEOUT.as_secs() / 60
+                    );
+                    let mut state = legacy_state.write();
+                    if manager.apply(StreamEvent::Error(message), &mut state) {
+                        tracing::trace!("applied reattached turn timeout");
+                    }
+                    break;
+                }
+                event = rx.recv() => event,
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                    let mut state = legacy_state.write();
+                    if manager.tick(&mut state) {
+                        tracing::trace!("flushed buffered reattached turn state");
+                    }
+                    continue;
+                }
+            };
+
+            let Some(event) = event else { break };
+            let mut state = legacy_state.write();
+            if manager.apply(event, &mut state) {
+                tracing::trace!("applied reattached turn event");
             }
         }
     });
@@ -582,6 +687,7 @@ pub(crate) fn Chat() -> Element {
                     legacy_state,
                     history_state,
                     tab_bar,
+                    cancel_token,
                 );
             }
         }

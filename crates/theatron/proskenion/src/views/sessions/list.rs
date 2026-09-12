@@ -551,6 +551,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         }
     }
 

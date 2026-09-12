@@ -651,6 +651,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: display_name.map(str::to_string),
+            active_turn_id: None,
         }
     }
 

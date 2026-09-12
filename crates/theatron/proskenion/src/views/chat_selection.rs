@@ -1,7 +1,7 @@
 //! Shared chat activation helpers for cross-view navigation.
 
 use skene::api::types::HistoryMessage;
-use skene::id::ApiNousId;
+use skene::id::{ApiNousId, ApiSessionId, TurnId};
 
 use crate::components::chat::ChatState;
 use crate::components::chat::{ChatMessage as LegacyChatMessage, MessageRole};
@@ -37,6 +37,32 @@ pub(crate) fn canonical_agent_selection(agent_id: &ApiNousId, title: String) -> 
         resolve_chat_session_key(agent_id, None),
         title,
     )
+}
+
+/// Stamp local streaming state to reattach to a session's already
+/// in-progress turn, so the abort control renders immediately on entry
+/// instead of waiting for the first reattached event to arrive.
+///
+/// Returns the turn to reattach to, or `None` when the session is idle
+/// (nothing to reattach to, and `chat_state` is left untouched).
+///
+/// WHY(#7297): mid-turn re-entry -- reloading the app while a turn is
+/// running -- must regain abort control. Since PR #7267, `POST
+/// /api/v1/sessions/resolve` reports `active_turn_id` on the session; the
+/// desktop chat treats that as "streaming" up front so `InputBar`'s abort
+/// control (driven purely by `streaming.is_streaming`) shows up without
+/// waiting on the network. The caller reattaches to the turn's event
+/// stream (`skene::api::streaming::reattach_turn_stream`) to keep it live.
+pub(crate) fn apply_active_turn_reattachment(
+    chat_state: &mut ChatState,
+    session_id: ApiSessionId,
+    active_turn_id: Option<TurnId>,
+) -> Option<TurnId> {
+    let turn_id = active_turn_id?;
+    chat_state.streaming.is_streaming = true;
+    chat_state.streaming.turn_id = Some(turn_id.clone());
+    chat_state.streaming.session_id = Some(session_id);
+    Some(turn_id)
 }
 
 pub(crate) fn activate_chat_selection(
@@ -434,5 +460,79 @@ mod tests {
         assert!(chat_state.messages.is_empty());
         assert!(chat_state.streaming.is_streaming);
         assert_eq!(chat_state.streaming.text, "partial answer");
+    }
+
+    // WHY(#7297): mid-turn re-entry -- a session with `active_turn_id` set
+    // must render the abort control immediately (driven by
+    // `streaming.is_streaming`) rather than only after a reattached event
+    // arrives over the network.
+    #[test]
+    fn session_with_active_turn_id_renders_abort_control() {
+        let mut chat_state = ChatState::default();
+        assert!(
+            !chat_state.streaming.is_streaming,
+            "a fresh chat state must start idle"
+        );
+
+        let reattach_turn_id = apply_active_turn_reattachment(
+            &mut chat_state,
+            ApiSessionId::from("session-id"),
+            Some(TurnId::from("turn-1")),
+        );
+
+        assert_eq!(reattach_turn_id, Some(TurnId::from("turn-1")));
+        assert!(
+            chat_state.streaming.is_streaming,
+            "InputBar's abort control renders only when streaming.is_streaming is true"
+        );
+        assert_eq!(chat_state.streaming.turn_id, Some(TurnId::from("turn-1")));
+        assert_eq!(
+            chat_state.streaming.session_id,
+            Some(ApiSessionId::from("session-id"))
+        );
+    }
+
+    #[test]
+    fn idle_session_does_not_stamp_streaming_state() {
+        let mut chat_state = ChatState::default();
+
+        let reattach_turn_id =
+            apply_active_turn_reattachment(&mut chat_state, ApiSessionId::from("session-id"), None);
+
+        assert_eq!(reattach_turn_id, None);
+        assert!(!chat_state.streaming.is_streaming);
+        assert_eq!(chat_state.streaming.turn_id, None);
+    }
+
+    #[test]
+    fn abort_after_reattachment_ends_the_turn() {
+        use crate::components::chat::ChatStateManager;
+        use skene::events::StreamEvent;
+
+        let mut chat_state = ChatState::default();
+        apply_active_turn_reattachment(
+            &mut chat_state,
+            ApiSessionId::from("session-id"),
+            Some(TurnId::from("turn-1")),
+        );
+        assert!(chat_state.streaming.is_streaming, "precondition: reattached");
+
+        // WHY: this mirrors exactly what `on_abort` triggers in production --
+        // cancelling the shared `cancel_token` makes the stream task apply a
+        // `TurnAbort` before it returns, whether the task is the original
+        // sender or a reattached listener.
+        let mut manager = ChatStateManager::new();
+        let applied = manager.apply(
+            StreamEvent::TurnAbort {
+                reason: "cancelled by user".to_string(),
+            },
+            &mut chat_state,
+        );
+
+        assert!(applied);
+        assert!(
+            !chat_state.streaming.is_streaming,
+            "abort must end the turn: the abort control must disappear"
+        );
     }
 }

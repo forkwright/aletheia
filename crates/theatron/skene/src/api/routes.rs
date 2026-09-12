@@ -69,6 +69,13 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/sessions/{id}/history",
     },
     ClientRouteContract {
+        // WHY(#3276): reconnecting to a turn's SSE stream -- pylon's utoipa
+        // doc names both path params `{session_id}`/`{turn_id}`, so the
+        // contract test matches this literally.
+        method: "GET",
+        path_template: "/api/v1/sessions/{session_id}/turns/{turn_id}/events",
+    },
+    ClientRouteContract {
         method: "POST",
         path_template: "/api/v1/sessions/{id}/archive",
     },
@@ -375,6 +382,16 @@ pub mod sessions {
     /// [`session_replay_path`] to build an encoded path.
     pub const SESSION_REPLAY_TEMPLATE: &str = "/api/v1/sessions/{id}/replay";
 
+    /// Template for reconnecting to one turn's SSE event stream (#3276).
+    ///
+    /// `{session_id}`/`{turn_id}` are placeholders - do not interpolate
+    /// directly. Use [`session_turn_events_path`] to build an encoded path.
+    /// WHY: named `{session_id}`/`{turn_id}` (not `{id}`) to mirror pylon's
+    /// own utoipa doc for this route exactly, since the contract test
+    /// matches it literally.
+    pub const SESSION_TURN_EVENTS_TEMPLATE: &str =
+        "/api/v1/sessions/{session_id}/turns/{turn_id}/events";
+
     /// Template for the session-scoped, ownership-verifying tool-approval
     /// route (#7202). `{id}` is a placeholder - do not interpolate
     /// directly. Use [`session_approvals_path`] to build an encoded path.
@@ -440,6 +457,14 @@ pub mod sessions {
     pub fn session_approvals_path(id: &str) -> String {
         let encoded = encoding::path_segment(id);
         format!("{SESSIONS_TEMPLATE}/{encoded}/approvals")
+    }
+
+    /// Build the path for reconnecting to one turn's SSE event stream (#3276).
+    #[must_use]
+    pub fn session_turn_events_path(session_id: &str, turn_id: &str) -> String {
+        let session_id = encoding::path_segment(session_id);
+        let turn_id = encoding::path_segment(turn_id);
+        format!("{SESSIONS_TEMPLATE}/{session_id}/turns/{turn_id}/events")
     }
 }
 
@@ -1070,6 +1095,10 @@ mod tests {
             (
                 "session_approvals_path",
                 sessions::SESSION_APPROVALS_TEMPLATE,
+            ),
+            (
+                "session_turn_events_path",
+                sessions::SESSION_TURN_EVENTS_TEMPLATE,
             ),
             ("credentials_path", system::CREDENTIALS_TEMPLATE),
             ("credential_path", system::CREDENTIAL_TEMPLATE),
