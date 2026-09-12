@@ -201,6 +201,26 @@ impl Oikos {
         self.root.join("logs").join("traces")
     }
 
+    /// The after-action JSONL log directory (dispatch telemetry).
+    ///
+    /// WHY(#7246): the one path authority for this directory. Before this,
+    /// energeia's writer (`crates/aletheia/src/runtime/mod.rs` building its
+    /// `after_action_log_dir` for the tool registry) and the daemon's
+    /// `routing-store-refresh` reader (the same file's `after_action_store`,
+    /// and `commands/maintenance::build_config`'s own copy for the `aletheia
+    /// maintenance` CLI) each independently spelled out
+    /// `oikos.logs().join("after-actions")` as a literal -- three call sites
+    /// that happened to agree, with nothing making them keep agreeing. A
+    /// live incident (routing-store-refresh auto-disabled reading a path
+    /// the writer never touched) is exactly what independently-spelled
+    /// copies of the same path eventually produce. Every caller now derives
+    /// this directory from here, so the writer and every reader are
+    /// structurally the same computation, not three that happen to match.
+    #[must_use]
+    pub fn after_action_log_dir(&self) -> PathBuf {
+        self.root.join("logs").join("after-actions")
+    }
+
     /// Trace archive directory.
     #[must_use]
     pub fn trace_archive(&self) -> PathBuf {
@@ -515,6 +535,11 @@ mod tests {
             oikos.signal(),
             PathBuf::from("/srv/instance/signal"),
             "signal path"
+        );
+        assert_eq!(
+            oikos.after_action_log_dir(),
+            PathBuf::from("/srv/instance/logs/after-actions"),
+            "after-action log dir path"
         );
     }
 

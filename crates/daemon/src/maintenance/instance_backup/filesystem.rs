@@ -7,7 +7,53 @@ use tracing::warn;
 
 use crate::error;
 
-use super::{BackupManifest, SYMLINK_POLICY};
+use super::{BackupManifest, EXCLUDED_BACKUP_SYMLINK_NAME, SYMLINK_POLICY};
+
+/// Whether `path`'s final component is the one symlink name backup
+/// traversal excludes instead of refusing. See
+/// [`EXCLUDED_BACKUP_SYMLINK_NAME`] for why.
+pub(crate) fn is_excluded_backup_symlink_name(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name == EXCLUDED_BACKUP_SYMLINK_NAME)
+}
+
+/// Resolution of one backup source path for traversal. See
+/// [`resolve_backup_source_entry`].
+pub(crate) enum BackupSourceEntry {
+    /// An ordinary path: its own (non-symlink) metadata.
+    Real(fs::Metadata),
+    /// The one path shape backup traversal excludes instead of copying or
+    /// refusing: a `.planning`-named symlink. Callers skip it entirely --
+    /// no recursion, no copy, no error -- and count it.
+    ExcludedPlanning,
+}
+
+/// Resolve `path` for backup source traversal without ever dereferencing a
+/// `.planning` symlink.
+///
+/// A non-symlink is returned as ordinary metadata. A `.planning`-named
+/// symlink ([`is_excluded_backup_symlink_name`]) is reported
+/// [`BackupSourceEntry::ExcludedPlanning`] using only its own
+/// `symlink_metadata` -- its target is never resolved, so a target that
+/// does not exist, loops back on an ancestor (or itself), or contains a
+/// symlink of its own has no effect on the backup. Any other symlink is
+/// refused via [`refuse_backup_source_entry`], unchanged from before
+/// `.planning` existed.
+pub(crate) fn resolve_backup_source_entry(
+    path: &Path,
+    source_root: &Path,
+) -> error::Result<BackupSourceEntry> {
+    let metadata = fs::symlink_metadata(path).context(error::MaintenanceIoSnafu {
+        context: format!("reading source metadata {}", path.display()),
+    })?;
+    if !metadata.file_type().is_symlink() {
+        return Ok(BackupSourceEntry::Real(metadata));
+    }
+    if is_excluded_backup_symlink_name(path) {
+        return Ok(BackupSourceEntry::ExcludedPlanning);
+    }
+    refuse_backup_source_entry("symbolic link", path, source_root)
+}
 
 /// Resolve a configured workspace string against the instance root.
 ///
@@ -61,8 +107,9 @@ pub(crate) fn write_text_file(path: &Path, contents: &str) -> error::Result<()> 
         })
 }
 
-/// Copy a file or directory tree. Returns `(bytes_copied, files_copied)`.
-pub(crate) fn copy_path(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
+/// Copy a file or directory tree. Returns `(bytes_copied, files_copied,
+/// planning_symlinks_excluded)`.
+pub(crate) fn copy_path(src: &Path, dst: &Path) -> error::Result<(u64, u32, u32)> {
     reject_symlinks_in_backup_source(src, src)?;
     copy_path_checked(src, dst, src)
 }
@@ -71,13 +118,11 @@ pub(crate) fn copy_path_checked(
     src: &Path,
     dst: &Path,
     source_root: &Path,
-) -> error::Result<(u64, u32)> {
-    let metadata = fs::symlink_metadata(src).context(error::MaintenanceIoSnafu {
-        context: format!("reading source metadata {}", src.display()),
-    })?;
-    if metadata.file_type().is_symlink() {
-        return refuse_backup_source_entry("symbolic link", src, source_root);
-    }
+) -> error::Result<(u64, u32, u32)> {
+    let metadata = match resolve_backup_source_entry(src, source_root)? {
+        BackupSourceEntry::ExcludedPlanning => return Ok((0, 0, 1)),
+        BackupSourceEntry::Real(metadata) => metadata,
+    };
 
     if metadata.is_dir() {
         return copy_dir_recursive(src, dst, source_root);
@@ -95,21 +140,23 @@ pub(crate) fn copy_path_checked(
     let bytes = fs::copy(src, dst).context(error::MaintenanceIoSnafu {
         context: format!("copying {} to {}", src.display(), dst.display()),
     })?;
-    Ok((bytes, 1))
+    Ok((bytes, 1, 0))
 }
 
-/// Recursively copy a directory. Returns `(bytes_copied, files_copied)`.
+/// Recursively copy a directory. Returns `(bytes_copied, files_copied,
+/// planning_symlinks_excluded)`.
 pub(crate) fn copy_dir_recursive(
     src: &Path,
     dst: &Path,
     source_root: &Path,
-) -> error::Result<(u64, u32)> {
+) -> error::Result<(u64, u32, u32)> {
     fs::create_dir_all(dst).context(error::MaintenanceIoSnafu {
         context: format!("creating backup dir {}", dst.display()),
     })?;
 
     let mut total_bytes = 0u64;
     let mut total_files = 0u32;
+    let mut total_excluded = 0u32;
 
     let entries = fs::read_dir(src).context(error::MaintenanceIoSnafu {
         context: format!("reading source dir {}", src.display()),
@@ -121,16 +168,19 @@ pub(crate) fn copy_dir_recursive(
         })?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        let metadata = fs::symlink_metadata(&src_path).context(error::MaintenanceIoSnafu {
-            context: format!("reading source metadata {}", src_path.display()),
-        })?;
+        let metadata = match resolve_backup_source_entry(&src_path, source_root)? {
+            BackupSourceEntry::ExcludedPlanning => {
+                total_excluded += 1;
+                continue;
+            }
+            BackupSourceEntry::Real(metadata) => metadata,
+        };
 
-        if metadata.file_type().is_symlink() {
-            return refuse_backup_source_entry("symbolic link", &src_path, source_root);
-        } else if metadata.is_dir() {
-            let (bytes, files) = copy_dir_recursive(&src_path, &dst_path, source_root)?;
+        if metadata.is_dir() {
+            let (bytes, files, excluded) = copy_dir_recursive(&src_path, &dst_path, source_root)?;
             total_bytes += bytes;
             total_files += files;
+            total_excluded += excluded;
         } else if metadata.is_file() {
             let bytes = fs::copy(&src_path, &dst_path).context(error::MaintenanceIoSnafu {
                 context: format!("copying {} to {}", src_path.display(), dst_path.display()),
@@ -142,19 +192,17 @@ pub(crate) fn copy_dir_recursive(
         }
     }
 
-    Ok((total_bytes, total_files))
+    Ok((total_bytes, total_files, total_excluded))
 }
 
 pub(crate) fn reject_symlinks_in_backup_source(
     path: &Path,
     source_root: &Path,
 ) -> error::Result<()> {
-    let metadata = fs::symlink_metadata(path).context(error::MaintenanceIoSnafu {
-        context: format!("reading source metadata {}", path.display()),
-    })?;
-    if metadata.file_type().is_symlink() {
-        return refuse_backup_source_entry("symbolic link", path, source_root);
-    }
+    let metadata = match resolve_backup_source_entry(path, source_root)? {
+        BackupSourceEntry::ExcludedPlanning => return Ok(()),
+        BackupSourceEntry::Real(metadata) => metadata,
+    };
     if !metadata.is_dir() {
         return Ok(());
     }
@@ -272,7 +320,7 @@ pub(crate) fn set_files_restrictive(_dir: &Path) {}
 
 /// Copy a file or directory tree, skipping any source file for which
 /// `exclude` returns `true`. Returns `(bytes_copied, files_copied,
-/// files_excluded)`.
+/// predicate_excluded, planning_symlinks_excluded)`.
 ///
 /// WHY(#5353): a deliberate second copy path alongside [`copy_path`] rather
 /// than an `Option<exclude>` parameter threaded onto it -- `copy_path` has
@@ -287,7 +335,7 @@ pub(crate) fn copy_path_excluding<F: Fn(&Path) -> bool>(
     src: &Path,
     dst: &Path,
     exclude: &F,
-) -> error::Result<(u64, u32, u32)> {
+) -> error::Result<(u64, u32, u32, u32)> {
     reject_symlinks_in_backup_source(src, src)?;
     copy_path_checked_excluding(src, dst, src, exclude)
 }
@@ -297,13 +345,11 @@ fn copy_path_checked_excluding<F: Fn(&Path) -> bool>(
     dst: &Path,
     source_root: &Path,
     exclude: &F,
-) -> error::Result<(u64, u32, u32)> {
-    let metadata = fs::symlink_metadata(src).context(error::MaintenanceIoSnafu {
-        context: format!("reading source metadata {}", src.display()),
-    })?;
-    if metadata.file_type().is_symlink() {
-        return refuse_backup_source_entry("symbolic link", src, source_root);
-    }
+) -> error::Result<(u64, u32, u32, u32)> {
+    let metadata = match resolve_backup_source_entry(src, source_root)? {
+        BackupSourceEntry::ExcludedPlanning => return Ok((0, 0, 0, 1)),
+        BackupSourceEntry::Real(metadata) => metadata,
+    };
 
     if metadata.is_dir() {
         return copy_dir_recursive_excluding(src, dst, source_root, exclude);
@@ -314,7 +360,7 @@ fn copy_path_checked_excluding<F: Fn(&Path) -> bool>(
     }
 
     if exclude(src) {
-        return Ok((0, 0, 1));
+        return Ok((0, 0, 1, 0));
     }
 
     if let Some(parent) = dst.parent() {
@@ -325,19 +371,19 @@ fn copy_path_checked_excluding<F: Fn(&Path) -> bool>(
     let bytes = fs::copy(src, dst).context(error::MaintenanceIoSnafu {
         context: format!("copying {} to {}", src.display(), dst.display()),
     })?;
-    Ok((bytes, 1, 0))
+    Ok((bytes, 1, 0, 0))
 }
 
 /// Recursively copy a directory, skipping entries `exclude` matches.
-/// Returns `(bytes_copied, files_copied, files_excluded)`. See
-/// [`copy_path_excluding`] for why this exists alongside
-/// [`copy_dir_recursive`].
+/// Returns `(bytes_copied, files_copied, predicate_excluded,
+/// planning_symlinks_excluded)`. See [`copy_path_excluding`] for why this
+/// exists alongside [`copy_dir_recursive`].
 fn copy_dir_recursive_excluding<F: Fn(&Path) -> bool>(
     src: &Path,
     dst: &Path,
     source_root: &Path,
     exclude: &F,
-) -> error::Result<(u64, u32, u32)> {
+) -> error::Result<(u64, u32, u32, u32)> {
     fs::create_dir_all(dst).context(error::MaintenanceIoSnafu {
         context: format!("creating backup dir {}", dst.display()),
     })?;
@@ -345,6 +391,7 @@ fn copy_dir_recursive_excluding<F: Fn(&Path) -> bool>(
     let mut total_bytes = 0u64;
     let mut total_files = 0u32;
     let mut total_excluded = 0u32;
+    let mut total_planning_excluded = 0u32;
 
     let entries = fs::read_dir(src).context(error::MaintenanceIoSnafu {
         context: format!("reading source dir {}", src.display()),
@@ -356,18 +403,21 @@ fn copy_dir_recursive_excluding<F: Fn(&Path) -> bool>(
         })?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        let metadata = fs::symlink_metadata(&src_path).context(error::MaintenanceIoSnafu {
-            context: format!("reading source metadata {}", src_path.display()),
-        })?;
+        let metadata = match resolve_backup_source_entry(&src_path, source_root)? {
+            BackupSourceEntry::ExcludedPlanning => {
+                total_planning_excluded += 1;
+                continue;
+            }
+            BackupSourceEntry::Real(metadata) => metadata,
+        };
 
-        if metadata.file_type().is_symlink() {
-            return refuse_backup_source_entry("symbolic link", &src_path, source_root);
-        } else if metadata.is_dir() {
-            let (bytes, files, excluded) =
+        if metadata.is_dir() {
+            let (bytes, files, excluded, planning_excluded) =
                 copy_dir_recursive_excluding(&src_path, &dst_path, source_root, exclude)?;
             total_bytes += bytes;
             total_files += files;
             total_excluded += excluded;
+            total_planning_excluded += planning_excluded;
         } else if metadata.is_file() {
             if exclude(&src_path) {
                 total_excluded += 1;
@@ -383,7 +433,12 @@ fn copy_dir_recursive_excluding<F: Fn(&Path) -> bool>(
         }
     }
 
-    Ok((total_bytes, total_files, total_excluded))
+    Ok((
+        total_bytes,
+        total_files,
+        total_excluded,
+        total_planning_excluded,
+    ))
 }
 
 /// Whether `path` is a symbolon credential decryption-key sidecar

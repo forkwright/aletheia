@@ -577,7 +577,7 @@ impl RuntimeBuilder {
             Arc::new(ProviderRegistry::new())
         };
 
-        let after_action_log_dir = self.oikos.logs().join("after-actions");
+        let after_action_log_dir = self.oikos.after_action_log_dir();
         #[cfg(feature = "energeia")]
         let mut energeia_services: Option<
             Arc<organon::builtins::energeia::EnergeiaServices>,
@@ -943,9 +943,7 @@ impl RuntimeBuilder {
             audit_log_dir,
             &self.config.prompt_audit,
         ));
-        let after_action_store = Arc::new(AfterActionStore::new(
-            self.oikos.logs().join("after-actions"),
-        ));
+        let after_action_store = Arc::new(AfterActionStore::new(self.oikos.after_action_log_dir()));
         // WHY(#3969): ripe precursor pulled forward ahead of the Q-learning
         // router — full Q-learning stays deferred (reward signal and
         // MetricClaim are undefined primitives), but the interactive path no
