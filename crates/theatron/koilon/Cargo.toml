@@ -52,7 +52,7 @@ clap = { version = "4", features = ["derive", "env"] }
 
 # Config
 toml = { workspace = true }
-dirs = "6"
+dirs = "7"
 
 # Logging (file-based, not stdout)
 tracing = { workspace = true }

@@ -85,7 +85,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 pulldown-cmark = { version = "0.13", features = ["simd"] }
 
 # Config persistence
-dirs = "6"
+dirs = "7"
 toml = "1.1"
 
 # Desktop notifications (freedesktop.org D-Bus on Linux)
