@@ -52,6 +52,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [mcp](#mcp)
 - [training](#training)
 - [timeouts](#timeouts)
+- [stageBudget](#stagebudget)
 - [capacity](#capacity)
 - [retry](#retry)
 - [nousBehavior](#nousbehavior)
@@ -990,6 +991,21 @@ Deployment-tunable timeout thresholds. WHY configurable: the operator approval w
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `approvalTimeoutSecs` | integer | 120 | Maximum wall-clock seconds a Required/Mandatory tool call waits for an operator approval decision before defaulting to deny. WHY configurable (#5011): approval lifetime is part of the execution safety contract — it controls how long an irreversible action blocks the pipeline and what a dropped client connection does. It was previously an unowned constant in `nous::approval`. Valid range: 5–3600. Default: 120 (matches the desktop daily-driver UX — long enough to read the overlay, short enough that a dropped connection denies rather than hangs). |
+
+## stageBudget
+
+Deployment-tunable per-stage wall-clock budgets for the nous turn pipeline (aletheia#7296). WHY configurable: stage budgets were compile-time constants in `nous::config::StageBudget`; deployments with slower providers or larger knowledge stores need to raise them (or lower them to fail fast) without a rebuild. Defaults match the prior hardcoded values. NOTE: this section does not yet govern ephemeral sub-agent turns — `SpawnServiceImpl` (`nous::spawn_svc`) still hardcodes `StageBudget::default()` for spawned sub-agents rather than cascading this config (aletheia#7306).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `contextSecs` | integer | 10 | Context-assembly stage limit, in seconds. Default: 10. |
+| `recallSecs` | integer | 15 | Semantic recall stage limit, in seconds. Default: 15. Also bounds the query-rewrite and side-query-ranking LLM calls the recall stage makes: each gets at most half of this budget (minus a small reserve for the non-LLM search work), floored at 3s. A query-rewrite call that exceeds its share falls back to the raw, unrewritten query rather than failing the stage. |
+| `historySecs` | integer | 5 | History-retrieval stage limit, in seconds. Default: 5. |
+| `guardSecs` | integer | 2 | Guard-evaluation stage limit, in seconds. Default: 2. |
+| `executeSecs` | integer | 0 | LLM execution stage limit, in seconds. `0` means unlimited (the provider controls its own timeout). Default: 0. |
+| `finalizeSecs` | integer | 10 | Finalization stage limit, in seconds. Default: 10. |
+| `reflectionSecs` | integer | 30 | Reflection stage limit, in seconds. Default: 30. |
+| `totalSecs` | integer | 300 | Hard cap on total pipeline wall-clock time, in seconds. Default: 300. |
 
 ## capacity
 

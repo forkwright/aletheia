@@ -19,10 +19,11 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::event::EventEmitter;
 use koina::id::{NousId, SessionId, ToolName};
+use mneme::embedding::EmbeddingProvider;
 use mneme::id::FactId;
 use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    Visibility, far_future, parse_timestamp,
+    RecallResult as KnowledgeRecallResult, Visibility, far_future, parse_timestamp,
 };
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::side_query::SideQueryRanker;
@@ -40,6 +41,7 @@ use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::pipeline::{DegradedMode, PipelineContext, PipelineInput, ReflectionStatus};
+use crate::recall::VectorSearch;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
@@ -1147,10 +1149,12 @@ async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
         providers.register(Box::new(
             MockProvider::new(r#"["fabricated-id", "real-id"]"#).models(&["test-model"]),
         ));
+        let rewrite_timeout = Mutex::new(None);
         let bridge = ProviderRecallBridge {
             providers: &providers,
             model: "test-model",
             call_budget: Duration::from_secs(15),
+            rewrite_timeout: &rewrite_timeout,
         };
 
         let manifest_text = "- real-id Project conventions\n- other-id Another entry\n";
@@ -1175,13 +1179,15 @@ async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component()
     // The error must also name which component was slow and what budget it
     // exceeded, and the call must actually return at that budget rather than
     // waiting for the underlying (here artificially slow) provider call.
-    let (rewrite_elapsed, rewrite_result, rank_elapsed, rank_result) =
+    let (rewrite_elapsed, rewrite_result, rank_elapsed, rank_result, rewrite_timed_out) =
         tokio::task::spawn_blocking(move || {
             let providers = sleeping_providers(Duration::from_secs(10));
+            let rewrite_timeout = Mutex::new(None);
             let bridge = ProviderRecallBridge {
                 providers: &providers,
                 model: "test-model",
                 call_budget: Duration::from_secs(1),
+                rewrite_timeout: &rewrite_timeout,
             };
 
             let start = std::time::Instant::now();
@@ -1193,7 +1199,13 @@ async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component()
             let rank_result = bridge.rank_memories("query", "- real-id entry\n", 5);
             let rank_elapsed = start.elapsed();
 
-            (rewrite_elapsed, rewrite_result, rank_elapsed, rank_result)
+            (
+                rewrite_elapsed,
+                rewrite_result,
+                rank_elapsed,
+                rank_result,
+                rewrite_timeout.lock().expect("test mutex").is_some(),
+            )
         })
         .await
         .expect("spawn_blocking should succeed");
@@ -1209,6 +1221,10 @@ async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component()
         rewrite_message.contains("query rewrite") && rewrite_message.contains("1s budget"),
         "rewrite timeout error should name the slow component and its budget, got: {rewrite_message}"
     );
+    assert!(
+        rewrite_timed_out,
+        "a rewrite-call timeout should flag rewrite_timed_out so run_recall_stage can fall back"
+    );
 
     assert!(
         rank_elapsed < Duration::from_secs(5),
@@ -1220,6 +1236,177 @@ async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component()
     assert!(
         rank_message.contains("side-query ranking") && rank_message.contains("1s budget"),
         "side-query timeout error should name the slow component and its budget, got: {rank_message}"
+    );
+}
+
+// --- Recall-stage query-rewrite timeout fallback (aletheia#7295) ---
+
+/// Embedding provider whose model name is not one of the BM25-only sentinel
+/// names, so `run_recall_stage` takes the vector/tiered-search branch instead
+/// of skipping straight to BM25.
+struct FixedEmbeddingProvider;
+
+impl EmbeddingProvider for FixedEmbeddingProvider {
+    fn embed(&self, _text: &str) -> Result<Vec<f32>, mneme::embedding::EmbeddingError> {
+        Ok(vec![0.1_f32; 8])
+    }
+
+    fn dimension(&self) -> usize {
+        8
+    }
+
+    fn model_name(&self) -> &str {
+        "test-embed-provider"
+    }
+}
+
+/// `VectorSearch` whose `search_tiered` drives the passed-in rewrite
+/// provider to a real timeout (mirroring how
+/// `KnowledgeVectorSearch::search_tiered` calls `QueryRewriter::rewrite` when
+/// the fast path is insufficient), then reports that as a recall-search
+/// failure — exactly what the production tiered path does today. Its
+/// `search_vectors` (the raw, unrewritten path) returns a result whose
+/// content is unique to the fallback, so the test can tell a genuine
+/// fallback apart from a lucky no-op.
+struct RewriteTimesOutVectorSearch;
+
+impl VectorSearch for RewriteTimesOutVectorSearch {
+    fn search_vectors(
+        &self,
+        _query_vec: Vec<f32>,
+        _k: usize,
+        _ef: usize,
+        _requester_nous_id: &str,
+    ) -> error::Result<Vec<KnowledgeRecallResult>> {
+        Ok(vec![KnowledgeRecallResult {
+            content: "raw-query fallback result".to_owned(),
+            distance: 0.1,
+            source_type: "fact".to_owned(),
+            source_id: "fact-raw".to_owned(),
+            nous_id: "test-agent".to_owned(),
+            sensitivity: FactSensitivity::Public,
+            graph_importance: 0.0,
+            scope: None,
+            project_id: None,
+            visibility: Visibility::Private,
+            source_count: 0,
+        }])
+    }
+
+    fn search_tiered(
+        &self,
+        _query: &str,
+        _query_vec: Vec<f32>,
+        _k: usize,
+        _ef: usize,
+        _requester_nous_id: &str,
+        rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
+    ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
+        let err = rewrite_provider
+            .complete("system", "Query: test query")
+            .expect_err("sleeping provider should exceed the recall stage's call budget");
+        Some(Err(error::RecallSearchSnafu {
+            message: format!("query rewrite failed: {err}"),
+        }
+        .build()))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_recall_stage_falls_back_to_raw_query_when_rewrite_times_out() {
+    // WHY(aletheia#7295): a query-rewrite call that exceeds its budget
+    // used to fail the whole recall stage, so the turn got no recalled
+    // knowledge at all even though a plain, unrewritten search was still
+    // possible. It must instead fall back to the raw query.
+    let config = execute_stage_config();
+    let pipeline_config = PipelineConfig {
+        stage_budget: crate::config::StageBudget {
+            // WHY: recall_enhancement_call_budget floors at 3s regardless, so
+            // this just keeps the derivation obviously minimal; the sleeping
+            // provider (10s) always exceeds it.
+            recall_secs: 0,
+            ..crate::config::StageBudget::default()
+        },
+        ..PipelineConfig::default()
+    };
+    let mut ctx = PipelineContext {
+        system_prompt: Some("base prompt".to_owned()),
+        remaining_tokens: 1000,
+        ..PipelineContext::default()
+    };
+    let providers = Arc::new(sleeping_providers(Duration::from_secs(10)));
+    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(FixedEmbeddingProvider);
+    let vector_search: Arc<dyn VectorSearch> = Arc::new(RewriteTimesOutVectorSearch);
+
+    // WHY(aletheia#7295): the fallback must be loud and typed to the turn's
+    // caller, not only a server-side trace line — capture every event the
+    // stage emits via a metric sink so the assertions below can prove that,
+    // not just that the fallback content shows up in the recall result.
+    let captured_events: Arc<Mutex<Vec<(String, Vec<(String, String)>)>>> =
+        Arc::new(Mutex::new(Vec::new()));
+    let captured_events_sink = Arc::clone(&captured_events);
+    let emitter = EventEmitter::with_metric_sink(move |name, labels, _value| {
+        captured_events_sink.lock().expect("sink mutex").push((
+            name.to_owned(),
+            labels
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+                .collect(),
+        ));
+    });
+
+    let result = run_recall_stage(
+        &config,
+        &pipeline_config,
+        &mut ctx,
+        "test query",
+        Some(embedding_provider),
+        Some(vector_search),
+        None,
+        providers,
+        &emitter,
+        None,
+        &NousId::new("test-agent").expect("valid nous id"),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "recall stage itself should not error even when the enhancement path fails, got {result:?}"
+    );
+    let recall = ctx
+        .recall_result
+        .as_ref()
+        .expect("a successful raw-query fallback should populate a recall result");
+    assert!(
+        recall
+            .recall_section
+            .as_deref()
+            .is_some_and(|s| s.contains("raw-query fallback result")),
+        "recall section should come from the raw-query fallback, got {:?}",
+        recall.recall_section
+    );
+
+    let events = captured_events.lock().expect("sink mutex");
+    let degraded = events
+        .iter()
+        .find(|(name, _)| name == "StageDegraded")
+        .unwrap_or_else(|| {
+            panic!(
+                "rewrite-timeout fallback must emit a typed StageDegraded event, not only a \
+                 server-side warn! trace; captured events: {events:?}"
+            )
+        });
+    assert!(
+        degraded
+            .1
+            .contains(&("reason".to_owned(), "rewrite_timeout".to_owned())),
+        "StageDegraded event must name the reason as rewrite_timeout, got {:?}",
+        degraded.1
+    );
+    assert!(
+        degraded.1.iter().any(|(k, _)| k == "stage"),
+        "StageDegraded event must identify which stage degraded"
     );
 }
 

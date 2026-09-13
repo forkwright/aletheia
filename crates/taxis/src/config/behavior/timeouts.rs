@@ -99,3 +99,60 @@ impl Default for RetrySettings {
         }
     }
 }
+
+/// Deployment-tunable per-stage wall-clock budgets for the nous turn
+/// pipeline (aletheia#7296).
+///
+/// Each field is a maximum seconds a pipeline stage may run before the
+/// remaining stages are skipped and a partial result is returned. `0` means
+/// no limit for that stage. Defaults match the compile-time constants
+/// `nous::config::StageBudget` previously hardcoded, so omitting
+/// `[stageBudget]` from `aletheia.toml` produces identical behaviour.
+///
+/// NOTE: this section does not yet govern ephemeral sub-agent turns; see
+/// the `stage_budget` field doc on the config struct that embeds this one
+/// (aletheia#7306).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct StageBudgetConfig {
+    /// Context-assembly stage limit, in seconds. Default: 10.
+    pub context_secs: u32,
+    /// Semantic recall stage limit, in seconds. Default: 15.
+    ///
+    /// Also bounds the query-rewrite and side-query-ranking LLM calls the
+    /// recall stage makes: each gets at most half of this budget (minus a
+    /// small reserve for the non-LLM search work), floored at 3s. A
+    /// query-rewrite call that exceeds its share falls back to the raw,
+    /// unrewritten query rather than failing the stage.
+    pub recall_secs: u32,
+    /// History-retrieval stage limit, in seconds. Default: 5.
+    pub history_secs: u32,
+    /// Guard-evaluation stage limit, in seconds. Default: 2.
+    pub guard_secs: u32,
+    /// LLM execution stage limit, in seconds. `0` means unlimited (the
+    /// provider controls its own timeout). Default: 0.
+    pub execute_secs: u32,
+    /// Finalization stage limit, in seconds. Default: 10.
+    pub finalize_secs: u32,
+    /// Reflection stage limit, in seconds. Default: 30.
+    pub reflection_secs: u32,
+    /// Hard cap on total pipeline wall-clock time, in seconds. Default: 300.
+    pub total_secs: u32,
+}
+
+impl Default for StageBudgetConfig {
+    fn default() -> Self {
+        Self {
+            context_secs: 10,
+            recall_secs: 15,
+            history_secs: 5,
+            guard_secs: 2,
+            execute_secs: 0,
+            finalize_secs: 10,
+            reflection_secs: 30,
+            total_secs: 300,
+        }
+    }
+}

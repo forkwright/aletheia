@@ -76,6 +76,61 @@ fn accepts_approval_timeout_within_range() {
 }
 
 #[test]
+fn accepts_stage_budget_defaults() {
+    // WHY(aletheia#7296): `stageBudget` must be a recognized section --
+    // before this validator existed it fell to the catch-all "unknown
+    // config section" arm, which failed `check-config` for every config
+    // (the field always serializes, even at its default value).
+    let section = json!({
+        "contextSecs": 10,
+        "recallSecs": 15,
+        "historySecs": 5,
+        "guardSecs": 2,
+        "executeSecs": 0,
+        "finalizeSecs": 10,
+        "reflectionSecs": 30,
+        "totalSecs": 300,
+    });
+    assert!(
+        validate_section("stageBudget", &section).is_ok(),
+        "default stageBudget values should be accepted"
+    );
+}
+
+#[test]
+fn accepts_stage_budget_zero_as_unlimited() {
+    // WHY(aletheia#7296): `0` means "no limit for that stage", not "invalid".
+    let section = json!({ "recallSecs": 0, "totalSecs": 0 });
+    assert!(
+        validate_section("stageBudget", &section).is_ok(),
+        "0 (unlimited) should be accepted for any stage budget field"
+    );
+}
+
+#[test]
+fn rejects_stage_budget_above_one_hour() {
+    let section = json!({ "recallSecs": 3601 });
+    let result = validate_section("stageBudget", &section);
+    assert!(
+        result.is_err(),
+        "a stage budget above 3600s should be rejected"
+    );
+}
+
+#[test]
+fn rejects_stage_budget_exceeding_total() {
+    // WHY(aletheia#7296): `TimeBudget::stage_limit` caps every per-stage
+    // budget at `totalSecs` when it is set, so a larger per-stage value can
+    // never take effect -- flag it rather than silently ignoring it.
+    let section = json!({ "recallSecs": 400, "totalSecs": 300 });
+    let result = validate_section("stageBudget", &section);
+    assert!(
+        result.is_err(),
+        "recallSecs exceeding totalSecs should be rejected"
+    );
+}
+
+#[test]
 fn rejects_invalid_port() {
     let section = json!({ "port": 0 });
     let result = validate_section("gateway", &section);

@@ -116,6 +116,22 @@ workspace = "nous/main"
 # [timeouts]
 # approvalTimeoutSecs = 120   # operator approval wait before default-deny; range: 5–3600
 
+# --- Stage budget (aletheia#7296 — deployment-tunable) ---
+# Per-stage wall-clock limits (seconds) for the nous turn pipeline. Defaults
+# below match the compile-time constants previously hardcoded; a slower
+# provider or larger knowledge store may need to raise them.
+# [stageBudget]
+# contextSecs = 10
+# recallSecs = 15      # also bounds query-rewrite/side-query LLM calls; a
+#                      # rewrite call that exceeds its share falls back to
+#                      # the raw query instead of failing the stage
+# historySecs = 5
+# guardSecs = 2
+# executeSecs = 0      # 0 = unlimited, provider controls its own timeout
+# finalizeSecs = 10
+# reflectionSecs = 30
+# totalSecs = 300      # hard cap on total pipeline wall-clock time
+
 # --- Approval posture (per-tier; default "gate" preserves fail-closed behavior) ---
 # "gate": Required/Mandatory tools need a wired operator approval gate and
 # default-deny when a turn has none (daemon/prosoche turns, plain REST turns).

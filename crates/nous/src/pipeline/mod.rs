@@ -1453,6 +1453,7 @@ pub(crate) async fn run_pipeline(
                     // clone cost in the common case.
                     (config.recall.surprise_weight > f64::EPSILON)
                         .then(|| input.session.surprise_calculator.clone()),
+                    &tool_ctx.nous_id,
                 ),
             )
             .await,

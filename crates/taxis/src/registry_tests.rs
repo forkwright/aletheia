@@ -207,3 +207,58 @@ fn registry_bounds_match_validator_ranges_for_drifted_fields() {
         );
     }
 }
+
+#[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "exact equality is the point: two hand-maintained constants meant to represent \
+              the same value bit-for-bit, not a computed result subject to rounding error -- \
+              this assertion is what catches them drifting apart"
+)]
+fn stage_budget_max_secs_constants_agree() {
+    // WHY(aletheia#7296): `STAGE_BUDGET_MAX_SECS` (u64, used by
+    // `validate::validate_stage_budget`) and `STAGE_BUDGET_MAX_SECS_F64`
+    // (f64, used by every `stageBudget.*` `ParameterSpec` bound below) are
+    // two constants only because Rust's numeric-cast clippy lints are
+    // `-D warnings` in CI; this test is what actually keeps them from
+    // drifting apart, not just the doc comment.
+    assert_eq!(STAGE_BUDGET_MAX_SECS, 3600);
+    assert_eq!(STAGE_BUDGET_MAX_SECS_F64, 3600.0);
+}
+
+#[test]
+fn spec_by_key_finds_every_stage_budget_field() {
+    // WHY(aletheia#7296): `stageBudget.*` must be registered like its
+    // sibling `timeouts.approvalTimeoutSecs`, with the same ceiling, so the
+    // 0..STAGE_BUDGET_MAX_SECS invariant enforced by
+    // `validate::validate_stage_budget` is visible to registry consumers
+    // (restart classification, `aletheia config` tooling, tuning metadata)
+    // instead of only living inside the validator.
+    const STAGE_BUDGET_FIELDS: &[(&str, &str)] = &[
+        ("stageBudget.contextSecs", "10"),
+        ("stageBudget.recallSecs", "15"),
+        ("stageBudget.historySecs", "5"),
+        ("stageBudget.guardSecs", "2"),
+        ("stageBudget.executeSecs", "0"),
+        ("stageBudget.finalizeSecs", "10"),
+        ("stageBudget.reflectionSecs", "30"),
+        ("stageBudget.totalSecs", "300"),
+    ];
+
+    for (key, expected_default) in STAGE_BUDGET_FIELDS {
+        let spec = spec_by_key(key).unwrap_or_else(|| panic!("expected spec for {key}"));
+        assert_eq!(spec.section, "stageBudget", "wrong section for {key}");
+        assert_eq!(spec.tier, ParameterTier::Deployment, "wrong tier for {key}");
+        assert!(spec.hot_reloadable, "{key} must be hot-reloadable");
+        assert_eq!(
+            spec.bounds,
+            Some((0.0, STAGE_BUDGET_MAX_SECS_F64)),
+            "wrong bounds for {key}"
+        );
+        assert_eq!(
+            spec.default.to_string(),
+            *expected_default,
+            "wrong default for {key}"
+        );
+    }
+}
