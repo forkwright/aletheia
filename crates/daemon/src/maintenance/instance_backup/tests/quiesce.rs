@@ -1,3 +1,4 @@
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -294,6 +295,8 @@ fn create_backup_with_quiesce_preserves_cross_store_invariant_under_concurrent_w
 
     let restore_root = tmp.path().join("restored");
     fs::create_dir_all(&restore_root).unwrap();
+    // WHY(forge sandbox hermeticity): see `configure_disposable_gateway`.
+    configure_disposable_gateway(&restore_root);
     let restore_manager = InstanceBackup::new(InstanceBackupConfig {
         enabled: true,
         instance_root: restore_root.clone(),
@@ -333,4 +336,33 @@ fn wait_for_seq(seq: &AtomicU64, minimum: u64) {
     while seq.load(Ordering::SeqCst) < minimum {
         std::thread::yield_now();
     }
+}
+
+/// Give a disposable restore target its own `aletheia.toml` pinned to a
+/// port this test reserves and immediately frees.
+///
+/// WHY(forge sandbox hermeticity): `restore_backup`'s live-service
+/// preflight (`ensure_restore_preflight`) probes whatever gateway port the
+/// target instance's config resolves to -- the compiled-in default
+/// (18789) when, as in a bare tempdir, no `aletheia.toml` is present. That
+/// default is aletheia's well-known gateway port across the whole
+/// ecosystem, so under a sandbox with a shared network namespace (or
+/// simply on a developer's machine already running the real product)
+/// something else can be answering there. That has nothing to do with a
+/// disposable restore target and would wrongly trip the "gateway appears
+/// to be accepting connections" guard, aborting a restore that has
+/// nothing live to protect against. Reserving an OS-assigned port and
+/// dropping the listener immediately guarantees nothing is bound there,
+/// so the probe can only ever observe "nothing is listening" for *this*
+/// instance root.
+fn configure_disposable_gateway(instance_root: &Path) {
+    let reserved =
+        TcpListener::bind("127.0.0.1:0").expect("reserve an unused port for the gateway config");
+    let port = reserved.local_addr().expect("read reserved port").port();
+    drop(reserved);
+    write_text_file(
+        &instance_root.join("config").join("aletheia.toml"),
+        &format!("[gateway]\nport = {port}\nbind = \"localhost\"\n"),
+    )
+    .expect("write disposable gateway config");
 }
