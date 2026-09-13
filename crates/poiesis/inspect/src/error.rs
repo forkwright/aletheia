@@ -30,9 +30,15 @@ pub enum InspectError {
     ///
     /// This boundary remains in place even though known arithmetic panic paths
     /// are rejected explicitly, so one malformed document cannot unwind an
-    /// ingestion worker or synchronous tool executor.
-    #[snafu(display("PDF parser aborted while rejecting malformed input"))]
-    PdfParserPanicked,
+    /// ingestion worker or synchronous tool executor. `catch_unwind`'s payload
+    /// is `Box<dyn Any + Send>`, not `std::error::Error`, so it cannot be a
+    /// `#[snafu(source)]`; its recovered message is carried in `detail`
+    /// instead so the panic reason is never silently discarded.
+    #[snafu(display("PDF parser aborted while rejecting malformed input: {detail}"))]
+    PdfParserPanicked {
+        /// Message recovered from the `catch_unwind` panic payload.
+        detail: String,
+    },
 
     /// Password-protected PDFs are deliberately unsupported by inspection.
     #[snafu(display("password-protected PDFs are not supported"))]

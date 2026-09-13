@@ -118,9 +118,49 @@ pub fn extract_pdf_text_with_limits(bytes: &[u8], limits: &PdfInspectLimits) -> 
     contain_pdf_parser(|| pdf::extract_pdf_text_impl(bytes, limits))
 }
 
+std::thread_local! {
+    /// Most recent panic message captured on this thread by the hook
+    /// [`ensure_panic_message_capture`] installs.
+    static LAST_PANIC_MESSAGE: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Install a process-wide panic hook, once, that records each panic's
+/// hook-formatted description (location plus message) into a thread-local
+/// before unwinding leaves the panicking frame.
+///
+/// `catch_unwind`'s `Box<dyn Any + Send>` payload is not reliably a
+/// `&str`/`String` to downcast, so the payload is never inspected directly;
+/// `PanicHookInfo`'s `Display` impl (the same rendering the default hook
+/// prints) is captured instead, since it reads the panic's message
+/// independently of the payload's concrete type. The thread-local keeps
+/// concurrent callers on different threads from reading each other's
+/// message; wrapping (not replacing) the previous hook preserves normal
+/// panic output.
+fn ensure_panic_message_capture() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            LAST_PANIC_MESSAGE.with(|slot| *slot.borrow_mut() = Some(info.to_string()));
+            previous(info);
+        }));
+    });
+}
+
 fn contain_pdf_parser<T>(operation: impl FnOnce() -> Result<T>) -> Result<T> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation))
-        .map_err(|_| InspectError::PdfParserPanicked)?
+    ensure_panic_message_capture();
+    LAST_PANIC_MESSAGE.with(|slot| slot.borrow_mut().take());
+    // WHY: the panic payload itself is deliberately unused here -- it is not
+    // reliably `&str`/`String` to downcast, so the message was already
+    // captured into `LAST_PANIC_MESSAGE` by the hook before unwinding
+    // reached this `map_err`.
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)).map_err(|_panic_payload| {
+        let detail = LAST_PANIC_MESSAGE
+            .with(|slot| slot.borrow_mut().take())
+            .unwrap_or_else(|| "PDF parser panicked with no captured message".to_owned());
+        InspectError::PdfParserPanicked { detail }
+    })?
 }
 
 /// Extract text from an XLSX workbook.
@@ -247,7 +287,7 @@ mod tests {
 
     fn cr_only_classic_xref(mut bytes: Vec<u8>) -> Vec<u8> {
         let xref = classic_xref_offset(&bytes);
-        for byte in &mut bytes[xref..] {
+        for byte in bytes.get_mut(xref..).expect("xref tail in bounds") {
             if *byte == b'\n' {
                 *byte = b'\r';
             }
@@ -255,12 +295,15 @@ mod tests {
         bytes
     }
 
-    fn crlf_classic_xref(bytes: Vec<u8>) -> Vec<u8> {
-        let xref = classic_xref_offset(&bytes);
-        let mut converted =
-            Vec::with_capacity(bytes.len() + bytes[xref..].iter().filter(|b| **b == b'\n').count());
-        converted.extend_from_slice(&bytes[..xref]);
-        for byte in &bytes[xref..] {
+    fn crlf_classic_xref(bytes: &[u8]) -> Vec<u8> {
+        let xref = classic_xref_offset(bytes);
+        let tail = bytes.get(xref..).expect("xref tail in bounds");
+        // Each `\n` becomes at most `\r\n` (net +1 byte), so the input length
+        // plus the tail length is always a sufficient upper bound -- no need
+        // to pre-count newlines to size the buffer exactly.
+        let mut converted = Vec::with_capacity(bytes.len() + tail.len());
+        converted.extend_from_slice(bytes.get(..xref).expect("xref head in bounds"));
+        for byte in tail {
             if *byte == b'\n' {
                 if converted.last() == Some(&b' ') {
                     converted.pop();
@@ -273,16 +316,23 @@ mod tests {
         converted
     }
 
-    fn classic_xref_with_declared_count_delta(bytes: Vec<u8>, delta: isize) -> Vec<u8> {
-        let xref = classic_xref_offset(&bytes);
+    fn classic_xref_with_declared_count_delta(bytes: &[u8], delta: isize) -> Vec<u8> {
+        let xref = classic_xref_offset(bytes);
         let header_start = xref + b"xref\n".len();
-        let header_end = bytes[header_start..]
+        let header_tail = bytes
+            .get(header_start..)
+            .expect("xref subsection header in bounds");
+        let header_end = header_tail
             .iter()
             .position(|byte| *byte == b'\n')
             .map(|relative| header_start + relative)
             .expect("xref subsection header end");
-        let header =
-            std::str::from_utf8(&bytes[header_start..header_end]).expect("ASCII xref header");
+        let header = std::str::from_utf8(
+            bytes
+                .get(header_start..header_end)
+                .expect("xref header span in bounds"),
+        )
+        .expect("ASCII xref header");
         let mut fields = header.split_whitespace();
         let start = fields.next().expect("xref start");
         let count = fields
@@ -295,9 +345,13 @@ mod tests {
             count.checked_add_signed(delta).expect("test count")
         );
         let mut malformed = Vec::with_capacity(bytes.len() + replacement.len());
-        malformed.extend_from_slice(&bytes[..header_start]);
+        malformed.extend_from_slice(
+            bytes
+                .get(..header_start)
+                .expect("xref pre-header in bounds"),
+        );
         malformed.extend_from_slice(replacement.as_bytes());
-        malformed.extend_from_slice(&bytes[header_end..]);
+        malformed.extend_from_slice(bytes.get(header_end..).expect("xref post-header in bounds"));
         malformed
     }
 
@@ -327,7 +381,7 @@ mod tests {
         for id in 1..=max_id {
             match offsets.get(&id) {
                 Some(offset) => {
-                    bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes())
+                    bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
                 }
                 None => bytes.extend_from_slice(b"0000000000 00000 f \n"),
             }
@@ -372,7 +426,13 @@ mod tests {
                 .checked_sub(content_start)
                 .expect("fixture length");
             let encoded = format!("{length:010}");
-            payload[length_start..length_start + encoded.len()].copy_from_slice(encoded.as_bytes());
+            let length_end = length_start
+                .checked_add(encoded.len())
+                .expect("fixture offset");
+            payload
+                .get_mut(length_start..length_end)
+                .expect("length placeholder span in bounds")
+                .copy_from_slice(encoded.as_bytes());
             assert!(id > 3, "nested IDs follow the enclosing stream");
         }
 
@@ -477,12 +537,17 @@ mod tests {
             .rposition(|window| window == marker)
             .expect("startxref marker")
             + marker.len();
-        let end = bytes[start..]
+        let end = bytes
+            .get(start..)
+            .expect("startxref tail in bounds")
             .iter()
             .position(|byte| *byte == b'\n')
             .expect("startxref line")
             + start;
-        bytes[start..end].fill(b'9');
+        bytes
+            .get_mut(start..end)
+            .expect("startxref digits span in bounds")
+            .fill(b'9');
         bytes
     }
 
@@ -597,21 +662,21 @@ mod tests {
         use lopdf::{Document, Object, Stream};
 
         let mut document = Document::with_version("1.5");
-        let pages_id = document.new_object_id();
+        let page_tree_id = document.new_object_id();
         let content_id = document.add_object(Stream::new(lopdf::dictionary! {}, content.to_vec()));
         let page_id = document.add_object(lopdf::dictionary! {
-            "Type" => "Page", "Parent" => pages_id, "Contents" => content_id,
+            "Type" => "Page", "Parent" => page_tree_id, "Contents" => content_id,
             "Resources" => lopdf::dictionary! {},
             "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
         });
         document.objects.insert(
-            pages_id,
+            page_tree_id,
             Object::Dictionary(lopdf::dictionary! {
                 "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1,
             }),
         );
         let catalog_id = document.add_object(lopdf::dictionary! {
-            "Type" => "Catalog", "Pages" => pages_id,
+            "Type" => "Catalog", "Pages" => page_tree_id,
         });
         document.trailer.set("Root", catalog_id);
         let mut bytes = Vec::new();
@@ -624,7 +689,7 @@ mod tests {
         use lopdf::{Document, Object, Stream};
 
         let mut document = Document::with_version("1.5");
-        let pages_id = document.new_object_id();
+        let page_tree_id = document.new_object_id();
         let cmap_id = document.add_object(Stream::new(lopdf::dictionary! {}, cmap.to_vec()));
         let mut font_resources = lopdf::Dictionary::new();
         let mut content = b"BT\n".to_vec();
@@ -640,18 +705,18 @@ mod tests {
         content.extend_from_slice(b"ET\n");
         let content_id = document.add_object(Stream::new(lopdf::dictionary! {}, content));
         let page_id = document.add_object(lopdf::dictionary! {
-            "Type" => "Page", "Parent" => pages_id, "Contents" => content_id,
+            "Type" => "Page", "Parent" => page_tree_id, "Contents" => content_id,
             "Resources" => lopdf::dictionary! { "Font" => font_resources },
             "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
         });
         document.objects.insert(
-            pages_id,
+            page_tree_id,
             Object::Dictionary(lopdf::dictionary! {
                 "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1,
             }),
         );
         let catalog_id = document.add_object(lopdf::dictionary! {
-            "Type" => "Catalog", "Pages" => pages_id,
+            "Type" => "Catalog", "Pages" => page_tree_id,
         });
         document.trailer.set("Root", catalog_id);
         let mut bytes = Vec::new();
@@ -672,7 +737,7 @@ mod tests {
         bytes
     }
 
-    const ONE_MAPPING_CMAP: &[u8] = br#"/CIDInit /ProcSet findresource begin
+    const ONE_MAPPING_CMAP: &[u8] = br"/CIDInit /ProcSet findresource begin
 12 dict begin
 begincmap
 /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
@@ -687,9 +752,9 @@ endbfchar
 endcmap
 CMapName currentdict /CMap defineresource pop
 end
-end"#;
+end";
 
-    const OVERFLOWING_TARGET_CMAP: &[u8] = br#"/CIDInit /ProcSet findresource begin
+    const OVERFLOWING_TARGET_CMAP: &[u8] = br"/CIDInit /ProcSet findresource begin
 12 dict begin
 begincmap
 /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
@@ -704,7 +769,7 @@ endbfrange
 endcmap
 CMapName currentdict /CMap defineresource pop
 end
-end"#;
+end";
 
     const NAMED_ENTITY_TEXT: &str = r"A &amp; B &lt; C &gt; D &apos;Q&apos; &quot;R&quot; &#x2019;";
     const DECODED_ENTITY_TEXT: &str = "A & B < C > D 'Q' \"R\" \u{2019}";
@@ -720,7 +785,13 @@ end"#;
     fn hostile_pdf_panic_boundary_returns_a_typed_refusal() {
         let error = contain_pdf_parser::<()>(|| panic!("synthetic parser panic"))
             .expect_err("a parser panic must become a document error");
-        assert!(matches!(error, InspectError::PdfParserPanicked));
+        let InspectError::PdfParserPanicked { detail } = error else {
+            panic!("expected InspectError::PdfParserPanicked, got {error:?}");
+        };
+        assert!(
+            detail.contains("synthetic parser panic"),
+            "captured panic detail must contain the panic message, got {detail:?}"
+        );
     }
 
     #[test]
@@ -962,7 +1033,7 @@ end"#;
         for (name, bytes) in [
             ("LF", lf.clone()),
             ("CR", cr_only_classic_xref(lf.clone())),
-            ("CRLF", crlf_classic_xref(lf)),
+            ("CRLF", crlf_classic_xref(&lf)),
         ] {
             let summary = inspect_pdf(&bytes).unwrap_or_else(|error| {
                 panic!("{name} xref must parse before its budget is lowered: {error}")
@@ -990,7 +1061,7 @@ end"#;
     fn classic_xref_declared_count_mismatch_fails_closed() {
         let valid = text_pdf("count mismatch", 1);
         for delta in [-1, 1] {
-            let bytes = classic_xref_with_declared_count_delta(valid.clone(), delta);
+            let bytes = classic_xref_with_declared_count_delta(&valid, delta);
             let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
             let error = outcome
                 .expect("count mismatch must not panic")

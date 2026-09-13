@@ -112,7 +112,7 @@ pub struct PdfInspectLimits {
     pub max_source_work_bytes: usize,
     /// Aggregate UTF-8 text returned by extraction.
     pub max_extracted_text_bytes: usize,
-    /// Aggregate source-code mappings expanded across every `/ToUnicode` CMap.
+    /// Aggregate source-code mappings expanded across every `/ToUnicode` `CMap`.
     pub max_tounicode_mappings: usize,
 }
 
