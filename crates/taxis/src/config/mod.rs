@@ -312,18 +312,19 @@ pub struct AletheiaConfig {
     /// message volume; circuit-breaker thresholds must balance reliability
     /// against false positives in flaky network conditions.
     pub messaging: MessagingConfig,
-    /// Self-tuning feedback loop configuration.
+    /// A global kill switch, a per-cycle change cap, and evidence
+    /// thresholds gate a feedback loop that proposes registry parameter
+    /// changes from observed outcome metrics during the prosoche cycle.
     ///
-    /// WHY configurable: tuning is disabled by default (experimental). The
-    /// global kill switch and evidence thresholds let operators enable and
-    /// tune the feedback loop incrementally.
+    /// WHY configurable: the loop is disabled by default (experimental);
+    /// operators enable and tune it incrementally.
     pub tuning: TuningConfig,
-    /// Anthropic-specific sovereignty and privacy settings (#3410, #3406, #3409).
+    /// Anthropic-specific data-residency and privacy settings (#3410, #3406, #3409).
     ///
     /// WHY configurable: prompt caching stores operator system prompts on
-    /// Anthropic servers. The default (`disabled`) is sovereignty-first;
-    /// operators who accept the tradeoff may opt in to reduce per-turn token
-    /// cost.
+    /// Anthropic servers. The default (`disabled`) keeps that content out of
+    /// Anthropic's cache; operators who accept the tradeoff may opt in to
+    /// reduce per-turn token cost.
     pub anthropic: AnthropicConfig,
     /// JWT validation tuning (clock-skew leeway, etc.).
     ///
@@ -350,9 +351,8 @@ pub struct AletheiaConfig {
     /// Prompt audit log: operator visibility into outbound LLM requests (#3411).
     ///
     /// WHY configurable: operators can disable the log or tune retention and
-    /// filtered-ID inclusion. Default is on with 90-day retention because
-    /// the log is a sovereignty feature — operators should be able to see
-    /// what the system sent out without opting in.
+    /// filtered-ID inclusion. Default is on with 90-day retention so
+    /// operators can see what the system sent out without opting in.
     pub prompt_audit: PromptAuditSettings,
     /// Runtime-bridged external tools (HTTP proxies and MCP clients).
     ///
