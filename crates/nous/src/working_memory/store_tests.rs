@@ -198,6 +198,91 @@ fn write_checkpoint_prunes_old_entries() {
     assert_eq!(recent.first().map(|r| r.turn_number), Some(25));
 }
 
+// ── Per-session deletion (aletheia#7341) ────────────────────────────────────
+
+#[test]
+fn delete_session_removes_all_checkpoints_for_that_session() {
+    let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
+    for i in 1..=5 {
+        store
+            .write_checkpoint("session-1", test_turn_id(i), i, &format!("checkpoint-{i}"))
+            .expect("write checkpoint");
+    }
+
+    let removed = store.delete_session("session-1").expect("delete session");
+    assert_eq!(removed, 5, "must report every removed row");
+
+    let recent = store
+        .read_recent("session-1", 100)
+        .expect("read recent succeeds");
+    assert!(
+        recent.is_empty(),
+        "no checkpoints must remain for a deleted session"
+    );
+    assert!(
+        store
+            .read_latest("session-1")
+            .expect("read latest succeeds")
+            .is_none()
+    );
+}
+
+#[test]
+fn delete_session_leaves_other_sessions_untouched() {
+    let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
+    store
+        .write_checkpoint("session-a", test_turn_id(1), 1, "a-content")
+        .expect("write a");
+    store
+        .write_checkpoint("session-b", test_turn_id(1), 1, "b-content")
+        .expect("write b");
+
+    store.delete_session("session-a").expect("delete a");
+
+    assert!(
+        store
+            .read_latest("session-a")
+            .expect("read a succeeds")
+            .is_none(),
+        "deleted session must have no remaining checkpoint"
+    );
+    let b = store
+        .read_latest("session-b")
+        .expect("read b succeeds")
+        .expect("session-b checkpoint survives");
+    assert_eq!(b.content, "b-content");
+}
+
+#[test]
+fn delete_session_for_a_session_with_no_checkpoints_is_a_zero_row_no_op() {
+    let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
+    let removed = store
+        .delete_session("no-such-session")
+        .expect("delete succeeds");
+    assert_eq!(removed, 0);
+}
+
+#[test]
+fn delete_session_survives_store_reopen_at_same_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    {
+        let store = FjallWorkingCheckpointStore::open(dir.path()).expect("open store");
+        store
+            .write_checkpoint("session-1", test_turn_id(1), 1, "before delete")
+            .expect("write checkpoint");
+        store.delete_session("session-1").expect("delete session");
+    }
+
+    let reopened = FjallWorkingCheckpointStore::open(dir.path()).expect("reopen store");
+    assert!(
+        reopened
+            .read_latest("session-1")
+            .expect("read latest succeeds")
+            .is_none(),
+        "deletion must be durable across reopen"
+    );
+}
+
 // ── Legacy key migration (#4853) ────────────────────────────────────────────
 
 /// Insert a checkpoint row directly under the pre-#4853 zero-padded-ordinal

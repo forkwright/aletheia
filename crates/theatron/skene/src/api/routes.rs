@@ -84,6 +84,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/sessions/{id}/unarchive",
     },
     ClientRouteContract {
+        method: "DELETE",
+        path_template: "/api/v1/sessions/{id}/purge",
+    },
+    ClientRouteContract {
         method: "PUT",
         path_template: "/api/v1/sessions/{id}/name",
     },
@@ -370,6 +374,12 @@ pub mod sessions {
     /// [`session_unarchive_path`] to build an encoded path.
     pub const SESSION_UNARCHIVE_TEMPLATE: &str = "/api/v1/sessions/{id}/unarchive";
 
+    /// Template for permanently deleting one session (aletheia#7341).
+    ///
+    /// `{id}` is a placeholder - do not interpolate directly. Use
+    /// [`session_purge_path`] to build an encoded path.
+    pub const SESSION_PURGE_TEMPLATE: &str = "/api/v1/sessions/{id}/purge";
+
     /// Template for renaming one session.
     ///
     /// `{id}` is a placeholder - do not interpolate directly. Use
@@ -436,6 +446,13 @@ pub mod sessions {
     pub fn session_unarchive_path(id: &str) -> String {
         let encoded = encoding::path_segment(id);
         format!("{SESSIONS_TEMPLATE}/{encoded}/unarchive")
+    }
+
+    /// Build the path for permanently deleting one session (aletheia#7341).
+    #[must_use]
+    pub fn session_purge_path(id: &str) -> String {
+        let encoded = encoding::path_segment(id);
+        format!("{SESSIONS_TEMPLATE}/{encoded}/purge")
     }
 
     /// Build the path for renaming one session.
@@ -1090,6 +1107,7 @@ mod tests {
                 "session_unarchive_path",
                 sessions::SESSION_UNARCHIVE_TEMPLATE,
             ),
+            ("session_purge_path", sessions::SESSION_PURGE_TEMPLATE),
             ("session_name_path", sessions::SESSION_NAME_TEMPLATE),
             ("session_replay_path", sessions::SESSION_REPLAY_TEMPLATE),
             (
@@ -1307,6 +1325,10 @@ mod tests {
         assert_eq!(
             sessions::session_unarchive_path("session%2Fone"),
             "/api/v1/sessions/session%252Fone/unarchive"
+        );
+        assert_eq!(
+            sessions::session_purge_path("session:one"),
+            "/api/v1/sessions/session%3Aone/purge"
         );
         assert_eq!(
             sessions::session_name_path("session one"),

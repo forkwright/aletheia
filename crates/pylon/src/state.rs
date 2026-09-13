@@ -119,6 +119,15 @@ pub struct AppState {
     /// runner's own open handle. Empty when daemon mode is disabled, which
     /// is itself a real (not unknown) signal.
     pub daemon_task_states: Arc<Vec<(String, TaskStateStore)>>,
+    /// Durable per-session working-checkpoint store (#4588; aletheia#7341).
+    ///
+    /// Shared with the `update_working_checkpoint` tool and the checkpoint
+    /// injector hook via `ToolServices` -- opened once in
+    /// `aletheia::runtime` and cloned into both places. `purge` uses this
+    /// same handle to clear a purged session's checkpoint rows, which are
+    /// otherwise durable with no TTL (`aletheia agent import`) and outside
+    /// `mneme::store::SessionStore`'s reach.
+    pub working_checkpoint_store: Arc<dyn organon::types::WorkingCheckpointStore>,
 }
 
 impl AppState {
@@ -393,6 +402,9 @@ pub struct SessionsState {
     pub event_bus: Arc<EventBus>,
     /// Per-session approval-decision sender registry (#3958, ADR-005).
     pub approval_registry: Arc<ApprovalRegistry>,
+    /// Durable per-session working-checkpoint store (#4588; aletheia#7341).
+    /// See [`AppState::working_checkpoint_store`].
+    pub working_checkpoint_store: Arc<dyn organon::types::WorkingCheckpointStore>,
 }
 
 impl FromRef<Arc<AppState>> for SessionsState {
@@ -407,6 +419,7 @@ impl FromRef<Arc<AppState>> for SessionsState {
             turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
             event_bus: Arc::clone(&state.event_bus),
             approval_registry: Arc::clone(&state.approval_registry),
+            working_checkpoint_store: Arc::clone(&state.working_checkpoint_store),
         }
     }
 }

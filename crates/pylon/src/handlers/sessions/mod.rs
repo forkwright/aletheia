@@ -667,6 +667,7 @@ pub async fn close(
         (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Session not found", body = ErrorResponse),
+        (status = 409, description = "Session has a turn in flight", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -680,9 +681,44 @@ pub async fn purge(
     let session = find_session(&state, &id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
+    // WHY(aletheia#7341): a hard delete racing a running turn would either
+    // corrupt the turn's in-progress writes or resurrect rows the turn
+    // re-appends after the transaction commits. Checked immediately before
+    // the destructive spawn_blocking below to keep the window as narrow as
+    // possible; it does not close the window entirely (a turn can still
+    // start between this check and the delete), matching the same
+    // best-effort narrowing `GET /sessions/{id}`'s `active_turn_id` overlay
+    // already accepts for the same registry.
+    if let Some(turn_id) = state
+        .turn_buffer_registry
+        .active_turn_for_session(&session.id)
+        .await
+    {
+        return Err(ConflictSnafu {
+            message: format!(
+                "session {} has turn {turn_id} in flight; wait for it to finish before purging",
+                session.id
+            ),
+        }
+        .build());
+    }
+
     let state_clone = state.clone();
     let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
+        // WHY(aletheia#7341): the working-checkpoint store first. It is a
+        // separate on-disk fjall database from `mneme::store::SessionStore`
+        // (opened once in `aletheia::runtime`, shared via `AppState`), so
+        // clearing it is not part of `delete_session`'s own transaction and
+        // can fail independently. Ordering it before the session-row delete
+        // means a checkpoint-store failure leaves the session row intact —
+        // the purge is then safely retryable — rather than stranding
+        // checkpoint rows for a session that no longer exists anywhere else.
+        state_clone
+            .working_checkpoint_store
+            .delete_session(&id_clone)
+            .map_err(ApiError::from)?;
+
         let store = state_clone.session_store.blocking_lock();
         store.delete_session(&id_clone).map_err(ApiError::from)
     })
@@ -1081,6 +1117,10 @@ mod tests {
             turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
             event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
             approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
+            working_checkpoint_store: Arc::new(
+                nous::working_memory::FjallWorkingCheckpointStore::open_in_memory()
+                    .expect("open in-memory working checkpoint store"),
+            ),
         };
         (state, tmp)
     }

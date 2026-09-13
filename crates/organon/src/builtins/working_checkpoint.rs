@@ -220,6 +220,19 @@ mod tests {
         ) -> std::result::Result<Vec<WorkingCheckpoint>, crate::error::StoreError> {
             Ok(Vec::new())
         }
+
+        fn delete_session(
+            &self,
+            session_id: &str,
+        ) -> std::result::Result<usize, crate::error::StoreError> {
+            let mut writes = self
+                .writes
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let before = writes.len();
+            writes.retain(|(recorded_session_id, ..)| recorded_session_id != session_id);
+            Ok(before - writes.len())
+        }
     }
 
     fn register_checkpoint_tool() -> ToolRegistry {

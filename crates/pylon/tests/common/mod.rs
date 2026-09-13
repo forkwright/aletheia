@@ -158,6 +158,10 @@ impl TestEnvBuilder {
             Arc::new(pylon::credential_runtime::CredentialRuntimeManager::new(
                 Arc::clone(&provider_registry),
             ));
+        let working_checkpoint_store: Arc<dyn organon::types::WorkingCheckpointStore> = Arc::new(
+            nous::working_memory::FjallWorkingCheckpointStore::open_in_memory()
+                .expect("open in-memory working checkpoint store"),
+        );
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::new(nous_manager),
@@ -186,6 +190,7 @@ impl TestEnvBuilder {
             metrics_mode: taxis::config::MetricsMode::Public,
             metrics_detailed: true,
             daemon_task_states: Arc::new(Vec::new()),
+            working_checkpoint_store,
         });
 
         TestEnv { state, _tmp: tmp }
