@@ -18,10 +18,6 @@ id = "RUSTSEC-2024-0436"
 reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
 
 [[advisories.ignore]]
-id = "RUSTSEC-2025-0052"
-reason = "async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7"
-
-[[advisories.ignore]]
 id = "RUSTSEC-2026-0192"
 reason = "ttf-parser unmaintained — transitive via fontdb→usvg→typst-pdf and rustybuzz→typst; maintainer archived the repo with no upstream fix. Alternatives (skrifa) require upstream migration."
 
@@ -268,4 +264,4 @@ reason = "glib::VariantStrIter unsound Iterator impl (fixed >=0.20.0) -- glib 0.
 
 [[advisories.ignore]]
 id = "RUSTSEC-2026-0097"
-reason = "rand::thread_rng() unsound only when the `log` feature is enabled AND a custom logger calls back into ThreadRng during a reseed (fixed >=0.8.6) -- transitive via selectors -> kuchikiki -> wry -> dioxus-desktop -> dioxus (phf_generator's compile-time perfect-hash-table codegen, itself only reachable as a build-time helper of `selectors`); no custom log integration touches this path, and phf_generator has no upgrade path off its `rand = \"^0.7\"` pin without a coordinated upstream release."
+reason = "rand::thread_rng() unsound only when the `log` feature is enabled AND a custom logger calls back into ThreadRng during a reseed (fixed >=0.8.6) -- transitive via selectors -> kuchikiki -> wry -> dioxus-desktop -> dioxus (phf_generator's compile-time perfect-hash-table codegen, itself only reachable as a build-time helper of `selectors`); no custom log integration touches this path, and phf_generator has no upgrade path off its rand = '^0.7' pin without a coordinated upstream release."
