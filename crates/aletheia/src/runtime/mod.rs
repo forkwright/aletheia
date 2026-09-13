@@ -1000,6 +1000,12 @@ impl RuntimeBuilder {
                     audit_log: Some(Arc::clone(&audit_log)),
                     empirical_router: Some(Arc::clone(&empirical_router)),
                     tool_config: Arc::new(self.config.tool_limits.clone()),
+                    // WHY(aletheia#7306): sourced the same way
+                    // `build_nous_runtime_config` feeds the top-level
+                    // turn's `PipelineConfig::stage_budget` — spawned
+                    // sub-agent turns must honor the operator's
+                    // `[stageBudget]` config, not `StageBudget::default()`.
+                    stage_budget: Arc::new(self.config.stage_budget.clone().into()),
                 }),
             ))
         } else {

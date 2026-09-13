@@ -146,8 +146,24 @@ pub struct SpawnServiceImpl {
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
-    tool_config: Arc<taxis::config::ToolLimitsConfig>,
+    // WHY(aletheia#7306): grouped rather than two more top-level fields --
+    // `SpawnServiceImpl` was already at the crate's 12-field cap
+    // (RUST/struct-too-many-fields); these two are both plain
+    // deployment-config values inherited verbatim from the parent runtime
+    // (as opposed to the shared service handles around them), so bundling
+    // them is a real grouping, not a workaround for the limit.
+    deployment: DeploymentLimits,
     tool_services: OnceLock<Arc<ToolServices>>,
+}
+
+/// Deployment-tunable values inherited from the parent runtime and applied,
+/// unchanged, to every spawned sub-agent turn.
+struct DeploymentLimits {
+    tool_config: Arc<taxis::config::ToolLimitsConfig>,
+    // WHY(aletheia#7306): threaded from the parent runtime the same way
+    // `tool_config` is, so a spawned sub-agent turn honors the operator's
+    // `[stageBudget]` config instead of the compiled `StageBudget::default()`.
+    stage_budget: Arc<StageBudget>,
 }
 
 /// Parent runtime dependencies inherited by ephemeral sub-agents.
@@ -171,6 +187,10 @@ pub struct InheritedSpawnServices {
     pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
     /// Tool execution limits inherited from deployment config.
     pub tool_config: Arc<taxis::config::ToolLimitsConfig>,
+    /// Per-stage time budgets inherited from the operator's `[stageBudget]`
+    /// config (aletheia#7306), applied to spawned sub-agent turns the same
+    /// way `build_nous_runtime_config` applies them to top-level turns.
+    pub stage_budget: Arc<StageBudget>,
 }
 
 impl SpawnServiceImpl {
@@ -193,7 +213,10 @@ impl SpawnServiceImpl {
             router: None,
             audit_log: None,
             empirical_router: None,
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+            deployment: DeploymentLimits {
+                tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+                stage_budget: Arc::new(StageBudget::default()),
+            },
             tool_services: OnceLock::new(),
         }
     }
@@ -211,7 +234,10 @@ impl SpawnServiceImpl {
         self.router = services.router;
         self.audit_log = services.audit_log;
         self.empirical_router = services.empirical_router;
-        self.tool_config = services.tool_config;
+        self.deployment = DeploymentLimits {
+            tool_config: services.tool_config,
+            stage_budget: services.stage_budget,
+        };
         self
     }
 
@@ -481,6 +507,37 @@ impl SpawnServiceImpl {
 
         Ok((spawn_id, config, session_key, contract))
     }
+
+    /// Build the `PipelineConfig` for an ephemeral sub-agent turn.
+    ///
+    /// WHY: ephemeral sub-agents do not capture training data or propose
+    /// tuning changes — their turns are internal delegation, not
+    /// user-facing conversation, and should not shift global parameters, so
+    /// `training`/`tuning`/`reflection_enabled`/`history` stay at their
+    /// compiled defaults regardless of the parent's own configuration.
+    ///
+    /// WHY `stage_budget` is not also a hardcoded default (aletheia#7306):
+    /// unlike those fields, per-stage time budgets are an operational
+    /// concern (how long a slow provider gets before a stage is skipped),
+    /// not a training/tuning one — an operator raising `[stageBudget]` to
+    /// accommodate a slower provider needs that to apply to every turn a
+    /// deployment runs, spawned sub-agent turns included.
+    /// `self.deployment.stage_budget` is threaded from the parent runtime
+    /// via `InheritedSpawnServices`,
+    /// sourced the same way `aletheia::runtime::nous_config::build_nous_runtime_config`
+    /// builds the top-level turn's budget.
+    fn build_pipeline_config(&self) -> PipelineConfig {
+        PipelineConfig {
+            history_budget_ratio: 0.6,
+            project_id: None,
+            extraction: None,
+            stage_budget: (*self.deployment.stage_budget).clone(),
+            training: crate::training::TrainingConfig::default(),
+            reflection_enabled: false,
+            history: crate::config::TurnHistoryPolicy::default(),
+            tuning: taxis::config::TuningConfig::default(),
+        }
+    }
 }
 
 impl SpawnService for SpawnServiceImpl {
@@ -527,19 +584,7 @@ impl SpawnService for SpawnServiceImpl {
         // oikos/roles.toml read.
         let (_, model_source) = resolve_model(&request, contract.as_ref(), template.as_ref());
 
-        // WHY: ephemeral sub-agents do not capture training data or propose
-        // tuning changes — their turns are internal delegation, not
-        // user-facing conversation, and should not shift global parameters.
-        let pipeline_config = PipelineConfig {
-            history_budget_ratio: 0.6,
-            project_id: None,
-            extraction: None,
-            stage_budget: StageBudget::default(),
-            training: crate::training::TrainingConfig::default(),
-            reflection_enabled: false,
-            history: crate::config::TurnHistoryPolicy::default(),
-            tuning: taxis::config::TuningConfig::default(),
-        };
+        let pipeline_config = self.build_pipeline_config();
 
         let providers = Arc::clone(&self.providers);
         let tools = Arc::clone(&self.tools);
@@ -553,7 +598,7 @@ impl SpawnService for SpawnServiceImpl {
         let router = self.router.clone();
         let audit_log = self.audit_log.clone();
         let empirical_router = self.empirical_router.clone();
-        let tool_config = Arc::clone(&self.tool_config);
+        let tool_config = Arc::clone(&self.deployment.tool_config);
 
         let span = tracing::info_span!(
             "spawn_sub_agent",
@@ -908,6 +953,75 @@ mod tests {
         assert_eq!(config.limits.max_tool_iterations, MAX_TOOL_ITERATIONS);
         assert_eq!(config.limits.session_token_cap, 500_000);
         assert_eq!(config.limits.max_tool_result_bytes, MAX_TOOL_RESULT_BYTES);
+    }
+
+    // WHY(aletheia#7306): before this fix, a spawned sub-agent turn's
+    // `PipelineConfig::stage_budget` was always the compiled
+    // `StageBudget::default()`, regardless of the parent's configured
+    // `[stageBudget]` -- an operator raising e.g. `execute_secs` for a
+    // slower provider saw that apply to top-level turns only. This proves
+    // the parent-configured budget threaded via `InheritedSpawnServices`
+    // reaches the `PipelineConfig` a spawn actually builds.
+    #[test]
+    fn spawn_pipeline_config_carries_parent_configured_stage_budget() {
+        let (_dir, oikos) = make_oikos();
+        let configured = StageBudget {
+            context_secs: 41,
+            recall_secs: 42,
+            history_secs: 43,
+            guard_secs: 44,
+            execute_secs: 45,
+            finalize_secs: 46,
+            reflection_secs: 47,
+            total_secs: 4800,
+        };
+        let svc =
+            make_spawn_service(Arc::clone(&oikos)).with_runtime_services(InheritedSpawnServices {
+                embedding_provider: None,
+                vector_search: None,
+                session_store: None,
+                #[cfg(feature = "knowledge-store")]
+                knowledge_store: None,
+                router: None,
+                audit_log: None,
+                empirical_router: None,
+                tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+                stage_budget: Arc::new(configured.clone()),
+            });
+
+        let pipeline_config = svc.build_pipeline_config();
+
+        assert_eq!(pipeline_config.stage_budget.context_secs, 41);
+        assert_eq!(pipeline_config.stage_budget.recall_secs, 42);
+        assert_eq!(pipeline_config.stage_budget.history_secs, 43);
+        assert_eq!(pipeline_config.stage_budget.guard_secs, 44);
+        assert_eq!(pipeline_config.stage_budget.execute_secs, 45);
+        assert_eq!(pipeline_config.stage_budget.finalize_secs, 46);
+        assert_eq!(pipeline_config.stage_budget.reflection_secs, 47);
+        assert_eq!(pipeline_config.stage_budget.total_secs, 4800);
+        assert_ne!(
+            pipeline_config.stage_budget.total_secs,
+            StageBudget::default().total_secs,
+            "must not fall back to the compiled default once the parent has configured a budget"
+        );
+    }
+
+    // WHY(aletheia#7306): the absent-inheritance path (constructing via
+    // `SpawnServiceImpl::new` alone, as most tests in this module do) must
+    // reproduce the exact prior default behavior.
+    #[test]
+    fn spawn_pipeline_config_defaults_to_compiled_stage_budget_without_inheritance() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(oikos);
+
+        let pipeline_config = svc.build_pipeline_config();
+
+        let compiled = StageBudget::default();
+        assert_eq!(
+            pipeline_config.stage_budget.context_secs,
+            compiled.context_secs
+        );
+        assert_eq!(pipeline_config.stage_budget.total_secs, compiled.total_secs);
     }
 
     // WHY(#5823): a hand-set `ComplexityInput.depth` only proves the scorer
@@ -1506,6 +1620,7 @@ tool_groups = ["read"]
             audit_log: None,
             empirical_router: Some(router),
             tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+            stage_budget: Arc::new(StageBudget::default()),
         });
 
         let result = svc
