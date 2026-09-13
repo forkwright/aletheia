@@ -168,6 +168,80 @@ fn pre_stamp_era_prefix_is_backfilled_on_open() {
     assert_eq!(facts.len(), 1, "backfill must not touch existing data");
 }
 
+/// aletheia#7161 review: the backfill above must be bounded by
+/// `KnowledgeStore::LAST_PRE_STAMP_ERA_VERSION`, not merely by "nothing
+/// stamped yet". Every build since 0b7338a3e stamps `migration:N`
+/// atomically with `"schema"`, so a stamp for any version above that
+/// boundary can never have been legitimately skipped -- its absence is
+/// always a genuine hole, even when nothing below it is stamped either
+/// (for example an operator hand-editing `schema_version` through the
+/// Datalog REPL, the exact hazard this issue warns about).
+#[test]
+fn missing_stamp_above_pre_stamp_era_boundary_is_still_a_hole() {
+    let store = make_store();
+    for version in 2..=14 {
+        store
+            .run_mut_query(
+                &format!(r#"?[key] <- [["migration:{version}"]] :rm schema_version {{key}}"#),
+                std::collections::BTreeMap::new(),
+            )
+            .expect("remove migration stamp");
+    }
+
+    let err = store.init_schema().expect_err(
+        "a missing stamp above the pre-stamp-era boundary must fail closed even with no stamp present below it",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("schema version integrity hole"),
+        "error should name integrity hole, got: {msg}"
+    );
+    assert!(
+        msg.contains("version 14"),
+        "error should name the first hole above the pre-stamp-era boundary, got: {msg}"
+    );
+}
+
+/// aletheia#7161: mirrors the reported store's actual shape -- carried to
+/// version 13 (the version at which stamping began) with zero
+/// `migration:N` rows at all, migrations 14..19 still pending. `init_schema`
+/// must backfill the pre-stamp-era prefix (2..=13) and then apply the
+/// pending tail (14..=19), landing at full current schema with every stamp
+/// present.
+#[test]
+fn store_at_pre_stamp_era_boundary_backfills_prefix_and_migrates_tail() {
+    let store = make_store_allowing_assumed_meta();
+    store
+        .stamp_schema_version(13, "test")
+        .expect("stamp store at the pre-stamp-era boundary");
+    for version in 2..=19 {
+        store
+            .run_mut_query(
+                &format!(r#"?[key] <- [["migration:{version}"]] :rm schema_version {{key}}"#),
+                std::collections::BTreeMap::new(),
+            )
+            .expect("remove migration stamp");
+    }
+
+    store.init_schema().expect(
+        "a store at the pre-stamp-era boundary with no migration stamps at all should backfill the boundary prefix and apply the pending tail",
+    );
+
+    assert_eq!(
+        store.schema_version().expect("schema version"),
+        KnowledgeStore::SCHEMA_VERSION
+    );
+    for version in 2..=KnowledgeStore::SCHEMA_VERSION {
+        assert_eq!(
+            store
+                .migration_stamp_version(version)
+                .expect("read migration stamp"),
+            Some(version),
+            "migration:{version} should be stamped after init_schema (backfilled if <= 13, applied if > 13)"
+        );
+    }
+}
+
 #[test]
 fn crash_mid_sequence_resume_applies_only_missing_tail() {
     let store = make_store_allowing_assumed_meta();

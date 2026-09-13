@@ -773,6 +773,16 @@ pub struct KnowledgeStore {
 impl KnowledgeStore {
     pub(crate) const SCHEMA_VERSION: i64 = 19;
     const MIN_SCHEMA_VERSION: i64 = 1;
+    // WHY (aletheia#7161): 0b7338a3e (PR #4705) introduced per-step
+    // `migration:N` stamps -- and the fail-closed check that requires them
+    // -- at SCHEMA_VERSION 13, with no backfill for stores that had already
+    // migrated under the prior single-key scheme (which wrote only the
+    // "schema" row; see 0b7338a3e^). No stamp for any version above this
+    // bound can ever be legitimately absent: every build since 0b7338a3e
+    // writes `"schema"` and `migration:N` atomically in one
+    // `stamp_schema_version` call, so a missing stamp above 13 is always a
+    // genuine hole, never the pre-stamp-era boundary.
+    const LAST_PRE_STAMP_ERA_VERSION: i64 = 13;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 
     /// Open an in-memory knowledge store with default configuration.
@@ -1433,9 +1443,12 @@ impl KnowledgeStore {
         // unstamped steps starting at the lowest migration this store ever
         // applied -- not a hole. `pre_stamp_era_prefix` collects exactly
         // that run (steps with no stamp seen before any stamp has been
-        // found) so it can be backfilled once the walk below confirms
-        // every step above it is present and correct; a missing stamp
-        // *after* a present one is still a hole and still fails closed.
+        // found, and only at or below `LAST_PRE_STAMP_ERA_VERSION`) so it
+        // can be backfilled once the walk below confirms every step above
+        // it is present and correct; a missing stamp *after* a present one,
+        // or *above* the pre-stamp-era boundary, is still a hole and still
+        // fails closed -- no build since 0b7338a3e can have legitimately
+        // skipped stamping a step whose target exceeds that boundary.
         let mut pre_stamp_era_prefix: Vec<i64> = Vec::new();
         let mut still_in_pre_stamp_era = true;
 
@@ -1456,7 +1469,9 @@ impl KnowledgeStore {
                         step.target_version
                     )));
                 }
-                None if still_in_pre_stamp_era => {
+                None if still_in_pre_stamp_era
+                    && step.target_version <= Self::LAST_PRE_STAMP_ERA_VERSION =>
+                {
                     pre_stamp_era_prefix.push(step.target_version);
                 }
                 None => {
@@ -1488,9 +1503,11 @@ impl KnowledgeStore {
     /// a pre-manifest store's existing data already matches the schema it
     /// claims. Only ever called from [`Self::verify_schema_integrity`]
     /// after that walk has confirmed every stamp above this prefix is
-    /// present and correct, so this never fires for a genuine hole --
-    /// only for the boundary where stamping began. Does not touch the
-    /// `"schema"` row; that already holds the verified current version.
+    /// present and correct, and `versions` is bounded to
+    /// `<= LAST_PRE_STAMP_ERA_VERSION`, so this never fires for a genuine
+    /// hole -- only for the boundary where stamping began. Does not touch
+    /// the `"schema"` row; that already holds the verified current
+    /// version.
     fn backfill_pre_stamp_era_stamps(&self, versions: &[i64]) -> crate::error::Result<()> {
         use crate::engine::ScriptMutability;
 
