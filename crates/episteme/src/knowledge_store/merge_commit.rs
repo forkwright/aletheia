@@ -136,18 +136,18 @@ fn plan_relationship_redirects(
         );
         let rows = store.run_read(script, params)?;
         for row in &rows.rows {
-            if row.len() < 5 {
+            let [src_v, dst_v, relation_v, weight_v, created_at_v, ..] = row.as_slice() else {
                 continue;
-            }
-            let src = extract_str(&row[0])?;
-            let dst = extract_str(&row[1])?;
+            };
+            let src = extract_str(src_v)?;
+            let dst = extract_str(dst_v)?;
             plan.entry((src.clone(), dst.clone()))
                 .or_insert(RelationshipRedirect {
                     src,
                     dst,
-                    relation: extract_str(&row[2])?,
-                    weight: extract_float(&row[3])?,
-                    created_at: extract_str(&row[4])?,
+                    relation: extract_str(relation_v)?,
+                    weight: extract_float(weight_v)?,
+                    created_at: extract_str(created_at_v)?,
                     redirect_src,
                 });
         }
@@ -178,12 +178,12 @@ fn plan_fact_entity_transfers(
     let rows = store.run_read(script, params)?;
     let mut plan = Vec::with_capacity(rows.rows.len());
     for row in &rows.rows {
-        if row.len() < 3 {
+        let [fact_id_v, _entity_id_v, created_at_v, ..] = row.as_slice() else {
             continue;
-        }
+        };
         plan.push(FactEntityTransfer {
-            fact_id: extract_str(&row[0])?,
-            created_at: extract_str(&row[2])?,
+            fact_id: extract_str(fact_id_v)?,
+            created_at: extract_str(created_at_v)?,
         });
     }
     Ok(plan)
@@ -228,19 +228,28 @@ fn plan_alias_upsert(
     }))
 }
 
-/// Drive every staged merge write through the open transaction, in issue
-/// order: relationships, `fact_entities`, alias, entity deletion, audit.
-fn transact_merge_writes(
-    tx: &MultiTransaction,
-    canonical_id: &EntityId,
-    merged_id: &EntityId,
-    merged_name: &str,
-    relationships: &[RelationshipRedirect],
-    fact_entities: &[FactEntityTransfer],
-    alias: &Option<AliasUpsert>,
-    now_str: &str,
+/// Every write staged for one entity merge, computed before the transaction
+/// opens. Bundles [`transact_merge_writes`]'s inputs the same way
+/// `ConsolidationWritePlan` bundles
+/// [`transact_consolidation_writes`](super::consolidation_commit)'s.
+struct MergeWritePlan<'a> {
+    canonical_id: &'a EntityId,
+    merged_id: &'a EntityId,
+    merged_name: &'a str,
+    relationships: &'a [RelationshipRedirect],
+    fact_entities: &'a [FactEntityTransfer],
+    alias: Option<&'a AliasUpsert>,
+    now_str: &'a str,
     facts_transferred: u32,
     relationships_redirected: u32,
+}
+
+/// Redirect every staged relationship edge onto `canonical_id` (or drop it,
+/// per [`RelationshipRedirect::is_self_loop_after_redirect`]).
+fn transact_relationship_redirects(
+    tx: &MultiTransaction,
+    canonical_id: &EntityId,
+    relationships: &[RelationshipRedirect],
 ) -> crate::error::Result<()> {
     for edge in relationships {
         failpoint_check(MergeWriteStep::Relationship)?;
@@ -291,7 +300,17 @@ fn transact_merge_writes(
         );
         tx_run(tx, &queries::upsert_relationship(), put_params)?;
     }
+    Ok(())
+}
 
+/// Transfer every staged `fact_entities` row from `merged_id` onto
+/// `canonical_id`.
+fn transact_fact_entity_transfers(
+    tx: &MultiTransaction,
+    canonical_id: &EntityId,
+    merged_id: &EntityId,
+    fact_entities: &[FactEntityTransfer],
+) -> crate::error::Result<()> {
     for transfer in fact_entities {
         failpoint_check(MergeWriteStep::FactEntity)?;
         let mut rm_params = BTreeMap::new();
@@ -320,38 +339,60 @@ fn transact_merge_writes(
         );
         tx_run(tx, &queries::upsert_fact_entity(), put_params)?;
     }
+    Ok(())
+}
 
-    if let Some(alias) = alias {
-        failpoint_check(MergeWriteStep::Alias)?;
-        let emb_value = alias.embedding.clone().map_or(DataValue::Null, |v| {
-            DataValue::Vec(Vector::F32(Array1::from(v)))
-        });
-        let mut params = BTreeMap::new();
-        params.insert(
-            "id".to_owned(),
-            DataValue::Str(canonical_id.as_str().into()),
-        );
-        params.insert(
-            "aliases".to_owned(),
-            DataValue::Str(alias.aliases_str.as_str().into()),
-        );
-        params.insert("updated_at".to_owned(), DataValue::Str(now_str.into()));
-        params.insert(
-            "name".to_owned(),
-            DataValue::Str(alias.name.as_str().into()),
-        );
-        params.insert(
-            "entity_type".to_owned(),
-            DataValue::Str(alias.entity_type.as_str().into()),
-        );
-        params.insert(
-            "created_at".to_owned(),
-            DataValue::Str(alias.created_at.as_str().into()),
-        );
-        params.insert("name_embedding".to_owned(), emb_value);
-        tx_run(tx, &queries::upsert_entity(), params)?;
-    }
+/// Upsert the canonical entity's alias row, when `plan_alias_upsert` staged
+/// one (a no-op merge onto an existing alias stages `None`).
+fn transact_alias_upsert(
+    tx: &MultiTransaction,
+    canonical_id: &EntityId,
+    alias: Option<&AliasUpsert>,
+    now_str: &str,
+) -> crate::error::Result<()> {
+    let Some(alias) = alias else {
+        return Ok(());
+    };
+    failpoint_check(MergeWriteStep::Alias)?;
+    let emb_value = alias.embedding.clone().map_or(DataValue::Null, |v| {
+        DataValue::Vec(Vector::F32(Array1::from(v)))
+    });
+    let mut params = BTreeMap::new();
+    params.insert(
+        "id".to_owned(),
+        DataValue::Str(canonical_id.as_str().into()),
+    );
+    params.insert(
+        "aliases".to_owned(),
+        DataValue::Str(alias.aliases_str.as_str().into()),
+    );
+    params.insert("updated_at".to_owned(), DataValue::Str(now_str.into()));
+    params.insert(
+        "name".to_owned(),
+        DataValue::Str(alias.name.as_str().into()),
+    );
+    params.insert(
+        "entity_type".to_owned(),
+        DataValue::Str(alias.entity_type.as_str().into()),
+    );
+    params.insert(
+        "created_at".to_owned(),
+        DataValue::Str(alias.created_at.as_str().into()),
+    );
+    params.insert("name_embedding".to_owned(), emb_value);
+    tx_run(tx, &queries::upsert_entity(), params)
+}
 
+/// Delete the merged entity row and record the merge audit row.
+fn transact_entity_deletion_and_audit(
+    tx: &MultiTransaction,
+    canonical_id: &EntityId,
+    merged_id: &EntityId,
+    merged_name: &str,
+    now_str: &str,
+    facts_transferred: u32,
+    relationships_redirected: u32,
+) -> crate::error::Result<()> {
     failpoint_check(MergeWriteStep::DeleteEntity)?;
     let mut rm_entity_params = BTreeMap::new();
     rm_entity_params.insert("id".to_owned(), DataValue::Str(merged_id.as_str().into()));
@@ -378,9 +419,27 @@ fn transact_merge_writes(
         DataValue::from(i64::from(relationships_redirected)),
     );
     audit_params.insert("merged_at".to_owned(), DataValue::Str(now_str.into()));
-    tx_run(tx, &queries::put_merge_audit(), audit_params)?;
+    tx_run(tx, &queries::put_merge_audit(), audit_params)
+}
 
-    Ok(())
+/// Drive every staged merge write through the open transaction, in issue
+/// order: relationships, `fact_entities`, alias, entity deletion, audit.
+fn transact_merge_writes(
+    tx: &MultiTransaction,
+    plan: &MergeWritePlan<'_>,
+) -> crate::error::Result<()> {
+    transact_relationship_redirects(tx, plan.canonical_id, plan.relationships)?;
+    transact_fact_entity_transfers(tx, plan.canonical_id, plan.merged_id, plan.fact_entities)?;
+    transact_alias_upsert(tx, plan.canonical_id, plan.alias, plan.now_str)?;
+    transact_entity_deletion_and_audit(
+        tx,
+        plan.canonical_id,
+        plan.merged_id,
+        plan.merged_name,
+        plan.now_str,
+        plan.facts_transferred,
+        plan.relationships_redirected,
+    )
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -417,18 +476,18 @@ impl KnowledgeStore {
         let now_str = crate::knowledge::format_timestamp(&now);
 
         let tx = self.db.multi_transaction(true);
-        if let Err(err) = transact_merge_writes(
-            &tx,
+        let plan = MergeWritePlan {
             canonical_id,
             merged_id,
-            &merged.name,
-            &relationships,
-            &fact_entities,
-            &alias,
-            &now_str,
+            merged_name: &merged.name,
+            relationships: &relationships,
+            fact_entities: &fact_entities,
+            alias: alias.as_ref(),
+            now_str: &now_str,
             facts_transferred,
             relationships_redirected,
-        ) {
+        };
+        if let Err(err) = transact_merge_writes(&tx, &plan) {
             // WHY: abort is best-effort cleanup after the real error is
             // already in hand (the write error `err` below is what the
             // caller sees either way), matching `commit_consolidation`,
