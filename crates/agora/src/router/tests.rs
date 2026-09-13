@@ -271,6 +271,29 @@ fn group_participant_allows_is_independent_of_resolve() {
 }
 
 #[test]
+fn group_participant_allows_denies_regardless_of_which_tier_would_route_it() {
+    // PROOF (#5194 follow-up): the allowlist entry names a group, not a
+    // routing tier. The router here has NO exact `group-xyz` binding --
+    // only a channel wildcard (which would otherwise silently resolve
+    // the message via MatchReason::ChannelDefault) -- yet a sender
+    // absent from the allowlist must still be denied. Before this fix,
+    // `group_participant_allows` returned `true` whenever no exact
+    // `(channel, group_id)` binding existed, making the allowlist entry
+    // a silent no-op for any group reached only through a wildcard or
+    // the global default.
+    let router = MessageRouter::new(vec![binding("signal", "*", "wildcard-nous")], None)
+        .with_group_participants(allowlisted_group_policy());
+    let msg = group_message("+15559999", "group-xyz");
+    assert!(
+        !router.group_participant_allows(&msg),
+        "an allowlist entry for (channel, group_id) must gate the sender even with no exact group binding"
+    );
+    // The wildcard binding still matches at the routing-tier level --
+    // group_participant_allows is what the caller must check first.
+    assert!(router.resolve(&msg).is_some());
+}
+
+#[test]
 fn group_binding_with_no_participant_policy_still_matches_any_sender() {
     // Backward compatibility: a group with no GroupParticipantPolicy
     // entry keeps pre-#5194 behavior -- opting in is additive.

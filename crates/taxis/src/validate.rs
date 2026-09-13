@@ -1273,6 +1273,77 @@ fn validate_messaging(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "receiveTimeoutSecs", 1, 300, errors);
     check_range_u64(value, "agentDispatchTimeoutSecs", 10, 3600, errors);
     check_range_u64(value, "maxConcurrentHandlers", 1, 10_000, errors);
+    validate_group_participants(value, errors);
+}
+
+/// Validate `messaging.groupParticipants.allowlist` (forkwright/aletheia#5194
+/// follow-up): `channel -> group_id -> sender patterns`, checked by
+/// `agora::router::MessageRouter::group_participant_allows`.
+///
+/// WHY validated at all (unlike most map-shaped config sections, which
+/// `#[serde(deny_unknown_fields)]` already covers on their own): an empty
+/// key or pattern deserializes as perfectly valid TOML/JSON but can never
+/// match a real `InboundMessage` -- `sender_pattern_matches` compares by
+/// exact string equality or the literal `"*"`, so an empty channel, group,
+/// or pattern string is an allowlist entry with no effect. That is the same
+/// silent-no-op failure mode [`validate_bindings`]'s wildcard-operator-tier
+/// check exists to surface, applied to this policy's shape instead.
+fn validate_group_participants(value: &Value, errors: &mut Vec<String>) {
+    let Some(channels) = value
+        .get("groupParticipants")
+        .and_then(|group_participants| group_participants.get("allowlist"))
+        .and_then(Value::as_object)
+    else {
+        return;
+    };
+
+    for (channel, groups) in channels {
+        if channel.is_empty() {
+            errors
+                .push("messaging.groupParticipants.allowlist has an empty channel key".to_owned());
+        } else if !KNOWN_CHANNEL_TYPES.contains(&channel.as_str()) {
+            errors.push(format!(
+                "messaging.groupParticipants.allowlist.{channel} is not a known channel type (expected one of: {})",
+                KNOWN_CHANNEL_TYPES.join(", ")
+            ));
+        }
+
+        let Some(groups) = groups.as_object() else {
+            errors.push(format!(
+                "messaging.groupParticipants.allowlist.{channel} must be an object mapping group id to sender patterns"
+            ));
+            continue;
+        };
+
+        for (group, patterns) in groups {
+            if group.is_empty() {
+                errors.push(format!(
+                    "messaging.groupParticipants.allowlist.{channel} has an empty group id key"
+                ));
+            }
+
+            let Some(patterns) = patterns.as_array() else {
+                errors.push(format!(
+                    "messaging.groupParticipants.allowlist.{channel}.{group} must be an array of sender patterns"
+                ));
+                continue;
+            };
+
+            if patterns.is_empty() {
+                errors.push(format!(
+                    "messaging.groupParticipants.allowlist.{channel}.{group} must not be empty -- an empty pattern list matches no sender, which has no effect"
+                ));
+            }
+
+            for pattern in patterns {
+                if pattern.as_str().is_none_or(str::is_empty) {
+                    errors.push(format!(
+                        "messaging.groupParticipants.allowlist.{channel}.{group} contains an empty or non-string sender pattern"
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
