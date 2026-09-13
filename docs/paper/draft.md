@@ -66,7 +66,7 @@ Datalog has been used in program analysis, network configuration, and security p
 
 ### 3.1 System overview
 
-Aletheia is a Rust workspace with 47 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (fjall session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
+Aletheia is a Rust workspace with 48 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (fjall session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
 
 ```text
 aletheia binary

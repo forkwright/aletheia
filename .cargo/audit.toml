@@ -27,6 +27,14 @@ ignore = [
     "RUSTSEC-2026-0186",
     # crossbeam-epoch unmaintained — transitive dependency, no upgrade path
     "RUSTSEC-2026-0204",
+    # fxhash unmaintained — transitive via selectors -> kuchikiki -> wry -> dioxus-desktop -> dioxus, proskenion's desktop UI toolkit; no safe upgrade (rustc-hash requires a kuchikiki-side migration we do not control)
+    "RUSTSEC-2025-0057",
+    # proc-macro-error unmaintained — transitive via glib-macros/gtk3-macros -> gtk -> ... -> dioxus-desktop -> dioxus, proskenion's GTK3/webkit2gtk desktop UI stack; no safe upgrade until the gtk-rs 0.18 chain migrates off it
+    "RUSTSEC-2024-0370",
     # rustybuzz unmaintained (maintenance-status only, no vuln). Transitive GUI text-shaping via theatron (parley/vello, Dioxus-native+Blitz). No maintained successor; not a security surface. Matches the theatron ignore + existing precedent.
     "RUSTSEC-2026-0206",
+    # glib::VariantStrIter unsound Iterator impl (fixed >=0.20.0) -- glib 0.18.5 is pinned by the whole gtk-rs 0.18 release train (gtk/gdk/gio/pango/cairo-rs/webkit2gtk/atk), which dioxus-desktop 0.7.10 (proskenion's desktop UI toolkit) depends on; bumping requires that entire third-party stack to release together, not something this crate's dependents control. proskenion's own source never uses VariantStrIter directly.
+    "RUSTSEC-2024-0429",
+    # rand::thread_rng() unsound only when the `log` feature is enabled AND a custom logger calls back into ThreadRng during a reseed (fixed >=0.8.6) -- transitive via selectors -> kuchikiki -> wry -> dioxus-desktop -> dioxus (phf_generator's compile-time perfect-hash-table codegen, itself only reachable as a build-time helper of `selectors`); no custom log integration touches this path, and phf_generator has no upgrade path off its `rand = "^0.7"` pin without a coordinated upstream release.
+    "RUSTSEC-2026-0097",
 ]

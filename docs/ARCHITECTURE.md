@@ -16,8 +16,10 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 
 ## Current substrate shape
 
-The current runtime is a 47-crate workspace plus the excluded `proskenion`
-desktop shell. The compact generated inventory lives in
+The current runtime is a 48-crate workspace, with the `proskenion` desktop
+shell present as a non-default member (`default-members` skips it in a bare
+build; `-p proskenion` or `--workspace` opts in). The compact generated
+inventory lives in
 [`_llm/L1-workspace.md`](../_llm/L1-workspace.md); this document describes the
 human architecture and invariants.
 
@@ -144,9 +146,11 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-47 crates in the workspace, with `proskenion` excluded and built via its own
-manifest. The table below calls out the primary architecture crates; the full
-generated inventory is `_llm/L1-workspace.md`.
+48 crates in the workspace, with `proskenion` a full member kept out of
+`default-members` (it needs GTK3/webkit2gtk, so it is opted into with
+`-p proskenion` or `--workspace`, not built through a separate manifest). The
+table below calls out the primary architecture crates; the full generated
+inventory is `_llm/L1-workspace.md`.
 
 The count is `[workspace] members` in the root `Cargo.toml` -- the same list cargo
 resolves, and the canonical answer to "how many crates". Counting `Cargo.toml` files
@@ -177,7 +181,7 @@ on disk returns 48 and is wrong, because `proskenion` has its own workspace.
 | `diaporeia` | `crates/diaporeia` | MCP server interface and stdio/external tool bridge for external AI agents | koina, taxis, nous, organon, mneme, symbolon |
 | `skene` | `crates/theatron/skene` | Shared API client, types, SSE infrastructure for UIs | koina |
 | `koilon` | `crates/theatron/koilon` | Terminal dashboard | koina, skene |
-| `proskenion` | `crates/theatron/proskenion` | Dioxus desktop UI (excluded from workspace, requires GTK3) | skene |
+| `proskenion` | `crates/theatron/proskenion` | Dioxus desktop UI (non-default workspace member, requires GTK3) | skene |
 | `aletheia` | `crates/aletheia` | Binary entrypoint (Clap CLI), wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, dokimion, diaporeia (opt), koilon (opt) |
 
 **Support crates** (not part of the application dependency graph):
@@ -294,7 +298,7 @@ instead of reaching through to the sub-crate from the application layer.
 - **Low** (one workspace dep): `eidos` (koina), `dianoia` (koina), `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `skene` (koina), `dokimion` (koina)
 - **Mid**: `graphe` (eidos + koina), `episteme` (eidos + koina + graphe + krites), `mneme` (facade), `organon` (koina + hermeneus), `agora` (koina + taxis), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
-- **Top**: `aletheia` binary, `koilon` (koina + skene), `proskenion` (Dioxus desktop, excluded from workspace)
+- **Top**: `aletheia` binary, `koilon` (koina + skene), `proskenion` (Dioxus desktop, non-default workspace member)
 - **Support**: `integration-tests`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.

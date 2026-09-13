@@ -19,8 +19,9 @@ cargo clippy --workspace               # lint (zero warnings)
 cargo test --workspace                 # full suite
 ```
 
-Desktop crate (`proskenion`) excluded from workspace - build standalone:
-`cargo check --manifest-path crates/theatron/proskenion/Cargo.toml`
+Desktop crate (`proskenion`) is a full workspace member but not a default
+one (needs GTK3/webkit2gtk) - opt in explicitly:
+`cargo check -p proskenion`
 
 ## Key Patterns
 

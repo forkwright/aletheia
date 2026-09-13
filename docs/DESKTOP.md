@@ -31,7 +31,16 @@ rather than system packages.
 
 ## Build
 
-The desktop crate is excluded from the root workspace because its GTK/webkit2gtk dependency set needs dedicated system packages and carries desktop-only cargo-deny advisory noise. The path-filtered desktop CI job installs those packages and compiles, lints, and tests `proskenion` through its standalone manifest.
+`proskenion` is a full member of the root cargo workspace, but not a
+*default* one (see `[workspace].default-members` in the root `Cargo.toml`):
+its GTK/webkit2gtk dependency set needs dedicated system packages, so a bare
+`cargo build`/`cargo check` (no `-p`/`--workspace`) on a GTK-less machine
+must not try to compile it. Opt in explicitly with `-p proskenion` or
+`--workspace`. The path-filtered desktop CI job (`.github/workflows/desktop.yml`)
+installs the GTK/webkit2gtk system packages and compiles, lints, and tests
+`proskenion` this same way; `gate-attestation.yml`'s full-workspace jobs
+install them too, since their `--workspace` commands compile it regardless
+of default-members.
 
 For the standard local install flow, run:
 
@@ -39,13 +48,14 @@ For the standard local install flow, run:
 scripts/install-proskenion.sh
 ```
 
-The installer verifies Linux GTK/webkit2gtk system libraries, builds the release binary through the standalone manifest, and installs `proskenion` to `~/.cargo/bin/`.
+The installer verifies Linux GTK/webkit2gtk system libraries, builds the release binary, and installs `proskenion` to `~/.cargo/bin/`.
 
-Build it standalone using the manifest path:
+Build it directly with `-p`, from the repo root (no `--manifest-path` needed,
+though the installer above still passes one for explicitness):
 
 ```bash
-cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml
-cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml --release
+cargo build -p proskenion
+cargo build -p proskenion --release
 ```
 
 For a Nix development environment, allow direnv or enter the shell directly:
@@ -55,11 +65,14 @@ direnv allow
 nix develop .#proskenion
 ```
 
-The flake package and shell both target the standalone `proskenion` manifest.
+The flake package and shell both target the `proskenion` package within the
+root workspace (`flake.nix` derives its name/version from the root manifest
+now that `proskenion`'s own `[package]` fields inherit via
+`version.workspace = true` rather than declaring their own).
 
 ## Contract and smoke checks
 
-The desktop crate is outside the main workspace, so acceptance uses two focused checks instead of a full GUI driver.
+`proskenion` is a non-default workspace member, so acceptance uses two focused checks instead of a full GUI driver.
 
 > Maintainer/CI variant. Prerequisites: install the pinned toolchain (`rustup toolchain install 1.94`) and build the desktop binary first with `scripts/install-proskenion.sh`, which places `proskenion` on `~/.cargo/bin`. The contract test compiles from a fresh checkout; the smoke invocation below needs that installed binary.
 
@@ -82,21 +95,37 @@ The script writes a temporary desktop config, uses `xvfb-run` when no `DISPLAY` 
 
 ## Pin discipline
 
-`proskenion` has its own standalone workspace, so its theatron git dependencies cannot inherit from the root `[workspace.dependencies]` block. Keep the mirrored pins in `crates/theatron/proskenion/Cargo.toml` aligned with the root manifest.
+`proskenion` inherits `[workspace.dependencies]`, `[workspace.package]`, and
+its safety/deny-level lints from the root `Cargo.toml` — its `themelion`,
+`skeue`, `gramma`, `bathron`, and `keryx` theatron dependencies are
+`{ workspace = true }` entries, the same single tag pin every other
+workspace member uses. There is no separate pin file to keep in sync and no
+pin-check script to run; a re-pin of the theatron tag in the root
+`[workspace.dependencies]` block updates `proskenion` automatically, the
+same as it does for `skene`/`koilon`.
 
-Run the pin check before changing the desktop pins:
+## Default-members, not workspace exclusion
 
-```bash
-scripts/check-proskenion-pins.py
-```
+`proskenion` is a full workspace member (`[workspace].members` in the root
+`Cargo.toml`) but is left out of `[workspace].default-members`, so a bare
+`cargo build`/`cargo check`/`cargo test` on a GTK-less machine never tries to
+compile it:
 
-The standard installer runs this check before building, and the release workflow runs it before the release test suite.
-
-## Why excluded from workspace
-
-1. **Root workspace compatibility.** GTK3 and webkit2gtk are installed only by the dedicated desktop CI job. Keeping `proskenion` outside the root workspace avoids forcing every workspace gate to install desktop system packages, while the desktop job still runs compile, clippy, and tests through the standalone manifest.
-2. **Dependency advisories.** GTK bindings pull in crates with known advisories that are acceptable for a desktop app but would block cargo-deny checks for the rest of the workspace.
-3. **Hand-maintained version literal.** `proskenion` is same-tree by construction (it consumes `skene` and `koina` by `path` across the workspace boundary), so it cannot ship independently of the root release. Its standalone `[workspace.package].version` and `[package].version` cannot use `version.workspace = true` across that boundary, so they are set as literals that must equal the root `[workspace.package].version`. `scripts/check-proskenion-pins.py` enforces the equality.
+1. **GTK-less-by-default.** GTK3 and webkit2gtk are installed by the
+   path-filtered desktop CI job and by every full-workspace (`--workspace`)
+   job in `gate-attestation.yml` and `bench-gate.yml`'s compile-check job
+   excludes it instead (it has no benches of its own). Contributors and CI
+   jobs that never pass `-p proskenion`/`--workspace` stay GTK-free.
+2. **Dependency advisories are triaged, not avoided.** GTK/Dioxus-desktop
+   bindings pull in a handful of unmaintained-but-not-vulnerable crates and
+   one NCSA-licensed transitive dependency; `deny.toml` allowlists each with
+   a WHY comment (forkwright/aletheia#4726) rather than hiding the whole
+   crate from cargo-deny's view.
+3. **No hand-maintained version literal.** `proskenion`'s `[package]` fields
+   (`version`, `edition`, `license`, `rust-version`) are all
+   `{ workspace = true }` — it is same-tree by construction (it consumes
+   `skene` and `koina` by `path`), so tracking its own version by hand was
+   pure duplicated bookkeeping. A root version bump now updates it for free.
 
 ## Architecture
 

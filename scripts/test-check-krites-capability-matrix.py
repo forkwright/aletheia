@@ -101,6 +101,11 @@ def _nextest_workflow_selection_errors(text: str) -> list[str]:
     expected = [
         "--profile ci",
         "--workspace",
+        # WHY(aletheia#4726): proskenion joined the root workspace as a full
+        # member; this job stays GTK/webkit2gtk-free by excluding it rather
+        # than installing system packages solely to compile an unrelated
+        # crate (mirrors the WHY comment on the live workflow selection).
+        "--exclude proskenion",
         "--features test-core,krites_sovereign_hnsw",
     ]
     if selectors != expected:

@@ -67,6 +67,7 @@ place to register it.
 | `poiesis-theme` | `crates/poiesis/theme` | Undeclared | — | — |
 | `poiesis-typst` | `crates/poiesis/typst` | Undeclared | — | — |
 | `poiesis-verify` | `crates/poiesis/verify` | Undeclared | — | — |
+| `proskenion` | `crates/theatron/proskenion` | Experimental | 2026-06-22 | issue:forkwright/aletheia#3870 |
 | `pylon` | `crates/pylon` | Stable | 2024-01-01 | decommission with the aletheia HTTP gateway |
 | `skene` | `crates/theatron/skene` | Experimental | 2026-06-23 | public API stabilized with full newtype coverage for all domain identifiers |
 | `symbolon` | `crates/symbolon` | Undeclared | — | — |
@@ -74,7 +75,7 @@ place to register it.
 | `thesauros` | `crates/thesauros` | Undeclared | — | — |
 | `xenodocheion` | `crates/xenodocheion` | Undeclared | — | — |
 
-9 of 47 crates declare `[package.metadata.kanon]` maturity metadata. The rest render `Undeclared`, not an implicit `Stable` -- declare maturity in the crate's own `Cargo.toml` to close that gap for one crate at a time.
+10 of 48 crates declare `[package.metadata.kanon]` maturity metadata. The rest render `Undeclared`, not an implicit `Stable` -- declare maturity in the crate's own `Cargo.toml` to close that gap for one crate at a time.
 
 <!-- END GENERATED CRATE MATURITY -->
 
