@@ -13,7 +13,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$REPO_ROOT/crates/theatron/proskenion/Cargo.toml"
-PIN_CHECK="$REPO_ROOT/scripts/check-proskenion-pins.py"
 DESKTOP_SRC="$REPO_ROOT/crates/theatron/proskenion/assets/aletheia-proskenion.desktop"
 ICON_SRC="$REPO_ROOT/crates/theatron/proskenion/assets/aletheia-proskenion.svg"
 DEFAULT_TARGET_DIR="$REPO_ROOT/crates/theatron/proskenion/target"
@@ -105,13 +104,6 @@ preflight_linux_deps() {
     log "Desktop system dependency preflight passed."
 }
 
-preflight_pin_alignment() {
-    if [[ ! -x "$PIN_CHECK" ]]; then
-        die "proskenion pin check is not executable at ${PIN_CHECK}"
-    fi
-    "$PIN_CHECK"
-}
-
 if [[ ! -f "$MANIFEST" ]]; then
     die "proskenion manifest not found at ${MANIFEST}"
 fi
@@ -125,7 +117,6 @@ if [[ ! -f "$ICON_SRC" ]]; then
 fi
 
 if [[ "$SKIP_PREFLIGHT" == false ]]; then
-    preflight_pin_alignment
     preflight_linux_deps
 else
     log "Skipping GTK/WebKit preflight by request."

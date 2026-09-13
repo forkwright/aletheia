@@ -60,7 +60,7 @@ fn reattached_manager_preserves_reattached_flag_through_turn_start_replay() {
     let mut state = make_state();
     let mut mgr = ChatStateManager::new_reattached();
 
-    mgr.apply(
+    let _ = mgr.apply(
         StreamEvent::TurnStart {
             session_id: "s1".into(),
             nous_id: "syn".into(),
@@ -81,7 +81,7 @@ fn fresh_manager_does_not_stamp_reattached_on_turn_start() {
     let mut state = make_state();
     let mut mgr = make_manager();
 
-    mgr.apply(
+    let _ = mgr.apply(
         StreamEvent::TurnStart {
             session_id: "s1".into(),
             nous_id: "syn".into(),

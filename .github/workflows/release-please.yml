@@ -71,9 +71,10 @@ jobs:
       # WHY(#6713): release-please does not fail, or even exit non-zero, when an
       # `extra-files` jsonpath matches nothing. It logs "No entries modified" and
       # reports success, so a release PR that silently left a declared file
-      # unbumped looks identical to a correct one. The divergence surfaces
-      # downstream at check-proskenion-pins, which reads as a broken branch rather
-      # than a broken release tool, and blocks the release.
+      # unbumped looks identical to a correct one. The divergence used to
+      # surface downstream, at a since-removed proskenion pin-alignment check
+      # (forkwright/aletheia#4726), which read as a broken branch rather
+      # than a broken release tool, and blocked the release.
       #
       # The trap that produced this guard, since it will recur with any new
       # entry: release-please parses TOML with a tagger that wraps every scalar

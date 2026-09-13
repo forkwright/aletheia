@@ -21,12 +21,22 @@
       ];
       forEachSystem = nixpkgs.lib.genAttrs supportedSystems;
       rustVersion = "1.94.0";
+      # WHY(forkwright/aletheia#4726): proskenion moved from a private
+      # `[workspace]` into the root cargo workspace, and its manifest now
+      # declares `version.workspace = true` rather than a literal string —
+      # `builtins.fromTOML` turns that into the attrset `{ workspace = true; }`
+      # rather than a version string, so the true version has to come from the
+      # root manifest's `[workspace.package]` table instead.
+      rootManifest = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       proskenionManifest = builtins.fromTOML (
         builtins.readFile ./crates/theatron/proskenion/Cargo.toml
       );
       proskenionPackage = proskenionManifest.package;
       proskenionName = proskenionPackage.name;
-      proskenionVersion = proskenionPackage.version;
+      proskenionVersion =
+        if builtins.isAttrs proskenionPackage.version
+        then rootManifest.workspace.package.version
+        else proskenionPackage.version;
       proskenionCargoArgs = "--manifest-path crates/theatron/proskenion/Cargo.toml -p ${proskenionName}";
 
       perSystem =

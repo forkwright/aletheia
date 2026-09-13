@@ -49,14 +49,64 @@ members = [
     "crates/poiesis/inspect",
     "crates/poiesis/ooxml-parse",
     "crates/gnosis",
+    "crates/theatron/proskenion",
 ]
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
-# desktop/webview) and carries desktop-only GTK advisory noise. Keep it outside
-# root workspace gates; the dedicated desktop CI job compiles and lints it.
+# desktop/webview), so it is a full workspace member but not a *default* one --
+# a bare `cargo build`/`cargo check` (no `-p`/`--workspace`) on a GTK-less
+# machine must not try to compile it. Opt in explicitly with `-p proskenion`
+# or `--workspace`; `--workspace` (as the PR gate and this file's own
+# `cargo clippy --workspace`/`cargo nextest run --workspace` runs) always
+# builds every member regardless of this list.
 # Build/install flow and system deps: docs/DESKTOP.md
-# Build standalone: `cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml`
-exclude = [
-    "crates/theatron/proskenion",
+default-members = [
+    "crates/aletheia",
+    "crates/aletheia-classify",
+    "crates/aletheia-lexica",
+    "crates/xenodocheion",
+    "crates/aletheia-routing",
+    "crates/diaporeia",
+    "crates/dianoia",
+    "crates/eidos",
+    "crates/energeia",
+    "crates/episteme",
+    "crates/agora",
+    "crates/daemon",
+    "crates/eval",
+    "crates/hermeneus",
+    "crates/integration-tests",
+    "crates/graphe",
+    "crates/koina",
+    "crates/krites",
+    "crates/mneme",
+    "crates/melete",
+    "crates/nous",
+    "crates/organon",
+    "crates/pylon",
+    "crates/symbolon",
+    "crates/taxis",
+    "crates/thesauros",
+    "crates/theatron/skene",
+    "crates/theatron/koilon",
+    "crates/poiesis",
+    "crates/poiesis/charts",
+    "crates/poiesis/core",
+    "crates/poiesis/sheet",
+    "crates/poiesis/slides",
+    "crates/poiesis/lint",
+    "crates/poiesis/theme",
+    "crates/poiesis/scaffold",
+    "crates/poiesis/typst",
+    "crates/poiesis/verify",
+    "crates/poiesis/intake",
+    "crates/poiesis/deck",
+    "crates/poiesis/text",
+    "crates/poiesis/doc",
+    "crates/poiesis/printer-chromium",
+    "crates/poiesis/diff",
+    "crates/poiesis/inspect",
+    "crates/poiesis/ooxml-parse",
+    "crates/gnosis",
 ]
 
 [workspace.package]
@@ -135,9 +185,8 @@ rayon = { version = "1", default-features = false }
 
 # theatron substrate (cross-repo git deps)
 # WHY: one tag pin keeps all six theatron crates on the same upstream tree — bump them together.
-# Member crates inherit via `<dep> = { workspace = true }`.
-# proskenion is excluded from the workspace (GTK/webkit2gtk) and uses its own
-# standalone [workspace.dependencies] block; pin is mirrored there manually.
+# Member crates (including proskenion, a full but non-default member — see
+# `default-members` above) inherit via `<dep> = { workspace = true }`.
 
 # Error handling
 snafu = "0.9"
@@ -336,11 +385,11 @@ version = "1.6.2"
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
 version = "1.6.2"
-# WHY `logging` is here despite pylon — this workspace's only bathron consumer
-# — using just the durable-replace primitive: scripts/check-proskenion-pins.py
-# compares `features` and `default-features` as part of the pin, so the two
-# workspaces must declare identical feature sets. proskenion does use
-# bathron::logging. Narrowing this list means changing that guard first.
+# WHY `logging` is here despite pylon — the other consumer of this single
+# workspace entry — using just the durable-replace primitive: proskenion
+# consumes this same `bathron = { workspace = true }` entry directly (it is a
+# real workspace member, not a separate manifest with its own mirrored pin)
+# for bathron::logging. Narrowing this feature list would break proskenion.
 features = ["logging", "atomic-write"]
 
 [workspace.dependencies.keryx]

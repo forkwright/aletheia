@@ -144,9 +144,11 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-47 crates in the workspace, with `proskenion` excluded and built via its own
-manifest. The table below calls out the primary architecture crates; the full
-generated inventory is `_llm/L1-workspace.md`.
+48 crates in the workspace, with `proskenion` a full member kept out of
+`default-members` (it needs GTK3/webkit2gtk, so it is opted into with
+`-p proskenion` or `--workspace`, not built through a separate manifest). The
+table below calls out the primary architecture crates; the full generated
+inventory is `_llm/L1-workspace.md`.
 
 The count is `[workspace] members` in the root `Cargo.toml` -- the same list cargo
 resolves, and the canonical answer to "how many crates". Counting `Cargo.toml` files

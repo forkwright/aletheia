@@ -178,9 +178,9 @@ def main() -> int:
             LOGGER.error("  %s:%d  says %d  |  %s", rel, lineno, value, line[:100])
         LOGGER.error("")
         LOGGER.error("`[workspace] members` in Cargo.toml declares %d crates.", expected)
-        LOGGER.error("It is the canonical count: `crates/theatron/proskenion` has its own")
-        LOGGER.error("Cargo.lock and is NOT a member, so counting Cargo.toml files on disk")
-        LOGGER.error("returns one too many and makes correct documents look wrong.")
+        LOGGER.error("It is the canonical count -- counting Cargo.toml files on disk")
+        LOGGER.error("instead can diverge from it (e.g. fuzz/ is its own cargo-fuzz")
+        LOGGER.error("workspace, not a root member) and makes correct documents look wrong.")
         return EXIT_DRIFT
 
     LOGGER.info(
