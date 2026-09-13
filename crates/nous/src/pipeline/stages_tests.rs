@@ -1149,12 +1149,12 @@ async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
         providers.register(Box::new(
             MockProvider::new(r#"["fabricated-id", "real-id"]"#).models(&["test-model"]),
         ));
-        let rewrite_timed_out = std::sync::atomic::AtomicBool::new(false);
+        let rewrite_timeout = Mutex::new(None);
         let bridge = ProviderRecallBridge {
             providers: &providers,
             model: "test-model",
             call_budget: Duration::from_secs(15),
-            rewrite_timed_out: &rewrite_timed_out,
+            rewrite_timeout: &rewrite_timeout,
         };
 
         let manifest_text = "- real-id Project conventions\n- other-id Another entry\n";
@@ -1182,12 +1182,12 @@ async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component()
     let (rewrite_elapsed, rewrite_result, rank_elapsed, rank_result, rewrite_timed_out) =
         tokio::task::spawn_blocking(move || {
             let providers = sleeping_providers(Duration::from_secs(10));
-            let rewrite_timed_out = std::sync::atomic::AtomicBool::new(false);
+            let rewrite_timeout = Mutex::new(None);
             let bridge = ProviderRecallBridge {
                 providers: &providers,
                 model: "test-model",
                 call_budget: Duration::from_secs(1),
-                rewrite_timed_out: &rewrite_timed_out,
+                rewrite_timeout: &rewrite_timeout,
             };
 
             let start = std::time::Instant::now();
@@ -1204,7 +1204,7 @@ async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component()
                 rewrite_result,
                 rank_elapsed,
                 rank_result,
-                rewrite_timed_out.load(std::sync::atomic::Ordering::Relaxed),
+                rewrite_timeout.lock().expect("test mutex").is_some(),
             )
         })
         .await
