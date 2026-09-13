@@ -488,8 +488,8 @@ CSRF protection settings.
 |-------|------|---------|-------------|
 | `enabled` | bool | true | Whether CSRF header checking is active. |
 | `disableAcknowledged` | bool | false | Explicit acknowledgement required when CSRF protection is disabled. |
-| `headerName` | string | "x-requested-with" | Required header name (e.g. `x-requested-with`). |
-| `headerValue` | secret string | `SecretString::from(DEFAULT_CSRF_HEADER_VALUE)` | Required header value (e.g. `aletheia`). |
+| `headerName` | string | "x-requested-with" | Required header name (defaults to [`koina::http::CSRF_HEADER_NAME`]). |
+| `headerValue` | secret string | `SecretString::from(DEFAULT_CSRF_HEADER_VALUE)` | Required header value (defaults to [`koina::http::DEFAULT_CSRF_HEADER_VALUE`]). |
 
 ### gateway.rateLimit
 
@@ -1250,6 +1250,14 @@ Per-channel inbound-sender (participant) allowlist and default-deny posture, enf
 |-------|------|---------|-------------|
 | `allowlist` | map<string, string[]> | {} | Allowed senders per channel: channel id (e.g. `"signal"`) -> sender patterns (phone numbers, Matrix IDs, group IDs). A pattern of exactly `"*"` allows any sender on that channel; any other pattern must match the sender exactly. |
 | `defaultDeny` | bool | true | Deny an inbound message when its channel has no `allowlist` entry at all. Default: `true` (fail closed), reusing `OutboundMessagePolicy::default_deny`'s posture. |
+
+### messaging.groupParticipants
+
+Per-`(channel, group_id)` participant allowlist narrowing an already-matched group route, enforced by `agora::router::MessageRouter::group_participant_allows` before a group-bound message reaches its nous -- see [`GroupParticipantPolicy`].
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allowlist` | map<string, map<string, string[]>> | {} | Allowed sender patterns per channel, per group id: channel id (e.g. `"signal"`) -> group id -> sender patterns. A pattern of exactly `"*"` allows any sender in that group; any other pattern must match the sender exactly. A `(channel, group_id)` pair absent from this map is unrestricted. |
 
 ### messaging.rawPayload
 

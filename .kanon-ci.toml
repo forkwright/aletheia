@@ -34,7 +34,22 @@
 # `<canonical-state-doc>/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]
-stages = ["cargo fmt", "cargo publish policy", "proskenion flake", "cargo check", "cargo clippy", "cargo nextest", "kanon lint writing", "kanon lint workflow", "dokimasia"]
+stages = [
+  "cargo fmt",
+  "cargo publish policy",
+  "proskenion flake",
+  "cargo check",
+  "cargo clippy",
+  "cargo nextest",
+  "kanon lint writing",
+  "kanon lint workflow",
+  "dokimasia",
+  "cargo deny",
+  "cargo audit",
+  "gate-coverage-scripts",
+  "gate-coverage-compile-checks",
+  "gate-coverage-sovereign-hnsw",
+]
 
 [stages."cargo fmt"]
 cmd = "cargo fmt --all -- --check"
@@ -64,8 +79,16 @@ timeout_secs = 2400
 cmd = "kanon lint --summary --writing"
 timeout_secs = 300
 
+# WHY --rev-range: without a range this invocation runs the file-scoped
+# WORKFLOW rules only. The git-aware ones (WORKFLOW/no-ai-attribution among
+# them) need a commit range to scan and silently check zero commits without
+# one -- this stage ran that way before this change, so no-ai-attribution's
+# commit-message coverage never actually executed on the forge despite the
+# rule shipping in the same binary. `origin/main..HEAD` leaves exactly the
+# commits this branch contributes, mirroring gate-attestation.yml's own
+# ai-attribution job scope (PR range, not the whole history).
 [stages."kanon lint workflow"]
-cmd = "kanon lint --summary --workflow"
+cmd = "kanon lint --workflow --rev-range \"origin/main..HEAD\" --summary --min-severity error"
 timeout_secs = 300
 
 # Design-token enforcement: every var(--token) reference in CSS or Rust
@@ -78,3 +101,163 @@ timeout_secs = 300
 [stages."dokimasia"]
 cmd = "dokimasia --design-tokens ${DESIGN_TOKENS_PATH:?required} crates/"
 timeout_secs = 60
+
+# ── forge-superset: the eight stages below close the gap between this file ──
+# and the three GitHub branch-protection required contexts on main (`cargo
+# audit`, `cargo deny`, `gate`). `gate` is not one GitHub job but an
+# aggregator (.github/workflows/gate-attestation.yml's `gate` job) that
+# requires six sub-jobs; fmt/check/clippy/nextest are already verbatim above,
+# so the five stages after cargo-deny/cargo-audit below replay the remaining
+# sub-jobs' commands exactly (gate-coverage-scripts, gate-coverage-compile-
+# checks, gate-coverage-sovereign-hnsw). Coverage map:
+#   cargo audit          security.yml               cargo audit
+#   cargo deny            security.yml               cargo deny
+#   gate (hybrid-gate)    gate-attestation.yml       cargo fmt/check/clippy/nextest (above)
+#   gate (attestation-verify)  gate-attestation.yml  no forge stage -- see NOTE below
+#   gate (gate-coverage-scripts)       gate-attestation.yml  gate-coverage-scripts
+#   gate (gate-coverage-compile-checks) gate-attestation.yml gate-coverage-compile-checks
+#   gate (gate-coverage-sovereign-hnsw) gate-attestation.yml gate-coverage-sovereign-hnsw
+#   gate (fork-portability-check)      gate-attestation.yml  no forge stage -- see NOTE below
+#
+# NOTE(attestation-verify): that job exists solely to catch a FORGED
+# Gate-Passed trailer riding GitHub's trust-the-trailer optimization (skip a
+# real build if the tip already claims one). The forge pipeline has no
+# analogous shortcut -- every stage below always actually runs -- so there is
+# nothing for an equivalent stage to verify; a green forge run already IS the
+# attestation. No gap.
+#
+# NOTE(fork-portability-check): that job's entire guarantee is that the
+# workspace resolves and compiles with NO fleet git credentials configured
+# (proving an external contributor's fork build works). This pipeline has no
+# per-stage credential scoping -- every stage on this box shares one ambient
+# git environment -- so a stage running the identical `cargo check` command
+# would duplicate the "cargo check" stage above without testing the one
+# thing fork-portability-check actually checks (credential-free resolution).
+# Documented gap, not fabricated coverage; see the PR body for the follow-up.
+#
+# WHY --all-features: mirrors security.yml's cargo-deny-action `command:
+# check advisories licenses bans sources` / `arguments: --all-features`
+# exactly -- a schema regression in one check section can't silently disable
+# the others.
+[stages."cargo deny"]
+cmd = "cargo deny --all-features check advisories licenses bans sources"
+timeout_secs = 900
+
+# WHY --deny unmaintained,unsound,yanked: verbatim security.yml `cargo audit`
+# job command -- escalates those three RustSec categories from the tool's
+# default warning to a hard failure. Suppressions go through .cargo/audit.toml
+# (mirrors deny.toml's ignore list), never a silent --ignore flag.
+[stages."cargo audit"]
+cmd = "cargo audit --deny unmaintained --deny unsound --deny yanked"
+timeout_secs = 900
+
+# Verbatim replay of gate-attestation.yml's `gate-coverage-scripts` job, in
+# the same order, one required check the GitHub job aggregates into `gate`.
+# Pure-python/shell, no compile -- the job's own WHY notes are why each of
+# these is unconditional rather than folded into a trailer-waivable path.
+[stages."gate-coverage-scripts"]
+cmd = """
+set -eu
+scripts/check-test-tier-features.py
+scripts/check-shared-temp-paths.sh
+cargo metadata --format-version 1 --no-deps > metadata.json
+scripts/release-feature-policy.py --metadata metadata.json validate
+scripts/test-check-feature-namespace.py
+scripts/check-feature-namespace.py
+python3 -m unittest scripts/tests/test_check_release_build_scope.py
+scripts/check-release-build-scope.py
+python3 -m unittest scripts/tests/test_check_release_outcome.py scripts/tests/test_check_release_health.py
+python3 scripts/check-automation-pr-gates.py
+scripts/check-release-versioning.py
+scripts/test-release-versioning.py
+scripts/check-release-artifact-routing.py
+scripts/test-release-artifact-routing.py
+scripts/test-release-assets.py
+scripts/test-release-tarball.py
+scripts/test-release-attestations.py
+scripts/test-verify-sha256.sh
+scripts/test-deploy-download.sh
+python3 scripts/test-auditable-info.py
+scripts/substance-audit.py validate
+scripts/test-substance-audit.py
+scripts/test-diaporeia-mcp-inventory.py
+scripts/check-proskenion-pins.py
+scripts/check-workspace-locks.py
+scripts/test-check-tool-versions.py
+scripts/check-tool-versions.py
+scripts/test-check-stub-accountability.py
+scripts/check-stub-accountability.py
+scripts/test-check-client-boundary.py
+scripts/check-client-boundary.py
+scripts/check-conflict-markers.py
+scripts/test-check-current-state-version.py
+scripts/check-current-state-version.py
+scripts/test-check-orphaned-modules.py
+scripts/check-orphaned-modules.py
+scripts/krites-module-dag.py --check crates/krites/module-dag.json
+scripts/krites-module-dag.py --format markdown --check crates/krites/module-dag.md
+scripts/krites-module-dag.py --wave-scope --check crates/krites/module-dag.wave-scope.json
+scripts/test-check-krites-capability-matrix.py
+scripts/check-krites-capability-matrix.py
+python3 scripts/check-krites-provenance.py --base-ref origin/main
+scripts/test-krites-provenance.py
+python3 scripts/check-krites-verbatim-drift.py --strict
+"""
+timeout_secs = 1200
+
+# Verbatim replay of gate-attestation.yml's `gate-coverage-compile-checks`
+# job. Every cargo invocation is feature-gated exactly as the GitHub job
+# names it -- see that job's own WHY comments for what each one-off feature
+# world catches (codex-provider/kimi-provider, episteme's ort-backed models,
+# krites_sovereign_hnsw, poiesis-charts' charts-vega) that the workspace
+# default/test-core build in the "cargo check"/"cargo clippy"/"cargo nextest"
+# stages above never compiles.
+[stages."gate-coverage-compile-checks"]
+cmd = """
+set -eu
+cargo check -p poiesis-slides
+cargo check -p poiesis-slides --no-default-features
+cargo check -p poiesis-sheet
+cargo check -p poiesis-sheet --no-default-features --features workbook
+cargo check -p aletheia --features mcp,energeia,codex-provider,kimi-provider,keyring
+cargo check -p symbolon --features keyring --all-targets
+cargo clippy -p episteme --features gliner,nuextract --all-targets -- -D warnings
+cargo nextest run --profile ci -p episteme --features gliner,nuextract,ort-load-dynamic --build-jobs 4 --test-threads 4 --no-fail-fast
+cargo test -p krites --features krites_sovereign_hnsw
+cargo clippy -p krites --features krites_sovereign_hnsw --all-targets -- -D warnings
+cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
+cargo nextest run --profile ci -p poiesis-charts --features charts-vega --build-jobs 4 --test-threads 4 --no-fail-fast
+scripts/test-check-all-lockfiles-locked.py
+CARGO_TARGET_DIR=target scripts/check-all-lockfiles-locked.py
+"""
+timeout_secs = 1800
+
+# Verbatim replay of gate-attestation.yml's `gate-coverage-sovereign-hnsw`
+# job: the identical workspace nextest invocation as the "cargo nextest"
+# stage above, with krites_sovereign_hnsw added to the feature set, so real
+# consumer test suites (mneme/episteme/pylon/...) exercise the sovereign HNSW
+# tree the krites retirement plan depends on -- not just krites' own
+# crate-scoped test in gate-coverage-compile-checks. The capability-matrix
+# check reads nextest's own listing (test existence/ignored-state authority)
+# before the run replays that exact world.
+[stages."gate-coverage-sovereign-hnsw"]
+cmd = """
+set -eu
+nextest_json="$(mktemp)"
+cargo nextest list --message-format json --profile ci --workspace --features test-core,krites_sovereign_hnsw > "$nextest_json"
+python3 scripts/check-krites-capability-matrix.py --nextest-list "$nextest_json"
+cargo nextest run --profile ci --workspace --features test-core,krites_sovereign_hnsw
+"""
+# WHY 3600, not GitHub's 90m (5400s): archeion's ci_config.rs::MAX_TIMEOUT_SECS
+# is a hard, non-per-repo-configurable ceiling on any forge stage -- 5400
+# fails config validation outright ("exceeds the 3600s maximum"), confirmed
+# by a real `kanon ci run` attempt against this branch. GitHub's own comment
+# on the equivalent job explains the 90m was itself a raise from a 60m
+# ceiling that had become a standing deadlock on a cold cache (three
+# consecutive cold runs never finished a first cache-warming pass). This
+# stage is capped at the platform maximum instead; if a cold run on this box
+# also can't complete a first pass inside 3600s, the fix is either warming
+# the cache out-of-band before this stage runs or raising MAX_TIMEOUT_SECS
+# fleet-wide (crates/archeion/src/ci_config.rs) -- both out of this branch's
+# blast radius.
+timeout_secs = 3600
