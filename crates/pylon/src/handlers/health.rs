@@ -1746,7 +1746,6 @@ fn assemble_subsystem_statuses(
         subsystem_domain_packs(state, generated_at),
         subsystem_daemon_runtime(&state.daemon_task_states, &checks.prosoche, generated_at),
         tool_execution_history,
-        subsystem_training_qa_persistence(generated_at),
         subsystem_from_check(
             checks.metrics,
             "metrics_exposure",
@@ -2047,11 +2046,10 @@ fn subsystem_daemon_runtime(
             last_failure: None,
             degraded_reason: None,
             // WHY failure_reason and not details.note: the DTO defines this
-            // field as the explanation for `failed` OR `unknown`, and the
-            // sibling `subsystem_training_qa_persistence` uses it for exactly
-            // that. Putting the explanation only in `details` made
-            // daemon_runtime the one `unknown` subsystem that explains itself
-            // somewhere else, which the public-API test correctly rejects.
+            // field as the explanation for `failed` OR `unknown`. Putting the
+            // explanation only in `details` made daemon_runtime the one
+            // `unknown` subsystem that explains itself somewhere else, which
+            // the public-API test correctly rejects.
             failure_reason: Some(
                 "no daemon task-state readers are wired; daemon mode is either \
                  disabled for this instance or the readers were not threaded \
@@ -2341,31 +2339,6 @@ async fn subsystem_tool_execution_history(
                 "Check the session-store backend for the tool_audit partition.".to_owned(),
             ),
         },
-    }
-}
-
-/// Training / QA data persistence subsystem: genuinely `"unknown"`.
-///
-/// WHY(#5313): DPO/training-corpus persistence lives in `nous::training`
-/// with no pylon-reachable status signal today. Reported honestly as
-/// unknown rather than assumed healthy.
-fn subsystem_training_qa_persistence(generated_at: &str) -> SubsystemStatus {
-    SubsystemStatus {
-        id: "training_qa_persistence".to_owned(),
-        name: "Training / QA Data Persistence".to_owned(),
-        status: "unknown".to_owned(),
-        owner: "crates/nous::training".to_owned(),
-        last_checked: generated_at.to_owned(),
-        last_success: None,
-        last_failure: None,
-        degraded_reason: None,
-        failure_reason: Some(
-            "no pylon-reachable status signal for DPO/training-corpus persistence yet".to_owned(),
-        ),
-        details: None,
-        suggested_action: Some(
-            "Expose a status reader from nous::training's pending-state store.".to_owned(),
-        ),
     }
 }
 
