@@ -59,6 +59,12 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
   - `chromiumoxide` - niche. Pin exact.
 - **Stable crates** (1.0+): pin minor (`"1.49"` not `"=1.49.0"`).
 - **Never vendor** unless forced by platform issues. Cargo.lock suffices.
+  - **Current security exception:** `crates/third-party/lopdf` is a small,
+    pinned fork for #7142 until upstream releases equivalent exact-row/global
+    object admission, shared multi-filter decompression and ToUnicode-mapping
+    accounting, encrypted-input rejection, and checked ToUnicode/predictor
+    handling. Its provenance and exact delta are recorded in
+    `crates/third-party/lopdf/FORK.md`.
 
 ### Corrections from audit
 
