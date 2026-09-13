@@ -1682,6 +1682,27 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         ),
     );
 
+    assemble_subsystem_statuses(
+        state,
+        generated_at,
+        checks,
+        turn_event_persistence,
+        tool_execution_history,
+        event_bus,
+    )
+}
+
+/// Assemble the ordered subsystem-status list from the four gathered
+/// [`collect_subsystem_status`] results. Split out solely to keep that
+/// function under clippy's line-count ceiling; not otherwise reusable.
+fn assemble_subsystem_statuses(
+    state: &HealthState,
+    generated_at: &str,
+    checks: FlatSubsystemChecks,
+    turn_event_persistence: SubsystemStatus,
+    tool_execution_history: SubsystemStatus,
+    event_bus: SubsystemStatus,
+) -> Vec<SubsystemStatus> {
     vec![
         subsystem_from_check(
             checks.provider_reachability,
