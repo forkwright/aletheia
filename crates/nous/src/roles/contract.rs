@@ -16,12 +16,23 @@
 //! hardcoded constants a spawned agent previously always got, and `model`
 //! (wave 3.3) overrides the compiled `RoleTemplate` model a spawned agent
 //! would otherwise resolve to.
+//!
+//! A tier that has never had a `roles.toml` keeps resolving `NotFound` to
+//! [`ContractRegistry::defaults()`] (#4775) with no ceremony. But once a
+//! `roles.toml` has been loaded successfully from a given path, that path
+//! is "contracts required": a later `NotFound` there means the contract
+//! was removed, not that one was never configured, and is refused rather
+//! than silently re-opened to the liberal defaults (#7323, the residual
+//! risk #7169's decision record called out — deleting a restrictive
+//! `roles.toml` is cheaper than corrupting one, and lands on the same
+//! `NotFound` #7169 deliberately left alone). See
+//! [`has_been_configured`].
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use organon::types::{ToolGroupId, ToolGroupPolicy};
 
@@ -184,23 +195,46 @@ impl ContractRegistry {
     /// Load contracts from a TOML file, falling back to defaults for
     /// any role not present in the file.
     ///
-    /// A missing file is not an error: it means "no override configured"
-    /// and returns [`Self::defaults()`]. Any other read failure (permission
-    /// denied, not a regular file, ...) or a parse failure is fail-closed:
-    /// it returns an error rather than silently substituting the
-    /// hardcoded defaults, because those defaults are the most permissive
-    /// point in the range and a read/parse error carries no evidence about
-    /// what the operator actually configured (#7169).
+    /// A missing file is not an error the first time: it means "no
+    /// override configured" and returns [`Self::defaults()`]. But if this
+    /// exact `path` has previously been loaded from successfully
+    /// ([`has_been_configured`]), a later `NotFound` means an
+    /// operator-configured contract was removed, not that one was never
+    /// set, and is fail-closed the same way #7169 fails closed on a
+    /// corrupt file (#7323) — silently substituting the liberal defaults
+    /// for a contract that used to restrict this tier is a
+    /// privilege-restoration bug, not a harmless degrade.
+    ///
+    /// Any other read failure (permission denied, not a regular file, ...)
+    /// or a parse failure is fail-closed unconditionally, as before
+    /// (#7169).
     ///
     /// # Errors
     ///
-    /// Returns [`error::Error::RoleContract`] if the file exists but
+    /// Returns [`error::Error::RoleContract`] if: the file exists but
     /// cannot be read (any [`std::io::Error`] other than
-    /// [`std::io::ErrorKind::NotFound`]) or cannot be parsed as valid TOML.
+    /// [`std::io::ErrorKind::NotFound`]); it cannot be parsed as valid
+    /// TOML; or it is `NotFound` at a `path` that has previously carried a
+    /// successfully-loaded contract (#7323).
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if has_been_configured(path) {
+                    return error::RoleContractSnafu {
+                        message: format!(
+                            "{} is missing, but a role contract was previously configured at \
+                             this path; refusing to silently restore the liberal defaults \
+                             (#7323) — restore {} to return the operator-configured contract, \
+                             or delete the sentinel at {} to deliberately return this tier to \
+                             hardcoded defaults",
+                            path.display(),
+                            path.display(),
+                            sentinel_path(path).display()
+                        ),
+                    }
+                    .fail();
+                }
                 debug!(?path, "roles.toml not found, using defaults");
                 return Ok(Self::defaults());
             }
@@ -212,7 +246,9 @@ impl ContractRegistry {
             }
         };
 
-        Self::parse_toml(&content, path)
+        let registry = Self::parse_toml(&content, path)?;
+        mark_configured(path);
+        Ok(registry)
     }
 
     /// Load contracts from a TOML string (for testing and embedded use).
@@ -292,6 +328,80 @@ impl ContractRegistry {
 impl Default for ContractRegistry {
     fn default() -> Self {
         Self::defaults()
+    }
+}
+
+// ── "Contracts required" posture (#7323) ────────────────────────────────
+//
+// A tiny marker file, colocated with a `roles.toml`, that records "a
+// contract was successfully loaded from this exact path at least once".
+// It is the detection mechanism #7323's decision record left open
+// ("a sentinel/marker file, an explicit allowlist of tiers that must
+// carry a contract, an audit-logged prior-state check, ..."), scoped to
+// the exact path a caller resolves (one path per cascade tier), so it
+// composes with the existing nous/shared/theke cascade without needing to
+// know about tiers itself.
+//
+// WHY: best-effort, not a hard guarantee — a sentinel write failure (e.g.
+// a read-only config directory) is logged and does not fail the load that
+// triggered it, because refusing to use a roles.toml an operator can
+// legitimately read would be a worse regression than the gap this closes.
+// An operator who deletes both the contract and its sentinel in one
+// motion is out of scope here, same as #7169's own read/parse fail-closed
+// posture does not defend against deleting the file outright — this
+// closes the *cheaper* escalation (delete only), not every escalation.
+
+/// The sentinel path for a given `roles.toml` path.
+///
+/// `pub(crate)` (not just used internally) so a cascade-aware caller
+/// (`SpawnServiceImpl::resolve_contract` in `spawn_svc.rs`) can name the
+/// exact sentinel path in its own refusal message for a tier whose file
+/// is currently absent, matching the guidance [`load_from_file`] gives
+/// for the path it read directly.
+pub(crate) fn sentinel_path(path: &Path) -> PathBuf {
+    let marker = match path.file_name() {
+        Some(name) => format!(".{}.contract-seen", name.to_string_lossy()),
+        None => ".roles.toml.contract-seen".to_owned(),
+    };
+    match path.parent() {
+        Some(parent) => parent.join(marker),
+        None => PathBuf::from(marker),
+    }
+}
+
+/// Whether a role contract has ever been loaded successfully from `path`.
+///
+/// `true` turns a later `NotFound` at `path` into a fail-closed error
+/// instead of [`ContractRegistry::defaults()`] — see
+/// [`ContractRegistry::load_from_file`]. Exposed (not just used
+/// internally) so a cascade-aware caller (`SpawnServiceImpl::resolve_contract`
+/// in `spawn_svc.rs`) can apply the same check to a tier whose file is
+/// currently absent everywhere, not only to a path it is about to read.
+#[must_use]
+pub fn has_been_configured(path: &Path) -> bool {
+    sentinel_path(path).exists()
+}
+
+/// Record that `path` was loaded successfully, for future [`has_been_configured`] checks.
+///
+/// Best-effort: a write failure is logged, not propagated — see the
+/// module-level WHY above.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "sentinel write is a synchronous best-effort side effect of a synchronous, \
+              non-async load_from_file call; the disallowed-methods reason (async/testability) \
+              does not apply to a zero-byte marker write on the error-logging path only"
+)]
+fn mark_configured(path: &Path) {
+    let marker = sentinel_path(path);
+    if let Err(e) = std::fs::write(&marker, b"") {
+        warn!(
+            ?path,
+            marker = %marker.display(),
+            error = %e,
+            "failed to write roles.toml contract-seen sentinel; a future deletion of this \
+             roles.toml will not be detected as contract removal"
+        );
     }
 }
 
