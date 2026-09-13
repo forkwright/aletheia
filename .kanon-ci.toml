@@ -83,8 +83,9 @@ timeout_secs = 300
 # The binary is provisioned (theatron v1.6.2 at `~/.local/bin/dokimasia`
 # on menos per `boxes/menos/takeover/tools-provenance.md` in the ops
 # repo; the CI sandbox's `stage_program_search_paths` in
-# `crates/archeion/src/ci/runner_sandbox.rs` resolves `~/.local/bin`,
-# never `/usr/local/bin`) and the `cmd` above is shell-wrapped so
+# `crates/archeion/src/ci/runner_sandbox.rs` resolves
+# `$CARGO_HOME/bin, ~/.local/bin, /usr/local/bin, /usr/bin, /bin` in
+# that order) and the `cmd` above is shell-wrapped so
 # `${DESIGN_TOKENS_PATH:?required}` actually expands (`cmd` is split via
 # `shell_words` with no shell involved otherwise -- precedent for the
 # wrap: ardent-site, ardent-tools-site, gnomon, thumos `.kanon-ci.toml`).
