@@ -160,7 +160,7 @@ Pack tools are shell scripts executed directly via their shebang line, so they a
 
 - **Linux**: when the deployment enables an enforcing sandbox and the host supports the full Landlock ABI v5 filesystem-rights baseline plus seccomp, filesystem, syscall, resource, and egress restrictions can all be active. Registration fails when an enforcing host cannot provide every baseline guarantee; a merely partial Landlock ruleset is never admitted as active.
 - **macOS and other Unix**: timeout and process-group kill apply, but Landlock, seccomp, egress isolation, and resource limits are unavailable. Enforcing mode refuses pack tools; permissive mode runs with reduced controls and reports each reduced guarantee in pack health.
-- **Windows**: pack shell tools are not currently supported. The manifest deliberately has no `windows` platform value until native execution, process-tree cleanup, and CI coverage exist.
+- **Windows**: pack shell tools are not supported. The manifest deliberately has no `windows` platform value until native execution, process-tree cleanup, and CI coverage exist.
 
 The startup health notes are derived from the deployment's actual sandbox configuration and Organon's capability probe. A disabled sandbox is reported explicitly; platform alone is not treated as proof of enforcement.
 

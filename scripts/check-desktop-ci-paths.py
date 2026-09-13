@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Verify the Desktop workflow's path filter covers proskenion's path-dep closure.
 
-WHY: proskenion is excluded from the root workspace, so root CI never compiles it.
-The Desktop workflow is the only pull_request job that does, and it is path-filtered.
-Any path dependency of proskenion that is missing from that filter can therefore take
-a breaking change with a fully green board, surfacing only in the tag-triggered
-release build.
+WHY: proskenion is a non-default root-workspace member (default-members skips it in a
+bare build, but gate-attestation's hybrid-gate job runs explicit `--workspace` commands,
+so root CI does compile/lint/test it on every PR). The Desktop workflow is a faster,
+path-filtered pull_request job that runs `-p proskenion`-scoped checks so a desktop-only
+change doesn't have to wait on the full hybrid-gate run to surface a break. Any path
+dependency of proskenion that is missing from that filter can silently skip this fast
+job -- the slower hybrid-gate run still catches a breaking change, but only after its
+full-workspace build completes.
 """
 
 from __future__ import annotations

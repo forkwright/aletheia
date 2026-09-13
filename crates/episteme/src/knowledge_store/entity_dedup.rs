@@ -66,45 +66,14 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
-        let canonical = self.load_entity(canonical_id)?;
-        let merged = self.load_entity(merged_id)?;
 
-        let redirected_src = self.redirect_relationships_src(merged_id, canonical_id)?;
-        let redirected_dst = self.redirect_relationships_dst(merged_id, canonical_id)?;
-        let relationships_redirected = redirected_src + redirected_dst;
-
-        let facts_transferred = self.transfer_fact_entities(merged_id, canonical_id)?;
-
-        self.add_alias_to_entity(canonical_id, &merged.name)?;
-
-        self.delete_entity(merged_id)?;
-
-        let now = jiff::Timestamp::now();
-        let now_str = crate::knowledge::format_timestamp(&now);
-        let mut params = BTreeMap::new();
-        params.insert(
-            "canonical_id".to_owned(),
-            DataValue::Str(canonical_id.as_str().into()),
-        );
-        params.insert(
-            "merged_id".to_owned(),
-            DataValue::Str(merged_id.as_str().into()),
-        );
-        params.insert(
-            "merged_name".to_owned(),
-            DataValue::Str(merged.name.as_str().into()),
-        );
-        params.insert("merge_score".to_owned(), DataValue::from(0.0_f64));
-        params.insert(
-            "facts_transferred".to_owned(),
-            DataValue::from(i64::from(facts_transferred)),
-        );
-        params.insert(
-            "relationships_redirected".to_owned(),
-            DataValue::from(i64::from(relationships_redirected)),
-        );
-        params.insert("merged_at".to_owned(), DataValue::Str(now_str.into()));
-        self.run_mut(&queries::put_merge_audit(), params)?;
+        // WHY(#7289): the redirect/transfer/alias/delete/audit write set
+        // commits as one all-or-nothing transaction — see
+        // `super::merge_commit` for why a merge that landed as N
+        // independent writes could leave the graph checker's
+        // orphaned-entity / dangling-edge signals genuinely wrong after a
+        // partial failure.
+        let record = self.commit_entity_merge(canonical_id, merged_id)?;
 
         let mut rm_params = BTreeMap::new();
         rm_params.insert(
@@ -116,6 +85,8 @@ impl KnowledgeStore {
             DataValue::Str(merged_id.as_str().into()),
         );
         // WHY: Try both orderings; pending_merges may store (a,b) or (b,a).
+        // Best-effort review-queue housekeeping, not graph structure — runs
+        // after the merge itself has already committed.
         if let Err(e) = self.run_mut(&queries::rm_pending_merges(), rm_params) {
             tracing::warn!(
                 %canonical_id, %merged_id, error = %e,
@@ -138,15 +109,7 @@ impl KnowledgeStore {
             );
         }
 
-        Ok(crate::dedup::MergeRecord {
-            canonical_entity_id: canonical.id,
-            merged_entity_id: merged_id.clone(),
-            merged_entity_name: merged.name,
-            merge_score: 0.0,
-            facts_transferred,
-            relationships_redirected,
-            merged_at: now,
-        })
+        Ok(record)
     }
 
     /// Get pending merge candidates (review queue) for a nous.
@@ -691,108 +654,6 @@ impl KnowledgeStore {
             );
         }
         self.run_entity_dedup_with_tuning(nous_id, tuning)
-    }
-
-    /// Transfer `fact_entities` mappings from merged entity to canonical.
-    fn transfer_fact_entities(
-        &self,
-        from_id: &crate::id::EntityId,
-        to_id: &crate::id::EntityId,
-    ) -> crate::error::Result<u32> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::DataValue;
-        let mut params = BTreeMap::new();
-        params.insert(
-            "from_id".to_owned(),
-            DataValue::Str(from_id.as_str().into()),
-        );
-        let script = r"?[fact_id, entity_id, created_at] :=
-            *fact_entities{fact_id, entity_id, created_at},
-            entity_id = $from_id";
-        let rows = self.run_read(script, params)?;
-
-        let count = rows.rows.len();
-        for row in &rows.rows {
-            if row.len() < 3 {
-                continue;
-            }
-            let fact_id = extract_str(&row[0])?;
-            let created_at = extract_str(&row[2])?;
-
-            let mut put_params = BTreeMap::new();
-            put_params.insert(
-                "fact_id".to_owned(),
-                DataValue::Str(fact_id.as_str().into()),
-            );
-            put_params.insert(
-                "entity_id".to_owned(),
-                DataValue::Str(to_id.as_str().into()),
-            );
-            put_params.insert("created_at".to_owned(), DataValue::Str(created_at.into()));
-            self.run_mut(&queries::upsert_fact_entity(), put_params)?;
-
-            let mut rm_params = BTreeMap::new();
-            rm_params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
-            rm_params.insert(
-                "entity_id".to_owned(),
-                DataValue::Str(from_id.as_str().into()),
-            );
-            // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
-            let _ = self.run_mut(&queries::rm_fact_entity(), rm_params);
-        }
-
-        Ok(u32::try_from(count).unwrap_or(0))
-    }
-
-    /// Add an alias to an entity's alias list.
-    fn add_alias_to_entity(
-        &self,
-        entity_id: &crate::id::EntityId,
-        new_alias: &str,
-    ) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::{Array1, DataValue, Vector};
-        let entity = self.load_entity(entity_id)?;
-        let lower_new = new_alias.to_lowercase();
-
-        if entity.name.to_lowercase() == lower_new
-            || entity.aliases.iter().any(|a| a.to_lowercase() == lower_new)
-        {
-            return Ok(());
-        }
-
-        let mut aliases = entity.aliases;
-        aliases.push(new_alias.to_owned());
-        let aliases_str = aliases.join(",");
-
-        // WHY (#4165 Path A): the entities upsert requires
-        // `$name_embedding` — preserve the existing column value so the
-        // alias update does not silently clear a populated embedding.
-        let existing_embedding = self.get_entity_name_embedding(entity_id)?;
-        let emb_value = existing_embedding.map_or(DataValue::Null, |v| {
-            DataValue::Vec(Vector::F32(Array1::from(v)))
-        });
-
-        let mut params = BTreeMap::new();
-        params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
-        params.insert("aliases".to_owned(), DataValue::Str(aliases_str.into()));
-        params.insert(
-            "updated_at".to_owned(),
-            DataValue::Str(crate::knowledge::format_timestamp(&jiff::Timestamp::now()).into()),
-        );
-        params.insert("name".to_owned(), DataValue::Str(entity.name.into()));
-        params.insert(
-            "entity_type".to_owned(),
-            DataValue::Str(entity.entity_type.into()),
-        );
-        params.insert(
-            "created_at".to_owned(),
-            DataValue::Str(crate::knowledge::format_timestamp(&entity.created_at).into()),
-        );
-        params.insert("name_embedding".to_owned(), emb_value);
-        self.run_mut(&queries::upsert_entity(), params)
     }
 
     /// Store a pending merge candidate for review.

@@ -1,0 +1,2032 @@
+[baseline]
+created = "2026-09-13"
+remove_after = "2026-12-12"
+reason = "aletheia#7353: 338 pre-existing WORKFLOW/unwired-dead-code-untracked (303), WORKFLOW/unwired-feature-ungated (34), and WORKFLOW/cargo-without-target-dir-in-worktree (1) findings on origin/main, none touched by the ratchet PR that generated this file. Each is real built-but-unwired backlog per the fleet's landing rule; the burn-down ledger and per-crate counts are tracked on aletheia#7353. Entries may only be removed (a lane wires or deletes the underlying code and the entry drops out on regeneration) -- never added to or replaced wholesale; a rule newly added to this baseline after today must use --baseline-rule so existing rows are copied, not re-snapshotted. Deadline 90 days out; whatever remains re-fires the gate at expiry."
+
+[[baseline.entry]]
+rule = "WORKFLOW/cargo-without-target-dir-in-worktree"
+file = "demo/smoke-test.sh"
+line = 42
+hash = "c2b32c1c1931a7bcec6025a73141855fdaf381ffeb108340b9387d0a7627f8db"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/src/semeion/client.rs"
+line = 31
+hash = "2bb75fd87ed0f3ece57fd87c1005b07b3caf89dfef86e17164d48c468c02eeae"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/src/semeion/client.rs"
+line = 35
+hash = "2bb75fd87ed0f3ece57fd87c1005b07b3caf89dfef86e17164d48c468c02eeae"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/src/semeion/client.rs"
+line = 278
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/src/semeion/connection.rs"
+line = 35
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/tests/public_api_semeion.rs"
+line = 423
+hash = "44a090e7868f893493e0e6ff556af5a17e1863e2703a75139f9e09de7a1543c5"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/tests/public_api_semeion.rs"
+line = 425
+hash = "44a090e7868f893493e0e6ff556af5a17e1863e2703a75139f9e09de7a1543c5"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/agora/tests/public_api_types.rs"
+line = 284
+hash = "8d95d1490bef86be19ce1509faca859efb1c264d3ecc8c617fec1e9492066744"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 92
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 345
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 376
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 386
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 396
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 406
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/mod.rs"
+line = 416
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/setup.rs"
+line = 1189
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/aletheia/src/runtime/setup.rs"
+line = 1200
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/daemon/src/prosoche.rs"
+line = 109
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/daemon/src/runner/persistence.rs"
+line = 49
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/daemon/tests/common/mod.rs"
+line = 14
+hash = "41a86bff20590d6389c4c877a92ff5f4929d8160274c079f25e1e34837a0b2a8"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/handoff.rs"
+line = 143
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/handoff.rs"
+line = 202
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/handoff.rs"
+line = 211
+hash = "afa456bdb3a18965a0791ea524ec689890f3908e4266797da082604b820721f2"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/phase.rs"
+line = 97
+hash = "6def0e5c13ff4c2ed4455c5906f314c77b4497a26520745d13007c530410db4e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/plan.rs"
+line = 186
+hash = "54938b5d9c6857464947d5be05950343921a8aeeaa78085558de9637888ac152"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/plan.rs"
+line = 192
+hash = "54938b5d9c6857464947d5be05950343921a8aeeaa78085558de9637888ac152"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/plan.rs"
+line = 207
+hash = "afa456bdb3a18965a0791ea524ec689890f3908e4266797da082604b820721f2"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/state.rs"
+line = 177
+hash = "686917f498115d53a7d74b531c7af3ef1c663aadef600920e2dbd8bb6a789264"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/state.rs"
+line = 242
+hash = "afa456bdb3a18965a0791ea524ec689890f3908e4266797da082604b820721f2"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/verify.rs"
+line = 221
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/workspace.rs"
+line = 19
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/workspace.rs"
+line = 105
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/dianoia/src/workspace.rs"
+line = 131
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/diaporeia/src/repomix.rs"
+line = 30
+hash = "1c36ee9da4e22ac338116b20189589ac23d88c6e1c0d33a0aea6142fa04b57e5"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/diaporeia/src/server.rs"
+line = 42
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/diaporeia/tests/common/mod.rs"
+line = 14
+hash = "41a86bff20590d6389c4c877a92ff5f4929d8160274c079f25e1e34837a0b2a8"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eidos/src/knowledge/fact.rs"
+line = 718
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/energeia/src/http/stream.rs"
+line = 104
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/energeia/src/routing/empirical.rs"
+line = 169
+hash = "c08508f1f114d185c27ae596fcdf9bead07c9fd8d2ca37b99bade47c745d4f93"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/causal.rs"
+line = 302
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/conflict.rs"
+line = 591
+hash = "91d04c2c18786f4c5f350788c9c961ca3fd31b55378668d7de0c49958bc5582d"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/consolidation/engine.rs"
+line = 65
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/consolidation/engine.rs"
+line = 78
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/consolidation/engine.rs"
+line = 399
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/consolidation/mod.rs"
+line = 188
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/dedup.rs"
+line = 418
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/dedup_tests.rs"
+line = 48
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/derived_rules.rs"
+line = 34
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/derived_rules.rs"
+line = 52
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/derived_rules.rs"
+line = 72
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/derived_rules.rs"
+line = 107
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/derived_rules.rs"
+line = 152
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/derived_rules.rs"
+line = 183
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/embedding_eval.rs"
+line = 232
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/extract/dispatch.rs"
+line = 192
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/extract/engine.rs"
+line = 135
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/extract/refinement.rs"
+line = 588
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/extract/training.rs"
+line = 28
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/extract/training.rs"
+line = 94
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 9
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 68
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 191
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 224
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 240
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 252
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/graph_intelligence.rs"
+line = 349
+hash = "211bfc622a95748987506a44b0fc30fe1a80351539d64e91fda301c00b2ce801"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/instinct.rs"
+line = 115
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/instinct.rs"
+line = 474
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/instinct.rs"
+line = 500
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/instinct.rs"
+line = 527
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/instinct.rs"
+line = 711
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_portability.rs"
+line = 23
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_portability.rs"
+line = 91
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/causal.rs"
+line = 81
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/causal.rs"
+line = 131
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/causal.rs"
+line = 164
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/causal.rs"
+line = 195
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/facts.rs"
+line = 527
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/skills.rs"
+line = 45
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/knowledge_store/skills.rs"
+line = 490
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/lib.rs"
+line = 42
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query/builders.rs"
+line = 61
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query/builders.rs"
+line = 71
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query/builders.rs"
+line = 82
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query/builders.rs"
+line = 220
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query/queries.rs"
+line = 145
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query/queries.rs"
+line = 426
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/query_rewrite.rs"
+line = 267
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/recall/mod.rs"
+line = 302
+hash = "9036ebd83cac91033c98d24858c736e05540c3b348b6f9e13dabe4aadabc8856"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/recall/mod.rs"
+line = 600
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/recall/mod.rs"
+line = 623
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/recall/mod.rs"
+line = 649
+hash = "9036ebd83cac91033c98d24858c736e05540c3b348b6f9e13dabe4aadabc8856"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/recall/mod.rs"
+line = 809
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/serendipity/mod.rs"
+line = 8
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/skills/candidate.rs"
+line = 104
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/skills/candidate.rs"
+line = 117
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/skills/candidate.rs"
+line = 257
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/skills/candidate.rs"
+line = 285
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/skills/extract.rs"
+line = 652
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/skills/extract.rs"
+line = 662
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/succession.rs"
+line = 18
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/succession.rs"
+line = 129
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/succession.rs"
+line = 183
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/succession.rs"
+line = 207
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/episteme/src/succession.rs"
+line = 238
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eval/src/cognitive/adversarial.rs"
+line = 24
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eval/src/cognitive/adversarial.rs"
+line = 30
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eval/src/cognitive/adversarial.rs"
+line = 41
+hash = "54004f600be57ad310819e350151fd6e9d1eb44892afdd140bb82f3ee144caef"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eval/src/cognitive/adversarial.rs"
+line = 45
+hash = "b7c143346c11ef6fbd699381a7a8828d636b42ca2aacbb4aaaf5414fbc0214b4"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eval/src/sse.rs"
+line = 112
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/eval/src/sse.rs"
+line = 159
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/anthropic/cc_profile.rs"
+line = 71
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/cc/parse.rs"
+line = 29
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/cc/process.rs"
+line = 99
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/kimi/process.rs"
+line = 119
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/openai/error.rs"
+line = 36
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/openai/wire/response.rs"
+line = 40
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/hermeneus/src/openai/wire/response.rs"
+line = 287
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/integration-tests/tests/knowledge_lifecycle.rs"
+line = 199
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/data/expr/expr_impl.rs"
+line = 493
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/data/expr/op.rs"
+line = 95
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/data/program/fixed_rule.rs"
+line = 74
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/data/program/fixed_rule.rs"
+line = 97
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/data/program/fixed_rule.rs"
+line = 119
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/hot_reload.rs"
+line = 136
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/runtime/hnsw/adaptive.rs"
+line = 12
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/runtime/hnsw/put.rs"
+line = 542
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/runtime/hnsw_sovereign/adaptive.rs"
+line = 17
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/runtime/hnsw_sovereign/put.rs"
+line = 491
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/runtime/mod.rs"
+line = 27
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/runtime/mod.rs"
+line = 41
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/krites/src/storage/mod.rs"
+line = 24
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/bootstrap/mod.rs"
+line = 576
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/bootstrap/mod.rs"
+line = 591
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/bootstrap/mod.rs"
+line = 597
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/bootstrap/mod.rs"
+line = 603
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/bootstrap/mod.rs"
+line = 618
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/budget.rs"
+line = 219
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/budget.rs"
+line = 243
+hash = "e8b1e2ffea1546ec912255f723255437b4f154226e3e92a72ef49f597bdf0c69"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/budget.rs"
+line = 316
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/budget.rs"
+line = 361
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/compact/full.rs"
+line = 24
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/compact/micro.rs"
+line = 246
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/compact/mod.rs"
+line = 100
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/cross/delivery.rs"
+line = 9
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/cross/delivery.rs"
+line = 52
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/cross/delivery.rs"
+line = 65
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/hooks/builtins/correction.rs"
+line = 148
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/hooks/mod.rs"
+line = 248
+hash = "22cad6821235c6793087749585a853036a61ffd446b414366b7f7aa58c3add79"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/hooks/mod.rs"
+line = 263
+hash = "22cad6821235c6793087749585a853036a61ffd446b414366b7f7aa58c3add79"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/recipes.rs"
+line = 173
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/roles/mod.rs"
+line = 96
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 72
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 99
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 190
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 199
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 221
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 240
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 259
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 269
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 283
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 299
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 314
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 336
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 349
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 362
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/nous/src/working_state.rs"
+line = 374
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/organon/src/builtins/filesystem.rs"
+line = 567
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/organon/src/builtins/git_ops.rs"
+line = 370
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/organon/src/sandbox/policy.rs"
+line = 7
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/pylon/src/handlers/health.rs"
+line = 2460
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/pylon/src/handlers/nous_tests.rs"
+line = 12
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/pylon/src/idempotency.rs"
+line = 78
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/pylon/tests/common/mod.rs"
+line = 14
+hash = "41a86bff20590d6389c4c877a92ff5f4929d8160274c079f25e1e34837a0b2a8"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/symbolon/src/credential/file_ops.rs"
+line = 368
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/symbolon/src/store/fjall_store.rs"
+line = 19
+hash = "38c02c551bb4cd7695e29f3c8993bbb0a05403b027d8b385b5362378faaf985e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/taxis/tests/common/mod.rs"
+line = 18
+hash = "de172218ff50822e1e676744c18825b7a92017d1e36f7af785a11aae2ee33e12"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/markdown/tests/code_lists.rs"
+line = 40
+hash = "6c87278473111db73c874f6ec08fd4ed0db459ef307b6d6c679e661983200816"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/markdown/tests/links_tables_edge.rs"
+line = 15
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/markdown/tests/links_tables_edge.rs"
+line = 44
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 170
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 172
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 185
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 187
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 196
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 232
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 260
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 262
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 273
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 275
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 280
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 292
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 294
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 297
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 299
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 301
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 338
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 346
+hash = "a243b009692e3db0d532e8c635686c6c135a8dc03133efa5ba5810922f4b6716"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 367
+hash = "3a590fb3e5fa35059976a4e965d5c1b79e5fe6e2caa712b48e8d32d76d8c3fec"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 378
+hash = "a309df281cba942712bed412eccd8e67dc5cb781a2cba2bf27f48bc3ace2f637"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 380
+hash = "57391ea80dcdef9fa9269bcd9c8ca04f361085eba711d19f2f33169765d1128a"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 384
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 389
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 395
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 417
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 425
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 432
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 440
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 448
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 470
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 479
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 498
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 506
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 514
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 530
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 533
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 535
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 551
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 556
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 587
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 589
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/msg.rs"
+line = 591
+hash = "b261642a0be320eadecb121308a18796d5c96894832758472b3747eae2603f24"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/chat.rs"
+line = 23
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/chat.rs"
+line = 62
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/chat.rs"
+line = 68
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/chat.rs"
+line = 74
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/chat.rs"
+line = 80
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/command.rs"
+line = 30
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/editor/mod.rs"
+line = 120
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/filter.rs"
+line = 9
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/input.rs"
+line = 94
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/notification.rs"
+line = 47
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/notification.rs"
+line = 59
+hash = "a670252ef77f219b2269f6d8ee87c7d59325ca107f1122914287b602c107256d"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/notification.rs"
+line = 109
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/notification.rs"
+line = 129
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/overlay.rs"
+line = 23
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/settings.rs"
+line = 35
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/settings.rs"
+line = 54
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/koilon/src/state/tab.rs"
+line = 45
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/chart.rs"
+line = 56
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/input_bar.rs"
+line = 190
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/thinking.rs"
+line = 87
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/thinking.rs"
+line = 97
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/thinking.rs"
+line = 104
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/thinking.rs"
+line = 110
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/thinking.rs"
+line = 121
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/components/tool_status.rs"
+line = 74
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/platform/window_state.rs"
+line = 230
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/services/streaming.rs"
+line = 6
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/services/streaming.rs"
+line = 10
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/agents.rs"
+line = 106
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/app.rs"
+line = 166
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/app.rs"
+line = 173
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/connection.rs"
+line = 57
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/connection.rs"
+line = 64
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/connection.rs"
+line = 71
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/credentials.rs"
+line = 140
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/discussion.rs"
+line = 87
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/discussion.rs"
+line = 97
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/events.rs"
+line = 93
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/events.rs"
+line = 208
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/input.rs"
+line = 121
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/input.rs"
+line = 128
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/input.rs"
+line = 136
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/memory.rs"
+line = 155
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/memory.rs"
+line = 484
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/memory.rs"
+line = 611
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/memory.rs"
+line = 632
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/memory.rs"
+line = 642
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 119
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 190
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 216
+hash = "787aafaf39e20a34c9b6d1aa70e1a445a95eb72efc361161c01bb1b01cbe92c4"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 248
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 270
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 288
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 324
+hash = "787aafaf39e20a34c9b6d1aa70e1a445a95eb72efc361161c01bb1b01cbe92c4"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 405
+hash = "787aafaf39e20a34c9b6d1aa70e1a445a95eb72efc361161c01bb1b01cbe92c4"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+line = 578
+hash = "787aafaf39e20a34c9b6d1aa70e1a445a95eb72efc361161c01bb1b01cbe92c4"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 186
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 192
+hash = "325209616085d18dd513180ee6e3765e2b3db4fe309fcf60fc2ea374f2fbf95e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 195
+hash = "325209616085d18dd513180ee6e3765e2b3db4fe309fcf60fc2ea374f2fbf95e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 198
+hash = "325209616085d18dd513180ee6e3765e2b3db4fe309fcf60fc2ea374f2fbf95e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 221
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 228
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+line = 235
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/ops.rs"
+line = 128
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/platform.rs"
+line = 96
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/platform.rs"
+line = 104
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/sessions.rs"
+line = 355
+hash = "325209616085d18dd513180ee6e3765e2b3db4fe309fcf60fc2ea374f2fbf95e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/tool_metrics.rs"
+line = 162
+hash = "50ba3de51fd6eb8ffc7d7108ddf251fdb3b0fcddcba63dfbd275793d17a83052"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/tool_metrics.rs"
+line = 219
+hash = "ccb0fe05a24e377895b157dcbf9577c0047b39847fc48b80ce7dd2d28151bfe9"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/tools.rs"
+line = 25
+hash = "2c0bbd43dc20bbf3781968a8ae1ff02b725b7d1a4284879b7a162669bb5b87c0"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/state/view_preservation.rs"
+line = 30
+hash = "325209616085d18dd513180ee6e3765e2b3db4fe309fcf60fc2ea374f2fbf95e"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/views/meta/mod.rs"
+line = 201
+hash = "511e383f26be6013f13ce6de77b1825c2affc6b7219254da2d8831a7ab71ba51"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/views/planning/project_detail.rs"
+line = 25
+hash = "6333e14ffc77cc423d1084ee4ca420a77f33f3abffa31589d9ac5469cffbb406"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/proskenion/src/views/planning/requirements.rs"
+line = 17
+hash = "45d824f1ad2790c1c922f3c228418c1598680b802ef92403f0ccc1d959d2e1f3"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/theatron/skene/src/api/client.rs"
+line = 199
+hash = "8ecc1783a9bb815c1ef8a0ff8e8bda7d53dbab954262144f067e24723ca1a0a2"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/datetime.rs"
+line = 179
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/encodings/glyphnames.rs"
+line = 27
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/encodings/mappings.rs"
+line = 1041
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/encodings/mappings.rs"
+line = 1301
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/encodings/mappings.rs"
+line = 1562
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/toc.rs"
+line = 16
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-dead-code-untracked"
+file = "crates/third-party/lopdf/src/toc.rs"
+line = 38
+hash = "4298db5f2a238e692501abe1e8fcc17d60f22b011e8d676be1fe59618af0decd"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/agora/Cargo.toml"
+line = 12
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/agora/Cargo.toml"
+line = 13
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/aletheia-routing/Cargo.toml"
+line = 13
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/daemon/Cargo.toml"
+line = 16
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/daemon/Cargo.toml"
+line = 17
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/dianoia/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/dianoia/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/diaporeia/Cargo.toml"
+line = 16
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/diaporeia/Cargo.toml"
+line = 17
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/eidos/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/eidos/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/eval/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/eval/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/gnosis/Cargo.toml"
+line = 13
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/gnosis/Cargo.toml"
+line = 14
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/graphe/Cargo.toml"
+line = 24
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/graphe/Cargo.toml"
+line = 25
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/hermeneus/Cargo.toml"
+line = 41
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/hermeneus/Cargo.toml"
+line = 42
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/koina/Cargo.toml"
+line = 26
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/koina/Cargo.toml"
+line = 27
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/melete/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/melete/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/symbolon/Cargo.toml"
+line = 17
+hash = "1e889c1b6decf8e33631fceb37d3341b82403a3fcdec12fc4b64a062767c177a"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/symbolon/Cargo.toml"
+line = 18
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/symbolon/Cargo.toml"
+line = 19
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/taxis/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/taxis/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/theatron/koilon/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/theatron/koilon/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/theatron/skene/Cargo.toml"
+line = 11
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/theatron/skene/Cargo.toml"
+line = 12
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/thesauros/Cargo.toml"
+line = 15
+hash = "47e40561ae8718dde4b6da35fad8fe633fe0a2d5f0436893a1c10851084f27ee"
+
+[[baseline.entry]]
+rule = "WORKFLOW/unwired-feature-ungated"
+file = "crates/thesauros/Cargo.toml"
+line = 16
+hash = "ed5548d8d7dec23cfe68bf8a3f912e1bc44bcee9372ac6eeb36494439eaed556"

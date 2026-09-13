@@ -287,13 +287,16 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 
 **What it means:** More than 50% of extracted facts were rejected during refinement over a 10-minute window.
 
-**Impact:** The extractor is emitting low-value or malformed facts (empty fields, self-references, trivial content, low confidence). Memory growth stalls while token cost stays high.
+**Impact:** The extractor is emitting low-value or malformed facts (empty fields, self-references, low-information content, low confidence). Memory growth stalls while token cost stays high.
 
 **Steps:**
 1. Break down `aletheia_extraction_quality_total{status="rejected"}` by `reason`.
 2. If `empty_field` or `self_reference` dominates, improve entity normalization or prompt instructions.
 3. If `low_confidence` dominates, check whether the model is hedging on the input or the confidence threshold is miscalibrated.
-4. If `trivial` dominates, tune the prompt to skip metadata-heavy turns.
+4. If the remaining reason dominates, tune the prompt to skip metadata-heavy turns:
+   ```
+   aletheia_extraction_quality_total{status="rejected",reason="trivial"}
+   ```
 
 ### ExtractionContradictionSpike
 
@@ -330,7 +333,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 2. Cross-check against `GET /api/v1/knowledge/check` (`GraphCheckReport`) for orphaned-entity and dangling-edge counts.
 3. If staleness dominates, review whether a distillation/decay pass is running on schedule.
 4. If confidence dominates, check for a recent extraction-quality regression (see the `Extraction*` alerts above).
-5. Query `GET /api/v1/knowledge/health` directly (#6823) to confirm the API surface reports the same snapshot the gauges export; if the desktop panel shows a "computed" (fallback) score instead of "server-reported", it recomputed client-side, and persistent divergence from the gauges (beyond normal query-timing skew) suggests a visibility-scope or query bug worth filing, not just a data-quality issue.
+5. Query `GET /api/v1/knowledge/health` directly (#6823) to confirm the API surface reports the same snapshot the gauges export; if the desktop panel shows a "computed" (fallback) score instead of "server-reported", it recomputed client-side, and persistent divergence from the gauges (beyond normal query-timing skew) suggests a visibility-scope or query bug worth filing rather than a data-quality issue.
 
 ### MemoryOrphanRatioHigh
 
@@ -352,7 +355,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 
 **Steps:**
 1. Check whether a scheduled distillation/decay/review pass is configured and running.
-2. Sample stale facts (sorted oldest-`recorded_at`-first) to judge whether they are genuinely outdated or simply low-churn-but-still-valid.
+2. Sample stale facts (sorted oldest-`recorded_at`-first) to judge whether they are genuinely outdated or low-churn-but-still-valid.
 3. If staleness is expected for this deployment's usage pattern (e.g. a slow-moving knowledge domain), raise the alert threshold rather than treating every breach as an incident.
 
 ---

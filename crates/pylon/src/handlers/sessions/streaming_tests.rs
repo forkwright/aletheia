@@ -62,6 +62,10 @@ pub(super) async fn reconnect_running_test_state()
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
+        working_checkpoint_store: Arc::new(
+            nous::working_memory::FjallWorkingCheckpointStore::open_in_memory()
+                .expect("open in-memory working checkpoint store"),
+        ),
     };
 
     state

@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Request body for knowledge ingestion.
-#[derive(Debug, Deserialize, ToSchema)]
+// WHY(#5100): also `Serialize` so `pylon::client::GatewayClient` can build this
+// request body directly instead of restating its field shape in a client-side
+// literal (the request/response wire shape is defined once, here).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct IngestRequest {
     /// Raw content to ingest.
     pub content: String,
@@ -19,7 +22,10 @@ pub struct IngestRequest {
 }
 
 /// Per-fact error during ingestion.
-#[derive(Debug, Serialize, ToSchema)]
+// WHY(#5100): also `Deserialize` so `pylon::client::GatewayClient::ingest()` can
+// decode the response it receives, matching the pattern already used by
+// `HealthResponse`/`SessionResponse` for client-consumed server DTOs.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct IngestFactError {
     /// Index of the fact in the batch.
     pub index: usize,
@@ -30,7 +36,8 @@ pub struct IngestFactError {
 }
 
 /// Response for knowledge ingestion.
-#[derive(Debug, Serialize, ToSchema)]
+// WHY(#5100): also `Deserialize` — see `IngestFactError` above.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct IngestResponse {
     /// Number of facts successfully inserted.
     pub inserted: usize,

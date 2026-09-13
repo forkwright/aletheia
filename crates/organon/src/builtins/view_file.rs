@@ -1,6 +1,8 @@
 //! view_file tool: images, PDFs, and text with multimodal support.
 
+use std::fs::File;
 use std::future::Future;
+use std::io::Read;
 use std::path::Path;
 use std::pin::Pin;
 
@@ -53,6 +55,126 @@ fn detect_media_kind(path: &Path) -> Option<MediaKind> {
     }
 }
 
+/// Read through one opened handle. A metadata check followed by `fs::read`
+/// lets a concurrent replacement turn an approved small PDF into an unbounded
+/// allocation; this helper observes and caps the same handle instead.
+fn read_file_bounded(file: &mut File, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file exceeds configured byte limit",
+        ));
+    }
+    let max = usize::try_from(max_bytes).map_err(|source| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("configured byte limit is unsupported: {source}"),
+        )
+    })?;
+    let mut bytes = Vec::with_capacity(max.min(64 * 1024));
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let count = file.read(&mut chunk)?;
+        if count == 0 {
+            return Ok(bytes);
+        }
+        let next = bytes.len().checked_add(count).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "file exceeds configured byte limit",
+            )
+        })?;
+        if next > max {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "file exceeds configured byte limit",
+            ));
+        }
+        // INVARIANT: `count` is `Read::read`'s return value against `chunk`,
+        // which never exceeds the buffer it filled -- `.get` still avoids a
+        // direct-index panic if that contract is ever violated upstream.
+        let Some(filled) = chunk.get(..count) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "read reported more bytes than the buffer holds",
+            ));
+        };
+        bytes.extend_from_slice(filled);
+    }
+}
+
+/// Open the target exactly once, relative to a pinned allowed-root handle.
+///
+/// Linux first resolves the configured root into an `O_PATH` handle with
+/// `openat2(RESOLVE_NO_SYMLINKS)`, then resolves the target beneath that
+/// handle. No checked root pathname is re-opened: a concurrent root or
+/// intermediate-directory substitution cannot redirect the target lookup.
+/// Other platforms fail closed until they have an equivalent handle-relative
+/// primitive.
+#[cfg(target_os = "linux")]
+fn open_allowed_root(root: &Path) -> std::io::Result<rustix::fd::OwnedFd> {
+    use rustix::fs::{ABS, Mode, OFlags, ResolveFlags};
+
+    // Resolve and pin the configured authority in one syscall. `root` is an
+    // absolute, canonical runtime-configured path; do not canonicalize it here
+    // and then re-open the resulting name. That two-step lookup lets a root or
+    // one of its parents be replaced between authorization and acquisition.
+    Ok(rustix::fs::openat2(
+        ABS,
+        root,
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+        ResolveFlags::NO_MAGICLINKS | ResolveFlags::NO_SYMLINKS,
+    )?)
+}
+
+#[cfg(target_os = "linux")]
+fn open_validated_file(path: &Path, ctx: &ToolContext) -> std::io::Result<File> {
+    use rustix::fs::{Mode, OFlags, ResolveFlags};
+
+    let mut saw_candidate_root = false;
+    for root in &ctx.allowed_roots {
+        let Ok(relative) = path.strip_prefix(root) else {
+            continue;
+        };
+        saw_candidate_root = true;
+        let Ok(root_fd) = open_allowed_root(root) else {
+            continue;
+        };
+        let relative = if relative.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            relative
+        };
+        let fd = rustix::fs::openat2(
+            &root_fd,
+            relative,
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NONBLOCK,
+            Mode::empty(),
+            ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS | ResolveFlags::NO_SYMLINKS,
+        )?;
+        return Ok(fd.into());
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        if saw_candidate_root {
+            "allowed root could not be pinned for file access"
+        } else {
+            "opened file is outside allowed roots"
+        },
+    ))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_validated_file(_path: &Path, _ctx: &ToolContext) -> std::io::Result<File> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "view_file requires handle-native path validation on this platform",
+    ))
+}
+
 struct ViewFileExecutor;
 
 impl ToolExecutor for ViewFileExecutor {
@@ -69,48 +191,6 @@ impl ToolExecutor for ViewFileExecutor {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_prepared_path(path_str, ctx, &input.name)?;
-
-            // WHY: A symlink validated against allowed_roots could point outside
-            // the workspace. Resolve and re-validate so the actual target is
-            // checked.
-            let symlink_meta = std::fs::symlink_metadata(&path);
-            if let Ok(ref meta) = symlink_meta
-                && meta.is_symlink()
-            {
-                match std::fs::canonicalize(&path) {
-                    Ok(resolved) => {
-                        if resolved != path {
-                            return Ok(ToolResult::error(
-                                "prepared path target changed before file access",
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("cannot resolve symlink: {e}")));
-                    }
-                }
-            }
-
-            let metadata = match std::fs::metadata(&path) {
-                Ok(m) => m,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(ToolResult::error(format!(
-                        "file not found: {}",
-                        relativize_path(&path, &ctx.workspace)
-                    )));
-                }
-                Err(e) => {
-                    return Ok(ToolResult::error(format!("metadata failed: {e}")));
-                }
-            };
-
-            if !metadata.is_file() {
-                return Ok(ToolResult::error(format!(
-                    "not a file: {}",
-                    relativize_path(&path, &ctx.workspace)
-                )));
-            }
-
             let Some(kind) = detect_media_kind(&path) else {
                 let ext = path
                     .extension()
@@ -121,8 +201,33 @@ impl ToolExecutor for ViewFileExecutor {
                 )));
             };
 
+            let mut file = match open_validated_file(&path, ctx) {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(ToolResult::error(format!(
+                        "file not found: {}",
+                        relativize_path(&path, &ctx.workspace)
+                    )));
+                }
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("file access refused: {e}")));
+                }
+            };
+            let metadata = match file.metadata() {
+                Ok(metadata) => metadata,
+                Err(error) => return Ok(ToolResult::error(format!("metadata failed: {error}"))),
+            };
+
+            if !metadata.is_file() {
+                return Ok(ToolResult::error(format!(
+                    "not a file: {}",
+                    relativize_path(&path, &ctx.workspace)
+                )));
+            }
+
             Ok(execute_by_kind(
                 &kind,
+                &mut file,
                 &path,
                 &metadata,
                 max_lines,
@@ -133,12 +238,9 @@ impl ToolExecutor for ViewFileExecutor {
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "single cohesive function handling three media kinds; splitting would fragment the config plumbing"
-)]
 fn execute_by_kind(
     kind: &MediaKind,
+    file: &mut File,
     path: &std::path::Path,
     metadata: &std::fs::Metadata,
     max_lines: Option<u64>,
@@ -155,12 +257,14 @@ fn execute_by_kind(
                     max_image / (1024 * 1024)
                 ));
             }
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
-            )]
-            let bytes = match std::fs::read(path) {
+            let bytes = match read_file_bounded(file, max_image) {
                 Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                    return ToolResult::error(format!(
+                        "image too large: exceeds max {} MB",
+                        max_image / (1024 * 1024)
+                    ));
+                }
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
             };
             let encoded = base64::encode(&bytes);
@@ -183,19 +287,14 @@ fn execute_by_kind(
         }
         MediaKind::Pdf => {
             let max_pdf = tool_config.max_pdf_bytes;
-            if metadata.len() > max_pdf {
-                return ToolResult::error(format!(
-                    "PDF too large: {} bytes (max {} MB)",
-                    metadata.len(),
-                    max_pdf / (1024 * 1024)
-                ));
-            }
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
-            )]
-            let bytes = match std::fs::read(path) {
+            let bytes = match read_file_bounded(file, max_pdf) {
                 Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                    return ToolResult::error(format!(
+                        "PDF too large: exceeds max {} MB",
+                        max_pdf / (1024 * 1024)
+                    ));
+                }
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
             };
             let encoded = base64::encode(&bytes);
@@ -217,16 +316,14 @@ fn execute_by_kind(
             ])
         }
         MediaKind::Text => {
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-                    return ToolResult::error(format!(
-                        "file is not valid UTF-8 text: {}",
-                        path.display()
-                    ));
-                }
-                Err(e) => return ToolResult::error(format!("read failed: {e}")),
-            };
+            let mut content = String::new();
+            if let Err(e) = file.read_to_string(&mut content) {
+                return if e.kind() == std::io::ErrorKind::InvalidData {
+                    ToolResult::error(format!("file is not valid UTF-8 text: {}", path.display()))
+                } else {
+                    ToolResult::error(format!("read failed: {e}"))
+                };
+            }
             let output = match max_lines {
                 Some(n) => {
                     let n = usize::try_from(n).unwrap_or(usize::MAX);
@@ -457,6 +554,58 @@ mod tests {
             err.to_string().contains("outside allowed roots"),
             "expected err.to_string().contains(\"outside allowed roots\") to be true"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn allowed_root_handle_refuses_symlinked_authority() {
+        use std::os::unix::fs::symlink;
+
+        let root_parent = tempfile::tempdir().expect("root parent tmpdir");
+        let target = tempfile::tempdir().expect("symlink target tmpdir");
+        let root_link = root_parent.path().join("allowed-root");
+        symlink(target.path(), &root_link).expect("create allowed-root symlink");
+
+        assert!(
+            open_allowed_root(&root_link).is_err(),
+            "the authority acquisition must reject root symlinks rather than pinning their target"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "hermetic race regression controls temporary filesystem identities directly"
+    )]
+    fn handle_relative_open_refuses_symlink_replacement_and_retains_open_file() {
+        use std::os::unix::fs::symlink;
+
+        let allowed = tempfile::tempdir().expect("allowed tmpdir");
+        let outside = tempfile::tempdir().expect("outside tmpdir");
+        let directory = allowed.path().join("nested");
+        std::fs::create_dir(&directory).expect("create allowed directory");
+        let path = directory.join("race.pdf");
+        let outside_path = outside.path().join("race.pdf");
+        std::fs::write(&path, b"inside").expect("write allowed file");
+        std::fs::write(&outside_path, b"outside").expect("write outside file");
+        let ctx = mock_ctx(allowed.path());
+        let tool_name = ToolName::from_static("view_file");
+        let prepared =
+            validate_prepared_path("nested/race.pdf", &ctx, &tool_name).expect("prepare path");
+
+        let mut opened = open_validated_file(&prepared, &ctx).expect("open approved object");
+        std::fs::rename(&directory, allowed.path().join("nested-original"))
+            .expect("move approved directory");
+        symlink(outside.path(), &directory).expect("install outside directory replacement");
+        let bytes = read_file_bounded(&mut opened, 64).expect("read original handle");
+        assert_eq!(
+            bytes, b"inside",
+            "reads must stay bound to the approved handle"
+        );
+
+        let _error = open_validated_file(&prepared, &ctx)
+            .expect_err("an outside replacement opened during the race must be refused");
     }
 
     #[tokio::test]

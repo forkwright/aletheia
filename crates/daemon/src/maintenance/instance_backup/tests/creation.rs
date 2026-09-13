@@ -770,3 +770,61 @@ fn create_backup_excludes_dot_planning_and_records_manifest_exclusion_7246() {
         verify.first_error
     );
 }
+
+/// WHY(#7320): `copy_configured_workspace_entry` is the one call site
+/// #7246 / PR #7309 missed -- it excluded by `.planning` name alone
+/// instead of routing through [`resolve_backup_source_entry`] like the
+/// other five sites, so a configured workspace that is a *real directory*
+/// named `.planning` (not a symlink) was wrongly excluded and reported
+/// with a symlink exclusion reason. It must be copied like any other
+/// configured workspace, with zero symlink exclusions tallied.
+#[test]
+fn copy_configured_workspace_entry_copies_real_dir_named_dot_planning_7320() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance_root = tmp.path().join("instance");
+    fs::create_dir_all(&instance_root).unwrap();
+
+    let planning_dir = instance_root.join(".planning");
+    fs::create_dir_all(&planning_dir).unwrap();
+    write_text_file(
+        &planning_dir.join("agent-note.md"),
+        "agent workspace content",
+    )
+    .unwrap();
+
+    let dst = tmp
+        .path()
+        .join("backup-copy")
+        .join("workspace-dot-planning");
+    let mut build = BackupBuild::new(instance_root.clone());
+    build
+        .copy_configured_workspace_entry(
+            "workspace:agent-1",
+            planning_dir,
+            &dst,
+            PathBuf::from("workspace/configured/agent-1"),
+            String::from("agent-1"),
+            String::from("in-root"),
+        )
+        .expect("a real directory named `.planning` must be copied, not excluded");
+
+    assert_eq!(
+        build.exclusions.planning_symlinks, 0,
+        "a real .planning directory is not a symlink and must not be tallied as excluded"
+    );
+    assert!(
+        dst.join("agent-note.md").is_file(),
+        "the real .planning directory's contents must be copied into the backup set"
+    );
+
+    let entry = build
+        .optional_stores
+        .iter()
+        .find(|entry| entry.name == "workspace:agent-1")
+        .expect("configured workspace entry recorded");
+    assert_eq!(entry.status, STATUS_OK);
+    assert!(
+        entry.exclusion_reason.is_none(),
+        "a real directory must not carry a `.planning symlink` exclusion reason"
+    );
+}

@@ -4,6 +4,7 @@
 //! `pipeline/stages.rs` -> `pipeline/stages_tests.rs` already uses.
 
 #![expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 #![expect(
     clippy::disallowed_methods,
     reason = "test fixtures use std::fs to write tempdir files synchronously"
@@ -170,9 +171,93 @@ fn to_prompt_section_handles_empty_lists() {
     );
 }
 
+// WHY(#7323): a path that has never had a roles.toml loaded from it (no
+// sentinel written) must keep resolving `NotFound` to the liberal
+// defaults with no ceremony -- the "contracts required" posture below is
+// about detecting *removal* of a previously-configured contract, not
+// requiring one everywhere (#4775's original degrade-to-defaults policy
+// for the genuinely-never-configured case).
 #[test]
 fn load_from_file_returns_defaults_for_missing_file() {
     let registry = ContractRegistry::load_from_file(Path::new("/nonexistent/roles.toml")).unwrap();
+    assert_eq!(registry.len(), 5, "should fall back to defaults");
+}
+
+// WHY(#7323): #7169 refused a `roles.toml` that exists but cannot be read
+// or parsed, but left a cheaper escalation open -- deleting a restrictive
+// `roles.toml` (rather than corrupting it) still landed on `NotFound`,
+// which silently restored the liberal `ContractRegistry::defaults()`.
+// Once a path has been loaded from successfully, its later absence must
+// refuse instead, the same as a corrupt file would.
+#[test]
+fn load_from_file_fails_closed_when_previously_configured_contract_is_deleted() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("roles.toml");
+    std::fs::write(
+        &path,
+        r#"
+[coder]
+version = 2
+behaviors = ["Restrictive override"]
+constraints = ["Nothing outside read-only tools"]
+tool_groups = ["read"]
+"#,
+    )
+    .unwrap();
+
+    // First load succeeds and must record that this path was configured.
+    let registry = ContractRegistry::load_from_file(&path).unwrap();
+    assert_eq!(registry.get("coder").unwrap().version, 2);
+
+    // The operator (or an attacker) deletes the restrictive contract
+    // instead of corrupting it.
+    std::fs::remove_file(&path).unwrap();
+
+    let result = ContractRegistry::load_from_file(&path);
+    assert!(
+        result.is_err(),
+        "a roles.toml that was previously loaded from successfully must fail closed when it \
+         later goes missing, not silently resolve to liberal defaults"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("roles.toml") || err.contains(&path.display().to_string()),
+        "refusal must name the missing path so an operator can find it: {err}"
+    );
+}
+
+// WHY(#7323): the fail-closed behavior above is deliberately reversible,
+// not a one-way ratchet -- an operator who wants to legitimately return a
+// tier to hardcoded defaults deletes both the `roles.toml` and its
+// sentinel, not the `roles.toml` alone. Proves the documented escape
+// hatch (named in both refusal messages) actually restores the
+// never-configured-stays-liberal path, not only that its absence is
+// refused.
+#[test]
+fn load_from_file_sentinel_deletion_restores_defaults_path() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("roles.toml");
+    std::fs::write(&path, "[coder]\nversion = 2\ntool_groups = [\"read\"]\n").unwrap();
+
+    // First load succeeds and records the sentinel.
+    ContractRegistry::load_from_file(&path).unwrap();
+
+    // Deleting only the roles.toml must still refuse (the sentinel
+    // alone is enough to remember "this tier was configured").
+    std::fs::remove_file(&path).unwrap();
+    assert!(
+        ContractRegistry::load_from_file(&path).is_err(),
+        "sentinel alone must still refuse once the roles.toml is gone"
+    );
+
+    // Deliberately deleting the sentinel too is the documented escape
+    // hatch: the tier goes back to being "never configured" and resolves
+    // to defaults with no ceremony, same as a tier that never had a file.
+    std::fs::remove_file(sentinel_path(&path)).unwrap();
+    let registry = ContractRegistry::load_from_file(&path).expect(
+        "deleting both the roles.toml and its sentinel must deliberately restore the \
+         defaults path, documenting the operator's escape hatch",
+    );
     assert_eq!(registry.len(), 5, "should fall back to defaults");
 }
 
@@ -196,6 +281,40 @@ constraints = ["Custom constraint"]
     assert_eq!(coder.version, 3);
     assert_eq!(coder.behaviors, vec!["Custom behavior"]);
     assert_eq!(coder.tool_groups, ToolGroupPolicy::DenyAll);
+}
+
+// WHY(#7169): an unreadable `roles.toml` (permission denied, not a
+// regular file, ...) must fail closed, not silently return
+// `ContractRegistry::defaults()` -- those defaults are the liberal end
+// of the contract range, so treating a read error as "no override
+// configured" is a privilege-restoration bug. Only `NotFound` means
+// "no override configured".
+#[test]
+#[cfg(unix)]
+fn load_from_file_fails_closed_on_unreadable_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("roles.toml");
+    std::fs::write(&path, "[coder]\nversion = 2\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    // NOTE: skip if running as root: root bypasses file permission checks
+    let is_root = std::fs::read_to_string(&path).is_ok();
+    if is_root {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        return;
+    }
+
+    let result = ContractRegistry::load_from_file(&path);
+
+    // restore permissions so the tempdir cleans up regardless of assertion outcome
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    assert!(
+        result.is_err(),
+        "an unreadable roles.toml must fail closed rather than fall back to defaults"
+    );
 }
 
 #[test]

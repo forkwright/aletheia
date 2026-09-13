@@ -254,27 +254,31 @@ def main() -> int:
                 "not wildcards"
             )
 
-    # WHY(root-manifest coverage): a check that validates a file no PR-time
-    # trigger watches is a check that does not run. check-proskenion-pins.py
-    # compares proskenion's theatron pins against the ROOT Cargo.toml, but its
-    # only PR-time home was desktop.yml, which is paths-filtered to the
-    # proskenion/skene subtrees — so re-pinning theatron in the root workspace
-    # drifted the manifests with nothing watching, and the break surfaced on a
-    # later, unrelated PR. Any such cross-cutting validator must run from a
-    # workflow whose pull_request trigger is unfiltered.
-    ROOT_MANIFEST_VALIDATORS = ("scripts/check-proskenion-pins.py",)
-    unfiltered = unfiltered_pr_workflows()
-    unfiltered_text = "\n".join(
-        workflow_run_text(workflow) for workflow in unfiltered.values()
-    )
-    for validator in ROOT_MANIFEST_VALIDATORS:
-        if validator not in unfiltered_text:
-            errors.append(
-                f"{validator} reads the root Cargo.toml but runs only from "
-                "paths-filtered workflows — it must run from a workflow whose "
-                "pull_request trigger has no paths: filter (unfiltered today: "
-                f"{', '.join(sorted(unfiltered)) or 'none'})"
-            )
+    # WHY empty (aletheia#4726): this used to require a dedicated proskenion
+    # pin-alignment script to run from an unfiltered workflow, because that
+    # script compared proskenion's hand-maintained theatron pins against the
+    # root Cargo.toml and its only PR-time home (desktop.yml) was
+    # paths-filtered to the proskenion/skene subtrees. proskenion is now a
+    # real root-workspace member that inherits those pins via
+    # `{ workspace = true }` rather than duplicating them, so the drift
+    # class -- and the script that guarded it -- no longer exists.
+    # ROOT_MANIFEST_VALIDATORS stays as the named extension point: add an
+    # entry (and the loop below already re-activates) the day another
+    # validator reads the root manifest from a paths-filtered workflow only.
+    ROOT_MANIFEST_VALIDATORS: tuple[str, ...] = ()
+    if ROOT_MANIFEST_VALIDATORS:
+        unfiltered = unfiltered_pr_workflows()
+        unfiltered_text = "\n".join(
+            workflow_run_text(workflow) for workflow in unfiltered.values()
+        )
+        for validator in ROOT_MANIFEST_VALIDATORS:
+            if validator not in unfiltered_text:
+                errors.append(
+                    f"{validator} reads the root Cargo.toml but runs only from "
+                    "paths-filtered workflows — it must run from a workflow whose "
+                    "pull_request trigger has no paths: filter (unfiltered today: "
+                    f"{', '.join(sorted(unfiltered)) or 'none'})"
+                )
 
     gate = load_workflow(".github/workflows/gate-attestation.yml")
     # #6421/#6433/kanon#2522: gate-attestation delegates the check-trailer/

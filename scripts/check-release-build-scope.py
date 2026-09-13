@@ -79,6 +79,7 @@ LOCAL_PACKAGE_LINE = re.compile(
 )
 MEMBERS_SECTION = re.compile(r"(?ms)^members = \[\n.*?^\]")
 EXCLUDE_SECTION = re.compile(r"(?ms)^exclude = \[\n.*?^\]")
+DEFAULT_MEMBERS_SECTION = re.compile(r"(?ms)^default-members = \[\n.*?^\]\n?")
 
 
 class ScopeCheckError(Exception):
@@ -171,10 +172,10 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "canonical-gate": "78f789ffcde12193716211dd9fd6211be8d5a7c39351206d465a3e7bfe79ad35",
     "canonical-security": "ffd7b358618de7306658f5e7a942da8e5736a32f8c8597f4c7572111c5e21070",
     "prepare-release": "33887262e769a288c88c6dfae3b69a73c6bb0eefcc6d487281d21d56adff9fc5",
-    # WHY(#7063): regenerated -- the release `test` job gained the
-    # check-all-lockfiles-locked.py resolve steps so proskenion's standalone
-    # Cargo.lock is proven, not just the root workspace's.
-    "test": "f23256920983343d184bf5d8c90a9691bb592aaf5d8da8307952432b94ed2535",
+    # WHY(aletheia#4726): regenerated -- the release `test` job drops its
+    # "Check proskenion theatron pins" step now that proskenion is a root
+    # workspace member with no pins of its own left to mirror.
+    "test": "83c604927f6227d24995556f1788b4fbd5f5ca1601bffc4e4d8d7fa80b4c46ff",
     "feature-policy": "d4a8cff0daa2dec20e730973e287c0c64bbaed59fb2ce056a335d7ee072e6ad6",
     "feature-check": "b3ccb90378ff2091c7e49b7369b291ec47c69d1b2f90304907e5dbb4e3105383",
     "no-default-recipes": "446a7f993fe64047f37e95022e18d2185bd5f63a66614acbff45fcdd1681ea1a",
@@ -730,9 +731,33 @@ def probe_root_manifest(build: ValidatedBuild, manifest_dirs: set[Path]) -> str:
         if directory != REPO_ROOT / "crates" / build.package
     ]
     exclude = "exclude = [\n" + "".join(f'    "{path}",\n' for path in sorted(excluded)) + "]"
-    return replace_manifest_section(
-        EXCLUDE_SECTION, exclude, f"cannot isolate the workspace exclusions in {MANIFEST_NAME}", rewritten
-    )
+    if not EXCLUDE_SECTION.search(rewritten):
+        # WHY(aletheia#4726): the root manifest no longer carries an `exclude
+        # = [...]` table of its own -- proskenion (previously the only
+        # excluded member) is now a full workspace member gated by
+        # default-members instead, so there is nothing left to require an
+        # `exclude` table for. The probe workspace still needs every sibling
+        # crate excluded so the single-package `members` table above resolves
+        # in isolation; with no existing table to substitute in place,
+        # insert a fresh one directly after the members table this function
+        # just wrote instead of failing closed on an assumption that no
+        # longer holds.
+        insertion_point = rewritten.index(members) + len(members)
+        rewritten = rewritten[:insertion_point] + "\n" + exclude + rewritten[insertion_point:]
+    else:
+        rewritten = replace_manifest_section(
+            EXCLUDE_SECTION, exclude, f"cannot isolate the workspace exclusions in {MANIFEST_NAME}", rewritten
+        )
+    # WHY(aletheia#4726): the root manifest's new `default-members = [...]`
+    # table (added so a bare `cargo build` skips proskenion) names every
+    # non-probed sibling crate. Cargo rejects a workspace whose
+    # default-members lists a package absent from members ("is not a
+    # member"), and the single-package `members` table above is exactly
+    # that for every build but the probed one -- so the probe workspace
+    # must drop default-members rather than inherit a list it can no
+    # longer satisfy. A single member with no default-members table
+    # defaults to that member, which is what every probe wants anyway.
+    return DEFAULT_MEMBERS_SECTION.sub("", rewritten, count=1)
 
 
 def has_nested_manifest(entry: Path, manifest_dirs: set[Path]) -> bool:

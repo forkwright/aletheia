@@ -13,6 +13,8 @@
 
 ### Bug Fixes
 
+* **poiesis:** use one bounded PDF parser for ingest and report inspection
+
 * **agora,aletheia:** persist Matrix /sync cursors across restarts ([#7114](https://github.com/forkwright/aletheia/issues/7114)) ([cdb734e](https://github.com/forkwright/aletheia/commit/cdb734ef545a3dbaca47f53aaf17a11b2b57c4e7)), closes [#7104](https://github.com/forkwright/aletheia/issues/7104)
 * **agora:** dedupe redelivered inbound messages before dispatch ([#7112](https://github.com/forkwright/aletheia/issues/7112)) ([cc01630](https://github.com/forkwright/aletheia/commit/cc01630dbdf864518e560df1968e334475e6a536)), closes [#7102](https://github.com/forkwright/aletheia/issues/7102)
 * **agora:** filter Matrix events on msgtype before they become turns ([#7122](https://github.com/forkwright/aletheia/issues/7122)) ([3ecf236](https://github.com/forkwright/aletheia/commit/3ecf23625424f9df1e88fc9bda4a0d512ae53570)), closes [#7082](https://github.com/forkwright/aletheia/issues/7082)
@@ -59,6 +61,7 @@
 * **krites:** make recall discriminator evidence typed ([#7005](https://github.com/forkwright/aletheia/issues/7005)) ([e85c53f](https://github.com/forkwright/aletheia/commit/e85c53f4f413290bdb1f40fc0b239a79117314ce))
 * **organon:** pin SSRF-checked DNS answers to the connected address ([#7092](https://github.com/forkwright/aletheia/issues/7092)) ([687efd7](https://github.com/forkwright/aletheia/commit/687efd72e925fd51d164d98d18e456e95333ecaf))
 * **organon:** unify SKILL.md rendering through eidos::skill_md ([#7058](https://github.com/forkwright/aletheia/issues/7058)) ([69d096f](https://github.com/forkwright/aletheia/commit/69d096fea70ee7d8dde02657a4dc0ee4dfd366c1))
+* **poiesis:** consolidate small forks in ids, XML, charts, sources, and model helpers ([#7062](https://github.com/forkwright/aletheia/issues/7062)) ([5e62b60](https://github.com/forkwright/aletheia/commit/5e62b60d075f991b6990743a7d2792c61ea94c07))
 * **poiesis:** stop diff re-implementing the slide-gap bug inspect already fixed ([#7049](https://github.com/forkwright/aletheia/issues/7049)) ([518995c](https://github.com/forkwright/aletheia/commit/518995c94a4df9610e91f63e20337486e654b8c9))
 * **proskenion:** remove UI components with no consumer ([#7050](https://github.com/forkwright/aletheia/issues/7050)) ([fcec239](https://github.com/forkwright/aletheia/commit/fcec23966f49b8ab3c212027c2ca940350a5f52f))
 * **pylon:** make error and extraction paths report honestly ([#7038](https://github.com/forkwright/aletheia/issues/7038)) ([8be8858](https://github.com/forkwright/aletheia/commit/8be8858d8306f0233be339370b1475ef42a0596b))

@@ -1,6 +1,6 @@
 # L1 - Workspace Overview
 
-Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the excluded `proskenion` desktop shell. Imports flow from leaf/foundation crates upward into memory, tools, runtime, gateways, and finally the `aletheia` binary. Lower layers must not depend on higher layers; facade crates (`mneme`, `theatron`) exist to stabilize downstream imports, not to hide arbitrary logic.
+Aletheia is a single-binary Rust agent runtime with 48 workspace crates, including the `proskenion` desktop shell as a non-default member (`default-members` skips it; `-p proskenion` or `--workspace` opts in). Imports flow from leaf/foundation crates upward into memory, tools, runtime, gateways, and finally the `aletheia` binary. Lower layers must not depend on higher layers; facade crates (`mneme`, `theatron`) exist to stabilize downstream imports, not to hide arbitrary logic.
 
 ## Crate list
 
@@ -54,7 +54,7 @@ Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the
 | `poiesis-inspect` | `crates/poiesis/inspect` | Text extraction from PDF, XLSX, and PPTX documents. |
 | `poiesis-ooxml-parse` | `crates/poiesis/ooxml-parse` | Shared OOXML parsing primitives used by `poiesis-inspect` and `poiesis-diff`. |
 | `gnosis` | `crates/gnosis` | Machine-derived code-graph index for symbol-level cross-crate queries. |
-| `proskenion` | `crates/theatron/proskenion` | Dioxus desktop shell for Aletheia (excluded from the workspace build). |
+| `proskenion` | `crates/theatron/proskenion` | Dioxus desktop shell for Aletheia (non-default workspace member). |
 
 ## Layer grouping
 
@@ -72,7 +72,7 @@ Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the
 
 **Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers, reached as one feature-gated import surface through the `poiesis` facade: `poiesis-core`, `poiesis-charts`, `poiesis-theme`, `poiesis-sheet`, `poiesis-slides`, `poiesis-deck`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-text`, `poiesis-printer-chromium`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`, `poiesis-ooxml-parse`.
 
-**Presentation.** Shared UI client, TUI, facade, and excluded desktop shell: `skene`, `koilon`, `theatron`, `proskenion`.
+**Presentation.** Shared UI client, TUI, facade, and non-default-member desktop shell: `skene`, `koilon`, `theatron`, `proskenion`.
 
 ## Dependency direction
 

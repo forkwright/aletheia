@@ -119,5 +119,5 @@ to prove that a given model never hit the cloud entry.
 
 - #3424 - OpenAI-compatible provider (this feature)
 - #3414 - Air-gapped mode (this document)
-- #3410 - Prompt cache sovereignty default (already disabled)
+- #3410 - Prompt cache disabled by default (no operator content cached upstream)
 - FactSensitivity filter (consumes `deploymentTarget`)

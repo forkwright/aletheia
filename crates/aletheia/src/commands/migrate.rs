@@ -34,8 +34,7 @@ pub(crate) struct MigrateArgs {
     pub follow_symlinks: bool,
     /// Server URL to check the source instance isn't actively running
     /// before copying it.
-    #[arg(long, default_value = "http://127.0.0.1:18789")]
-    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    #[arg(long, default_value = crate::cli::DEFAULT_GATEWAY_URL)]
     pub url: String,
 }
 
@@ -762,6 +761,23 @@ fn print_manifest(manifest: &MigrateManifest, dry_run: bool) {
 )]
 mod tests {
     use super::*;
+
+    /// PROOF(review #5100): `migrate`'s lock-detection `--url` no longer
+    /// restates its own gateway-URL default — it resolves to the one
+    /// constant every HTTP-backed command shares.
+    #[test]
+    fn default_url_matches_the_shared_gateway_default() {
+        use clap::Parser as _;
+
+        #[derive(Debug, clap::Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            migrate: MigrateArgs,
+        }
+
+        let wrapper = Wrapper::try_parse_from(["migrate", "/tmp/src", "/tmp/dst"]).unwrap();
+        assert_eq!(wrapper.migrate.url, crate::cli::DEFAULT_GATEWAY_URL);
+    }
 
     fn create_minimal_instance(root: &Path) {
         std::fs::create_dir_all(root.join("config")).unwrap();

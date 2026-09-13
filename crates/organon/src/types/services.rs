@@ -576,6 +576,24 @@ pub trait WorkingCheckpointStore: Send + Sync {
         session_id: &str,
         limit: usize,
     ) -> std::result::Result<Vec<WorkingCheckpoint>, crate::error::StoreError>;
+
+    /// Permanently delete every checkpoint stored for a session.
+    ///
+    /// WHY(aletheia#7341): a session purge crosses every per-session store,
+    /// and this durable, default-on store is one of them (default-on tool:
+    /// `organon::builtins::working_checkpoint`; production writer keyed by
+    /// `ctx.session_id`) -- without this method a purge had no way to clear
+    /// it and the rows lived forever. Returns the number of rows removed
+    /// (`0` when the session had none) so callers can distinguish "nothing
+    /// to clean up" from a persistence failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` on persistence failure.
+    fn delete_session(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<usize, crate::error::StoreError>;
 }
 
 /// A single agent-curated working checkpoint.

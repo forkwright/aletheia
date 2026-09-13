@@ -67,6 +67,8 @@ mod facts;
 #[cfg(feature = "mneme-engine")]
 pub(crate) mod marshal;
 #[cfg(feature = "mneme-engine")]
+mod merge_commit;
+#[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
 mod migration_atomic;
@@ -771,6 +773,16 @@ pub struct KnowledgeStore {
 impl KnowledgeStore {
     pub(crate) const SCHEMA_VERSION: i64 = 19;
     const MIN_SCHEMA_VERSION: i64 = 1;
+    // WHY (aletheia#7161): 0b7338a3e (PR #4705) introduced per-step
+    // `migration:N` stamps -- and the fail-closed check that requires them
+    // -- at SCHEMA_VERSION 13, with no backfill for stores that had already
+    // migrated under the prior single-key scheme (which wrote only the
+    // "schema" row; see 0b7338a3e^). No stamp for any version above this
+    // bound can ever be legitimately absent: every build since 0b7338a3e
+    // writes `"schema"` and `migration:N` atomically in one
+    // `stamp_schema_version` call, so a missing stamp above 13 is always a
+    // genuine hole, never the pre-stamp-era boundary.
+    const LAST_PRE_STAMP_ERA_VERSION: i64 = 13;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 
     /// Open an in-memory knowledge store with default configuration.
@@ -1424,13 +1436,31 @@ impl KnowledgeStore {
             .build());
         }
 
+        // WHY (aletheia#7161): per-step `migration:N` stamps were introduced
+        // by 0b7338a3e (PR #4705) alongside this fail-closed check, with no
+        // backfill for stores that had already migrated under the prior
+        // single-key scheme. Such a store has a genuine, contiguous run of
+        // unstamped steps starting at the lowest migration this store ever
+        // applied -- not a hole. `pre_stamp_era_prefix` collects exactly
+        // that run (steps with no stamp seen before any stamp has been
+        // found, and only at or below `LAST_PRE_STAMP_ERA_VERSION`) so it
+        // can be backfilled once the walk below confirms every step above
+        // it is present and correct; a missing stamp *after* a present one,
+        // or *above* the pre-stamp-era boundary, is still a hole and still
+        // fails closed -- no build since 0b7338a3e can have legitimately
+        // skipped stamping a step whose target exceeds that boundary.
+        let mut pre_stamp_era_prefix: Vec<i64> = Vec::new();
+        let mut still_in_pre_stamp_era = true;
+
         for step in migration::MIGRATIONS {
             if step.target_version > current_version {
                 break;
             }
             let stamp = self.migration_stamp_version(step.target_version)?;
             match stamp {
-                Some(version) if version == step.target_version => {}
+                Some(version) if version == step.target_version => {
+                    still_in_pre_stamp_era = false;
+                }
                 Some(version) => {
                     return Err(Self::schema_integrity_error(format!(
                         "schema version integrity hole: migration stamp for version {} recorded version {version}; repair by restoring from backup or re-stamping only after verifying migration v{} to v{} was applied",
@@ -1438,6 +1468,11 @@ impl KnowledgeStore {
                         step.target_version - 1,
                         step.target_version
                     )));
+                }
+                None if still_in_pre_stamp_era
+                    && step.target_version <= Self::LAST_PRE_STAMP_ERA_VERSION =>
+                {
+                    pre_stamp_era_prefix.push(step.target_version);
                 }
                 None => {
                     return Err(Self::schema_integrity_error(format!(
@@ -1450,10 +1485,54 @@ impl KnowledgeStore {
             }
         }
 
+        if !pre_stamp_era_prefix.is_empty() {
+            self.backfill_pre_stamp_era_stamps(&pre_stamp_era_prefix)?;
+        }
+
         tracing::info!(
             current_version,
             expected_version = Self::SCHEMA_VERSION,
             "knowledge schema version integrity verified"
+        );
+        Ok(())
+    }
+
+    /// Backfill `migration:{version}` stamps for the contiguous run of
+    /// migrations this store applied before per-step stamping existed
+    /// (aletheia#7161), mirroring `session-store stamp`'s attestation that
+    /// a pre-manifest store's existing data already matches the schema it
+    /// claims. Only ever called from [`Self::verify_schema_integrity`]
+    /// after that walk has confirmed every stamp above this prefix is
+    /// present and correct, and `versions` is bounded to
+    /// `<= LAST_PRE_STAMP_ERA_VERSION`, so this never fires for a genuine
+    /// hole -- only for the boundary where stamping began. Does not touch
+    /// the `"schema"` row; that already holds the verified current
+    /// version.
+    fn backfill_pre_stamp_era_stamps(&self, versions: &[i64]) -> crate::error::Result<()> {
+        use crate::engine::ScriptMutability;
+
+        let rows = versions
+            .iter()
+            .map(|version| format!(r#"["{}", {version}]"#, Self::migration_stamp_key(*version)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let script =
+            format!("?[key, version] <- [{rows}] :put schema_version {{ key => version }}");
+        self.db
+            .run(
+                &script,
+                std::collections::BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("pre-stamp-era migration stamp backfill failed: {e}"),
+                }
+                .build()
+            })?;
+        tracing::info!(
+            backfilled_versions = ?versions,
+            "backfilled pre-stamp-era migration stamps (aletheia#7161)"
         );
         Ok(())
     }

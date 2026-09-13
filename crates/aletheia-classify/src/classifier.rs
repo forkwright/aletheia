@@ -5,13 +5,25 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::debug;
 
-use crate::error::{ArtifactMissingSnafu, InvalidMetadataSnafu, Result};
+use crate::error::{
+    ArtifactMissingSnafu, CalibrationMissingSnafu, InvalidCalibrationJsonSnafu,
+    InvalidMetadataSnafu, Result,
+};
 
 /// Maximum character length for classification input (100k chars).
 const MAX_TEXT_LENGTH: usize = 100_000;
 
 /// Expected metadata schema version for this runtime.
 const EXPECTED_SCHEMA_VERSION: &str = "1";
+
+/// Expected calibration schema version for this runtime.
+///
+/// Tracked separately from [`EXPECTED_SCHEMA_VERSION`]: the model metadata
+/// and the confidence calibration are recalibrated on independent
+/// schedules (a threshold sweep does not imply a new model artifact, and
+/// vice versa), so they get independent version lineages even though both
+/// happen to start at "1".
+const EXPECTED_CALIBRATION_SCHEMA_VERSION: &str = "1";
 
 /// Classification output categories in index order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +144,157 @@ impl ArtifactMetadata {
     }
 }
 
+/// Versioned calibration artifact meant to back the confidence thresholds
+/// the training-capture decontamination gate applies to classifier output.
+///
+/// This is a distinct artifact from [`ArtifactMetadata`]: the metadata
+/// artifact describes which model produced a probability distribution,
+/// while this one describes what a caller should do with it — the
+/// per-class confidence floor below which a verdict is not trustworthy
+/// enough to act on, so the classifier abstains rather than guessing (see
+/// [`AuthorVerdict`] and [`AuthorProbs::decide`]). Recording it as a
+/// versioned, serializable artifact makes a threshold change a reviewable,
+/// attributable diff instead of an unversioned code edit.
+///
+/// NOTE: this type and [`AuthorProbs::decide`] are consumed by
+/// [`Self::built_in`]'s golden-set tests in this crate only. The
+/// training-capture decontamination gate
+/// (`nous::training::decontamination::DecontaminationGate`) still applies
+/// `probs.argmax()`/`probs.confidence()` against
+/// `TrainingConfig.author_classifier_threshold` — a single scalar, no
+/// abstain path — and has not been switched onto this artifact. Wiring it
+/// in requires deciding what disposition `AuthorVerdict::Abstain` maps to
+/// against the gate's `Admit`/`Quarantine`/`Drop`, which is a design
+/// decision the gate's owner needs to make, not one bundled into this
+/// artifact-only change. Tracked as `forkwright/aletheia#7330`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CalibrationArtifact {
+    /// Calibration schema version (currently "1").
+    pub schema_version: String,
+    /// Calibration artifact version. Independent of the model
+    /// [`ArtifactMetadata::artifact_version`] — thresholds can be
+    /// recalibrated without retraining or reshipping the model itself.
+    pub artifact_version: String,
+    /// Identifier for whatever produced this calibration (an eval harness
+    /// run, or a human calibrator for the built-in heuristic bank).
+    pub producer: String,
+    /// Timestamp the calibration was produced/evaluated.
+    pub produced_at: String,
+    /// Minimum confidence, indexed in [`AuthorClass::index`] order, at or
+    /// above which a verdict for that class is acted on. Below its class's
+    /// floor, [`AuthorProbs::decide`] returns [`AuthorVerdict::Abstain`]
+    /// instead of a low-confidence guess.
+    pub class_thresholds: [f32; 4],
+}
+
+impl CalibrationArtifact {
+    /// The built-in calibration for the embedded heuristic rule bank.
+    ///
+    /// Thresholds are pinned to the precision/recall/confusion-matrix
+    /// evaluation in `#[cfg(test)]`
+    /// (`golden_set_confusion_matrix_per_class_including_abstain` and
+    /// friends) — changing a threshold here without re-running that
+    /// evaluation is exactly the unversioned drift this artifact exists to
+    /// prevent.
+    ///
+    /// WHY `produced_at` is a fixed literal, not `Timestamp::now()`: this is
+    /// the record of when `artifact_version` below was calibrated, not of
+    /// when this function happens to run. A "versioned, attributable,
+    /// reproducible" calibration whose production timestamp changes on
+    /// every call would carry no information and would make two loads of
+    /// the same built-in artifact compare unequal (see
+    /// `calibration_artifact_built_in_is_versioned_and_valid`, which
+    /// asserts exactly that equality). Bump this literal together with
+    /// `artifact_version` when the built-in thresholds are recalibrated.
+    #[must_use]
+    pub fn built_in() -> Self {
+        Self {
+            schema_version: EXPECTED_CALIBRATION_SCHEMA_VERSION.to_owned(),
+            artifact_version: "2026.09.13-heuristic-calibration-v1".to_owned(),
+            producer: "aletheia-heuristic-classifier-eval".to_owned(),
+            produced_at: "2026-09-13T00:00:00Z".to_owned(),
+            class_thresholds: [0.85, 0.85, 0.85, 0.85],
+        }
+    }
+
+    /// Validate this calibration against runtime constraints.
+    fn validate(&self) -> Result<()> {
+        if self.schema_version != EXPECTED_CALIBRATION_SCHEMA_VERSION {
+            return Err(crate::error::ClassifyError::CalibrationVersionMismatch {
+                artifact_schema: self.schema_version.clone(),
+                runtime_schema: EXPECTED_CALIBRATION_SCHEMA_VERSION.to_owned(),
+            });
+        }
+        for (index, &value) in self.class_thresholds.iter().enumerate() {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(crate::error::ClassifyError::InvalidCalibrationThreshold {
+                    index,
+                    value,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// The calibrated confidence floor for `class`.
+    ///
+    /// WHY a destructure-and-match rather than `class_thresholds[class.index()]`
+    /// or a `.get(..).unwrap_or(..)` fallback: both read as if a missing
+    /// threshold were possible. It is not — `class_thresholds` is a
+    /// fixed-size `[f32; 4]` and `AuthorClass` has exactly 4 variants (see
+    /// the `INVARIANT` on `AuthorClass::ALL`) — so the lookup is total by
+    /// construction and matched exhaustively per variant, with no
+    /// `clippy::indexing_slicing` suppression and no silent fallback value
+    /// standing in for a case that cannot occur.
+    #[must_use]
+    pub fn threshold_for(&self, class: AuthorClass) -> f32 {
+        let [user, subagent, system_scaffolding, template] = self.class_thresholds;
+        match class {
+            AuthorClass::User => user,
+            AuthorClass::Subagent => subagent,
+            AuthorClass::SystemScaffolding => system_scaffolding,
+            AuthorClass::Template => template,
+        }
+    }
+
+    /// Load a calibration artifact from `calibration.json` in
+    /// `artifact_dir`.
+    ///
+    /// Mirrors [`ArtifactMetadata`]'s sidecar-file loading: an operator
+    /// recalibrating thresholds ships a new `calibration.json` without
+    /// touching the model artifact or the binary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read, parsed, or fails
+    /// [`CalibrationArtifact::validate`].
+    pub fn load(artifact_dir: &Path) -> Result<Self> {
+        let calibration_path = artifact_dir.join("calibration.json");
+
+        debug!(
+            calibration_path = %calibration_path.display(),
+            "loading author classifier calibration"
+        );
+
+        let calibration_content =
+            std::fs::read_to_string(&calibration_path).context(CalibrationMissingSnafu {
+                path: &calibration_path,
+            })?;
+        let calibration: Self =
+            serde_json::from_str(&calibration_content).context(InvalidCalibrationJsonSnafu)?;
+
+        calibration.validate()?;
+
+        Ok(calibration)
+    }
+}
+
+impl Default for CalibrationArtifact {
+    fn default() -> Self {
+        Self::built_in()
+    }
+}
+
 /// Classification result with confidence and metadata.
 #[non_exhaustive]
 #[derive(Debug, Clone)]
@@ -160,6 +323,43 @@ impl AuthorProbs {
     pub fn confidence(&self) -> f32 {
         self.probabilities.iter().copied().fold(0.0_f32, f32::max)
     }
+
+    /// Apply a [`CalibrationArtifact`] to this classification.
+    ///
+    /// Returns the most likely class only when its confidence clears that
+    /// class's calibrated threshold; otherwise returns
+    /// [`AuthorVerdict::Abstain`]. A caller that always acts on
+    /// [`Self::argmax`] treats a coin-flip-confidence guess the same as a
+    /// certain one — this is the calibrated decision a training gate
+    /// should act on instead.
+    #[must_use]
+    pub fn decide(&self, calibration: &CalibrationArtifact) -> AuthorVerdict {
+        let class = self.argmax();
+        if self.confidence() >= calibration.threshold_for(class) {
+            AuthorVerdict::Class(class)
+        } else {
+            AuthorVerdict::Abstain
+        }
+    }
+}
+
+/// The calibrated decision derived from an [`AuthorProbs`] plus a
+/// [`CalibrationArtifact`]: either a class the classifier is confident
+/// enough in to act on, or an explicit abstention.
+///
+/// Kept distinct from [`AuthorClass`] rather than adding a fifth variant to
+/// it: `AuthorClass::ALL` and the `[f32; 4]` probability array are
+/// positionally coupled (see the `INVARIANT` on `AuthorClass::ALL`), and
+/// abstention is not a class the model scores a probability for — it is a
+/// property of the decision layered on top.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthorVerdict {
+    /// The winning class's confidence cleared its calibrated threshold.
+    Class(AuthorClass),
+    /// No class cleared its calibrated threshold; the decision is
+    /// withheld rather than acted on.
+    Abstain,
 }
 
 /// Author classifier: heuristic rule bank for distinguishing human-authored
@@ -742,11 +942,11 @@ mod tests {
     #[test]
     fn golden_set_human_accuracy() {
         let classifier = Classifier::new();
+        let calibration = CalibrationArtifact::built_in();
         let mut correct = 0;
         for sample in HUMAN_SAMPLES {
             let probs = classifier.classify(sample).expect("classify");
-            let class = probs.argmax();
-            if class == AuthorClass::User && probs.confidence() >= 0.85 {
+            if probs.decide(&calibration) == AuthorVerdict::Class(AuthorClass::User) {
                 correct += 1;
             }
         }
@@ -766,11 +966,11 @@ mod tests {
     #[test]
     fn golden_set_agent_accuracy() {
         let classifier = Classifier::new();
+        let calibration = CalibrationArtifact::built_in();
         let mut correct = 0;
         for sample in AGENT_SAMPLES {
             let probs = classifier.classify(sample).expect("classify");
-            let class = probs.argmax();
-            if class == AuthorClass::Subagent && probs.confidence() >= 0.85 {
+            if probs.decide(&calibration) == AuthorVerdict::Class(AuthorClass::Subagent) {
                 correct += 1;
             }
         }
@@ -784,6 +984,309 @@ mod tests {
             "agent accuracy {accuracy} below 0.85 ({} / {})",
             correct,
             AGENT_SAMPLES.len()
+        );
+    }
+
+    // ── Calibration / confusion-matrix golden set ───────────────────
+    //
+    // `SCAFFOLDING_SAMPLES` and `TEMPLATE_SAMPLES` are ground truth for the
+    // two classes the heuristic rule bank has no dedicated scoring
+    // features for (see `heuristic_probabilities`: `SystemScaffolding` and
+    // `Template` only ever receive the shared `other_exp` prior — they are
+    // structurally never the argmax winner over a nonzero human/agent
+    // score). The correct calibrated behavior for that gap is not a wrong
+    // guess, it is `AuthorVerdict::Abstain`, so these samples double as the
+    // abstain fixture the confusion-matrix test below asserts against.
+
+    const SCAFFOLDING_SAMPLES: &[&str] = &[
+        "SESSION_INIT: workspace=aletheia-classify context_window=8192 stage=bootstrap",
+        "STATE TRANSITION: idle -> active -> suspended, reason=scheduler_tick",
+        "TOOL_CALL_SCAFFOLD: awaiting executor response for step token 88f2",
+        "CONTEXT_BLOCK loaded: 4 documents, 12 chunks, checksum a91f3c",
+        "PIPELINE_STAGE: nous.pipeline.dispatch entered at turn boundary 41",
+    ];
+
+    const TEMPLATE_SAMPLES: &[&str] = &[
+        "{{customer_name}} completed {{action_type}} for {{record_id}} on {{formatted_date}}",
+        "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor",
+        "Dear {{recipient}}, your {{item_type}} order {{order_id}} has shipped",
+        "Ticket {{ticket_id}} opened by {{reporter}} assigned to {{assignee}} priority {{level}}",
+        "Report period {{start_date}} through {{end_date}} generated {{generated_at}}",
+    ];
+
+    /// Which bucket a calibrated verdict falls into, for confusion-matrix
+    /// indexing: `0..=3` are `AuthorClass` indices, `4` is abstain.
+    fn verdict_bucket(verdict: AuthorVerdict) -> usize {
+        match verdict {
+            AuthorVerdict::Class(class) => class.index(),
+            AuthorVerdict::Abstain => 4,
+        }
+    }
+
+    #[test]
+    fn golden_set_confusion_matrix_per_class_including_abstain() {
+        let classifier = Classifier::new();
+        let calibration = CalibrationArtifact::built_in();
+
+        let labeled: [(AuthorClass, &[&str]); 4] = [
+            (AuthorClass::User, HUMAN_SAMPLES),
+            (AuthorClass::Subagent, AGENT_SAMPLES),
+            (AuthorClass::SystemScaffolding, SCAFFOLDING_SAMPLES),
+            (AuthorClass::Template, TEMPLATE_SAMPLES),
+        ];
+
+        // matrix[true_class_index][bucket]; bucket 0..=3 = predicted class,
+        // 4 = abstain.
+        let mut matrix = [[0_usize; 5]; 4];
+        for (true_class, samples) in labeled {
+            for sample in samples {
+                let probs = classifier.classify(sample).expect("classify");
+                let bucket = verdict_bucket(probs.decide(&calibration));
+                matrix[true_class.index()][bucket] += 1;
+            }
+        }
+
+        let ratio = |numerator: usize, denominator: usize| -> f32 {
+            #[expect(
+                clippy::as_conversions,
+                reason = "usize→f32: matrix cell and sample counts are small and exact"
+            )]
+            {
+                (numerator as f32) / (denominator.max(1) as f32) // kanon:ignore RUST/as-cast
+            }
+        };
+
+        let predicted_as = |bucket: usize| -> usize { matrix.iter().map(|row| row[bucket]).sum() };
+
+        // Recall: of the samples truly of this class, how many the
+        // calibrated decision confidently and correctly named.
+        let user_idx = AuthorClass::User.index();
+        let subagent_idx = AuthorClass::Subagent.index();
+        let user_recall = ratio(matrix[user_idx][user_idx], HUMAN_SAMPLES.len());
+        let subagent_recall = ratio(matrix[subagent_idx][subagent_idx], AGENT_SAMPLES.len());
+        assert!(
+            user_recall >= 0.85,
+            "user recall {user_recall} below 0.85, row={:?}",
+            matrix[user_idx]
+        );
+        assert!(
+            subagent_recall >= 0.85,
+            "subagent recall {subagent_recall} below 0.85, row={:?}",
+            matrix[subagent_idx]
+        );
+
+        // Precision: of everything the calibrated decision confidently
+        // called this class, how much of it actually was.
+        let user_precision = ratio(matrix[user_idx][user_idx], predicted_as(user_idx));
+        let subagent_precision = ratio(
+            matrix[subagent_idx][subagent_idx],
+            predicted_as(subagent_idx),
+        );
+        assert!(
+            user_precision >= 0.85,
+            "user precision {user_precision} below 0.85, column total={}",
+            predicted_as(user_idx)
+        );
+        assert!(
+            subagent_precision >= 0.85,
+            "subagent precision {subagent_precision} below 0.85, column total={}",
+            predicted_as(subagent_idx)
+        );
+
+        // Abstain behavior: classes with no rule-bank signal must be
+        // withheld rather than guessed. This is the calibration artifact's
+        // reason to exist — without it, `argmax` alone would confidently
+        // assign these to whichever of user/subagent tied the coin flip.
+        let scaffolding_idx = AuthorClass::SystemScaffolding.index();
+        let template_idx = AuthorClass::Template.index();
+        let scaffolding_abstain_rate = ratio(matrix[scaffolding_idx][4], SCAFFOLDING_SAMPLES.len());
+        let template_abstain_rate = ratio(matrix[template_idx][4], TEMPLATE_SAMPLES.len());
+        assert!(
+            scaffolding_abstain_rate >= 0.8,
+            "system_scaffolding abstain rate {scaffolding_abstain_rate} below 0.8, row={:?}",
+            matrix[scaffolding_idx]
+        );
+        assert!(
+            template_abstain_rate >= 0.8,
+            "template abstain rate {template_abstain_rate} below 0.8, row={:?}",
+            matrix[template_idx]
+        );
+
+        // The failure mode calibration exists to close: a `system_scaffolding`
+        // or `template` sample confidently mislabeled as `user`/`subagent`
+        // and admitted into the training corpus under the wrong class.
+        let scaffolding_false_confident =
+            matrix[scaffolding_idx][user_idx] + matrix[scaffolding_idx][subagent_idx];
+        let template_false_confident =
+            matrix[template_idx][user_idx] + matrix[template_idx][subagent_idx];
+        assert_eq!(
+            scaffolding_false_confident, 0,
+            "system_scaffolding row confidently misfiled as user/subagent: {:?}",
+            matrix[scaffolding_idx]
+        );
+        assert_eq!(
+            template_false_confident, 0,
+            "template row confidently misfiled as user/subagent: {:?}",
+            matrix[template_idx]
+        );
+    }
+
+    #[test]
+    fn calibration_artifact_built_in_is_versioned_and_valid() {
+        let calibration = CalibrationArtifact::built_in();
+        assert_eq!(
+            calibration.schema_version,
+            EXPECTED_CALIBRATION_SCHEMA_VERSION
+        );
+        assert!(!calibration.artifact_version.is_empty());
+        assert!(calibration.validate().is_ok());
+
+        // A versioned, attributable, reproducible artifact is a record of
+        // one calibration event: two loads of the built-in artifact must
+        // be field-equal, `produced_at` included. If this fails,
+        // `built_in` regressed to a wall-clock timestamp again.
+        assert_eq!(
+            CalibrationArtifact::built_in(),
+            CalibrationArtifact::built_in()
+        );
+    }
+
+    #[test]
+    fn calibration_artifact_rejects_schema_mismatch() {
+        let mut calibration = CalibrationArtifact::built_in();
+        calibration.schema_version = "999".to_owned();
+        let Err(err) = calibration.validate() else {
+            panic!("schema mismatch must be rejected");
+        };
+        assert!(
+            matches!(
+                err,
+                crate::error::ClassifyError::CalibrationVersionMismatch { .. }
+            ),
+            "expected CalibrationVersionMismatch, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn calibration_artifact_rejects_out_of_range_threshold() {
+        let mut calibration = CalibrationArtifact::built_in();
+        calibration.class_thresholds[AuthorClass::User.index()] = 1.5;
+        let Err(err) = calibration.validate() else {
+            panic!("out-of-range threshold must be rejected");
+        };
+        assert!(
+            matches!(
+                err,
+                crate::error::ClassifyError::InvalidCalibrationThreshold { .. }
+            ),
+            "expected InvalidCalibrationThreshold, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decide_returns_class_when_confidence_clears_threshold() {
+        let probs = AuthorProbs {
+            probabilities: [0.05, 0.9, 0.03, 0.02],
+            classified_at: Timestamp::now(),
+        };
+        let calibration = CalibrationArtifact::built_in();
+        assert_eq!(
+            probs.decide(&calibration),
+            AuthorVerdict::Class(AuthorClass::Subagent)
+        );
+    }
+
+    #[test]
+    fn calibration_artifact_load_reads_and_validates_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("calibration.json"),
+            r#"{
+                "schema_version": "1",
+                "artifact_version": "2026.09.13-test-calibration",
+                "producer": "alice-eval-harness",
+                "produced_at": "2026-09-13T00:00:00Z",
+                "class_thresholds": [0.9, 0.9, 0.7, 0.7]
+            }"#,
+        )
+        .expect("write calibration");
+
+        let calibration = CalibrationArtifact::load(dir.path()).expect("load calibration artifact");
+
+        assert_eq!(calibration.artifact_version, "2026.09.13-test-calibration");
+        assert_eq!(calibration.threshold_for(AuthorClass::User), 0.9);
+        assert_eq!(
+            calibration.threshold_for(AuthorClass::SystemScaffolding),
+            0.7
+        );
+    }
+
+    #[test]
+    fn calibration_artifact_load_rejects_invalid_threshold_in_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("calibration.json"),
+            r#"{
+                "schema_version": "1",
+                "artifact_version": "2026.09.13-test-calibration",
+                "producer": "alice-eval-harness",
+                "produced_at": "2026-09-13T00:00:00Z",
+                "class_thresholds": [1.4, 0.9, 0.7, 0.7]
+            }"#,
+        )
+        .expect("write calibration");
+
+        let Err(err) = CalibrationArtifact::load(dir.path()) else {
+            panic!("out-of-range threshold in file must be rejected");
+        };
+        assert!(
+            matches!(
+                err,
+                crate::error::ClassifyError::InvalidCalibrationThreshold { .. }
+            ),
+            "expected InvalidCalibrationThreshold, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decide_abstains_when_confidence_below_threshold() {
+        let probs = AuthorProbs {
+            probabilities: [0.3, 0.3, 0.2, 0.2],
+            classified_at: Timestamp::now(),
+        };
+        let calibration = CalibrationArtifact::built_in();
+        assert_eq!(probs.decide(&calibration), AuthorVerdict::Abstain);
+    }
+
+    #[test]
+    fn calibration_artifact_load_rejects_missing_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // No calibration.json written into `dir`.
+
+        let Err(err) = CalibrationArtifact::load(dir.path()) else {
+            panic!("missing calibration.json must be rejected");
+        };
+        assert!(
+            matches!(err, crate::error::ClassifyError::CalibrationMissing { .. }),
+            "expected CalibrationMissing, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn calibration_artifact_load_rejects_invalid_json() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("calibration.json"), "{ not valid json")
+            .expect("write calibration");
+
+        let Err(err) = CalibrationArtifact::load(dir.path()) else {
+            panic!("malformed calibration.json must be rejected");
+        };
+        assert!(
+            matches!(
+                err,
+                crate::error::ClassifyError::InvalidCalibrationJson { .. }
+            ),
+            "expected InvalidCalibrationJson, got {err:?}"
         );
     }
 }

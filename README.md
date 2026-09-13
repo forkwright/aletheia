@@ -68,8 +68,8 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 ## Interfaces
 
 - **TUI** - Terminal dashboard. Rich markdown rendering, session management.
-- **Desktop app** - v1.0 target surface, currently installed separately from source.
-- **Signal** - Inbound messages are delivered as conversational turns to the configured agent. Messages prefixed with `!` are intercepted as operator commands (see below).
+- **Desktop app** - v1.0 target surface, installed separately from source.
+- **Signal** - Inbound messages are delivered as conversational turns to the configured agent. Messages prefixed with `!` are intercepted as operator commands (see "Signal `!`-commands").
 - **CLI** - `aletheia help` for the full command reference.
 - **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -117,11 +117,13 @@ AGPL-3.0-or-later for the runtime and all crates. Apache-2.0 for SDK and client 
 
 - Registry name: `aletheia`
 - Description: Kanon-managed forkwright repository `aletheia`.
-- Forge repo: `forkwright/aletheia`
+- Repository identity: `forkwright/aletheia`
+- Hosting: `forge`
+- Push authority: Forge-primary - push and PR through the kanon forge (ratified at forkwright/kanon#3844)
 - Kanon prefix: `al`
 - Config source: `workflow/kanon.toml [projects.aletheia]`
 - Planning state: `projects/aletheia/STATE.md`
-- Last state update: `not recorded`
+- Last state update: `2026-08-13`
 
 Run `kanon docs sync --check --repo aletheia` to verify this generated
 section and `kanon docs sync --apply --repo aletheia` to refresh it.
