@@ -636,6 +636,31 @@ impl_from_error!(hermeneus::error::Error, |err| {
     .build(),
 });
 
+// WHY(aletheia#7341): `organon::error::StoreError` is the shared error type
+// for organon's `*Store` service traits (working checkpoint, note,
+// blackboard); the purge handler's checkpoint-store delete is the first
+// caller to surface one directly at the HTTP boundary. Persistence failures
+// map to 503 (server-side, transient) rather than 500 -- symmetric with how
+// `map_nous_service_error` below already treats the same failure family when
+// it reaches pylon wrapped in a `nous::error::Error` instead.
+impl_from_error!(organon::error::StoreError, |err| {
+    StoreNotFound { entity, id } => NotFoundSnafu {
+        path: format!("{entity}/{id}"),
+    }
+    .build(),
+    StoreConflict { entity, id } => ConflictSnafu {
+        message: format!("{entity} conflict: {id}"),
+    }
+    .build(),
+    StoreIo { .. } | StoreSerialization { .. } | Backend { .. } => {
+        tracing::error!(error = %err, "organon store error");
+        ServiceUnavailableSnafu {
+            message: format!("store unavailable: {err}"),
+        }
+        .build()
+    }
+});
+
 impl From<nous::error::Error> for ApiError {
     fn from(err: nous::error::Error) -> Self {
         if let Some(user_error) = nous::user_error::to_user_facing(&err) {

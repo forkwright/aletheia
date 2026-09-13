@@ -117,11 +117,13 @@ AGPL-3.0-or-later for the runtime and all crates. Apache-2.0 for SDK and client 
 
 - Registry name: `aletheia`
 - Description: Kanon-managed forkwright repository `aletheia`.
-- Forge repo: `forkwright/aletheia`
+- Repository identity: `forkwright/aletheia`
+- Hosting: `forge`
+- Push authority: Forge-primary - push and PR through the kanon forge (ratified at forkwright/kanon#3844)
 - Kanon prefix: `al`
 - Config source: `workflow/kanon.toml [projects.aletheia]`
 - Planning state: `projects/aletheia/STATE.md`
-- Last state update: `not recorded`
+- Last state update: `2026-08-13`
 
 Run `kanon docs sync --check --repo aletheia` to verify this generated
 section and `kanon docs sync --apply --repo aletheia` to refresh it.

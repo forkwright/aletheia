@@ -198,6 +198,40 @@ constraints = ["Custom constraint"]
     assert_eq!(coder.tool_groups, ToolGroupPolicy::DenyAll);
 }
 
+// WHY(#7169): an unreadable `roles.toml` (permission denied, not a
+// regular file, ...) must fail closed, not silently return
+// `ContractRegistry::defaults()` -- those defaults are the liberal end
+// of the contract range, so treating a read error as "no override
+// configured" is a privilege-restoration bug. Only `NotFound` means
+// "no override configured".
+#[test]
+#[cfg(unix)]
+fn load_from_file_fails_closed_on_unreadable_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("roles.toml");
+    std::fs::write(&path, "[coder]\nversion = 2\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    // NOTE: skip if running as root: root bypasses file permission checks
+    let is_root = std::fs::read_to_string(&path).is_ok();
+    if is_root {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        return;
+    }
+
+    let result = ContractRegistry::load_from_file(&path);
+
+    // restore permissions so the tempdir cleans up regardless of assertion outcome
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    assert!(
+        result.is_err(),
+        "an unreadable roles.toml must fail closed rather than fall back to defaults"
+    );
+}
+
 #[test]
 fn contract_serde_roundtrip() {
     let contract = RoleContract {

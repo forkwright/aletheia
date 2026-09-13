@@ -17,6 +17,7 @@ use tracing::{Instrument, debug, error, info_span, warn};
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use koina::event::EventEmitter;
+use koina::id::NousId;
 use mneme::embedding::EmbeddingProvider;
 use mneme::id::FactId;
 use mneme::knowledge::{EpistemicTier, Fact};
@@ -35,7 +36,9 @@ use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
-use super::events::{ReflectionOutcome, StageCompleted, StageError, StageSkipped, StageTimeout};
+use super::events::{
+    ReflectionOutcome, StageCompleted, StageDegraded, StageError, StageSkipped, StageTimeout,
+};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, ReflectionResult,
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
@@ -78,12 +81,65 @@ fn recall_enhancement_call_budget(recall_stage_secs: u32) -> Duration {
     Duration::from_secs(per_call.max(RECALL_ENHANCEMENT_MIN_CALL_SECS))
 }
 
+/// Outcome of a failed recall-enhancement provider round trip.
+///
+/// Distinguishes "the call exceeded its own [`ProviderRecallBridge::call_budget`]"
+/// — recoverable, callers can fall back to an unenhanced path — from any
+/// other provider failure, while still rendering into the same message text
+/// either way (aletheia#7295). Kept as a typed enum rather than a bare
+/// `String` so `run_recall_stage` can act on *which* failure this was
+/// without re-parsing formatted error text.
+enum CompletionCallError {
+    /// The provider call did not return within `call_budget`.
+    TimedOut {
+        component: String,
+        model: String,
+        secs: u64,
+    },
+    /// The provider call returned, but failed, or returned no usable text.
+    Failed(String),
+}
+
+impl std::fmt::Display for CompletionCallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TimedOut {
+                component,
+                model,
+                secs,
+            } => write!(
+                f,
+                "recall {component} call to model '{model}' exceeded its {secs}s budget"
+            ),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
+/// Detail captured when the query-rewrite completion call specifically
+/// times out (aletheia#7295), so `run_recall_stage` can name which model
+/// and budget were exceeded on the typed, caller-visible degraded-stage
+/// event, rather than only recording that "some rewrite call" timed out.
+#[derive(Debug, Clone)]
+struct RewriteTimeout {
+    component: String,
+    model: String,
+    secs: u64,
+}
+
 struct ProviderRecallBridge<'a> {
     providers: &'a ProviderRegistry,
     model: &'a str,
     /// Per-call budget enforced around the provider round trip. See
     /// [`recall_enhancement_call_budget`].
     call_budget: Duration,
+    /// Set when the query-rewrite completion call specifically times out
+    /// (as opposed to any other recall-enhancement failure), so
+    /// `run_recall_stage` can fall back to an unenhanced, raw-query search
+    /// instead of failing the whole recall stage, and can report which
+    /// model/budget was exceeded on the typed degraded-stage event
+    /// (aletheia#7295).
+    rewrite_timeout: &'a std::sync::Mutex<Option<RewriteTimeout>>,
 }
 
 impl ProviderRecallBridge<'_> {
@@ -92,11 +148,10 @@ impl ProviderRecallBridge<'_> {
         component: &str,
         system: &str,
         user_message: &str,
-    ) -> Result<String, String> {
-        let provider = self
-            .providers
-            .find_provider(self.model)
-            .ok_or_else(|| format!("no provider registered for model {}", self.model))?;
+    ) -> Result<String, CompletionCallError> {
+        let provider = self.providers.find_provider(self.model).ok_or_else(|| {
+            CompletionCallError::Failed(format!("no provider registered for model {}", self.model))
+        })?;
         let request = CompletionRequest {
             model: self.model.to_owned(),
             system: Some(system.to_owned()),
@@ -130,14 +185,12 @@ impl ProviderRecallBridge<'_> {
                 self.call_budget,
                 provider.complete(&request),
             ))
-            .map_err(|_elapsed| {
-                format!(
-                    "recall {component} call to model '{}' exceeded its {}s budget",
-                    self.model,
-                    self.call_budget.as_secs()
-                )
+            .map_err(|_elapsed| CompletionCallError::TimedOut {
+                component: component.to_owned(),
+                model: self.model.to_owned(),
+                secs: self.call_budget.as_secs(),
             })?
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CompletionCallError::Failed(e.to_string()))?;
         let text = response
             .content
             .iter()
@@ -148,7 +201,9 @@ impl ProviderRecallBridge<'_> {
             .collect::<Vec<_>>()
             .join("\n");
         if text.trim().is_empty() {
-            Err("provider returned no text content".to_owned())
+            Err(CompletionCallError::Failed(
+                "provider returned no text content".to_owned(),
+            ))
         } else {
             Ok(text)
         }
@@ -162,7 +217,33 @@ impl mneme::query_rewrite::RewriteProvider for ProviderRecallBridge<'_> {
         user_message: &str,
     ) -> Result<String, mneme::query_rewrite::RewriteError> {
         self.complete_blocking("query rewrite", system, user_message)
-            .map_err(mneme::query_rewrite::RewriteError::LlmCall)
+            .map_err(|err| {
+                // WHY(aletheia#7295): a rewrite-call timeout is
+                // recoverable — capture which model/budget was exceeded so
+                // `run_recall_stage` can retry with the raw (unrewritten)
+                // query instead of failing the whole recall stage, and can
+                // surface the detail on a typed, caller-visible
+                // degraded-stage event instead of only a server-side trace.
+                // Any other rewrite failure (bad response, provider error)
+                // is not flagged and still fails the stage as before.
+                if let CompletionCallError::TimedOut {
+                    component,
+                    model,
+                    secs,
+                } = &err
+                {
+                    *self
+                        .rewrite_timeout
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        Some(RewriteTimeout {
+                            component: component.clone(),
+                            model: model.clone(),
+                            secs: *secs,
+                        });
+                }
+                mneme::query_rewrite::RewriteError::LlmCall(err.to_string())
+            })
     }
 }
 
@@ -179,7 +260,12 @@ impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
         let user = format!("Query: {query}\n\nMemory manifest:\n{manifest_text}");
         let text = self
             .complete_blocking("side-query ranking", &system, &user)
-            .map_err(|message| mneme::side_query::RankerFailedSnafu { message }.build())?;
+            .map_err(|err| {
+                mneme::side_query::RankerFailedSnafu {
+                    message: err.to_string(),
+                }
+                .build()
+            })?;
         let ids: Vec<String> = serde_json::from_str(text.trim()).map_err(|e| {
             mneme::side_query::RankerFailedSnafu {
                 message: e.to_string(),
@@ -324,6 +410,16 @@ pub(super) async fn run_recall_stage(
     providers: Arc<ProviderRegistry>,
     emitter: &EventEmitter,
     surprise_calc: Option<mneme::surprise::SurpriseCalculator>,
+    // WHY(aletheia#7295): StageDegraded.nous_id is a typed NousId, not the
+    // bare String the pipeline's other events still carry (#6755 tracks
+    // that wider conversion) -- the caller already validated one for
+    // `ToolContext` at the actor boundary (`actor/turn.rs`), so this stage
+    // takes that validated value instead of re-deriving a fallible parse
+    // of `config.id` here. Named distinctly from the `nous_id: Arc<str>`
+    // local bound below (from `config.id.clone()`, used for the recall
+    // search calls) so the two identities are never confused for one
+    // another at a glance.
+    validated_nous_id: &NousId,
 ) -> error::Result<()> {
     // WHY(#3404, #3413): resolve deployment target so the sovereignty filter drops facts the provider
     // cannot receive; unregistered models default to Cloud (Public-only) rather than leaking Internal data.
@@ -399,6 +495,14 @@ pub(super) async fn run_recall_stage(
         let surprise_calc = surprise_calc.clone();
         let providers = Arc::clone(&providers);
         let call_budget = recall_enhancement_call_budget(pipeline_config.stage_budget.recall_secs);
+        // WHY(aletheia#7295): shared with the blocking task below so the
+        // rewrite-timeout detail (which model, which budget) survives the
+        // `spawn_blocking` boundary and can drive a typed, caller-visible
+        // event once we are back on the async side, rather than only a
+        // fallback log line inside the blocking closure.
+        let rewrite_timeout: Arc<std::sync::Mutex<Option<RewriteTimeout>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let rewrite_timeout_task = Arc::clone(&rewrite_timeout);
         let result = task::spawn_blocking(move || {
             let recall_stage = crate::recall::RecallStage::new(recall_config)
                 .with_deployment_target(deployment_target)
@@ -408,8 +512,9 @@ pub(super) async fn run_recall_stage(
                 providers: &providers,
                 model: model.as_str(),
                 call_budget,
+                rewrite_timeout: &rewrite_timeout_task,
             };
-            recall_stage.run_with_recall_enhancements(
+            let enhanced = recall_stage.run_with_recall_enhancements(
                 &content,
                 &nous_id,
                 ep.as_ref(),
@@ -417,7 +522,21 @@ pub(super) async fn run_recall_stage(
                 budget,
                 Some(&recall_bridge),
                 Some(&recall_bridge),
-            )
+            );
+            let timed_out = rewrite_timeout_task
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_some();
+            match enhanced {
+                // WHY(aletheia#7295): a query-rewrite timeout used to
+                // fail the whole recall stage even though a plain, unrewritten
+                // search was still possible. Fall back to the raw query
+                // instead of returning nothing for the turn.
+                Err(_) if timed_out => {
+                    recall_stage.run(&content, &nous_id, ep.as_ref(), vs.as_ref(), budget)
+                }
+                other => other,
+            }
         })
         .await
         .map_err(|e| {
@@ -427,6 +546,23 @@ pub(super) async fn run_recall_stage(
             }
             .build()
         })?;
+        // WHY(aletheia#7295): a rewrite-timeout fallback used to be visible
+        // only as a server-side `warn!`; #7218 established the precedent
+        // (see `DegradedMode::RecallTimedOut`) that recall degradation must
+        // be surfaced on the response the caller actually sees. Emit a
+        // typed event and mark the stage span "degraded" — distinct from
+        // both "ok" (unrewritten recall was never needed) and "error"
+        // (recall produced nothing) — whenever the fallback fired and
+        // still produced a usable result.
+        let rewrite_fallback = rewrite_timeout
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        let recall_succeeded = result.is_ok();
+        // NOTE: `apply_recall_result` records "ok"/"error" on the span itself,
+        // so the "degraded" override (when the fallback both fired and
+        // still produced a usable result) must happen *after* that call, not
+        // before, or it would be immediately stomped back to "ok".
         apply_recall_result(
             result,
             ctx,
@@ -435,6 +571,21 @@ pub(super) async fn run_recall_stage(
             emitter,
             config.id.as_ref(),
         );
+        if let Some(detail) = rewrite_fallback {
+            emitter.emit(&StageDegraded {
+                nous_id: validated_nous_id.clone(),
+                stage: "recall",
+                reason: "rewrite_timeout",
+                detail: format!(
+                    "{} call to model '{}' exceeded its {}s budget; recall fell back to an \
+                     unrewritten (raw) query",
+                    detail.component, detail.model, detail.secs
+                ),
+            });
+            if recall_succeeded {
+                span.record("status", "degraded");
+            }
+        }
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {

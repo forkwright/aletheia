@@ -36,11 +36,12 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::subprocess::{SubprocessError, SubprocessRequest, SubprocessRunner};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
-    ToolCategory, ToolContext, ToolDef, ToolDiagnostics, ToolGroupId, ToolInput, ToolResult,
-    ToolStability, ToolTag,
+    ApprovalRequirement, InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport,
+    ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolDiagnostics, ToolGroupId,
+    ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
+use super::git_ops_policy::DESTRUCTIVE_GIT_OPERATION_POLICY;
 use super::workspace::{extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str};
 
 /// Git subprocess wall-clock timeout.
@@ -321,6 +322,21 @@ impl ToolExecutor for GitCheckoutExecutor {
             let branch = extract_str(&input.arguments, "branch", &input.name)?;
             let create = extract_opt_bool(&input.arguments, "create").unwrap_or(false);
 
+            // WHY(#7174): named check against the policy's own denied-flags
+            // list, ahead of validate_ref's broader dashed-ref rejection, so
+            // the two flags the policy specifically names get a message
+            // that says so rather than a generic "starts with '-'" one.
+            if DESTRUCTIVE_GIT_OPERATION_POLICY
+                .checkout_denied_flags
+                .contains(&branch)
+            {
+                return Ok(ToolResult::error(format!(
+                    "git_checkout refuses '{branch}': policy '{}' never passes --force/-f, so a \
+                     dirty working tree must be resolved explicitly rather than discarded",
+                    DESTRUCTIVE_GIT_OPERATION_POLICY.name
+                )));
+            }
+
             let validated = match validate_ref(branch) {
                 Ok(v) => v,
                 Err(e) => return Ok(ToolResult::error(e)),
@@ -407,6 +423,49 @@ pub(crate) fn register_with_sandbox(
             ..ToolCapabilityMetadata::default()
         },
     )?;
+
+    // INVARIANT(#7174): DESTRUCTIVE_GIT_OPERATION_POLICY declares that this
+    // module never registers a tool for any of its refused_git_subcommands.
+    // Checked here against the registry this function just populated, not
+    // only asserted in the policy's doc comment, so a future change that
+    // adds e.g. a `git_commit` tool to this module without updating the
+    // policy fails registration immediately instead of silently
+    // invalidating the declared policy.
+    let policy = &DESTRUCTIVE_GIT_OPERATION_POLICY;
+    for subcommand in policy.refused_git_subcommands {
+        let candidate = format!("git_{subcommand}");
+        // WHY(#7174): fail loud, not silently skip. A malformed candidate
+        // name must not let a refused_git_subcommands entry escape this
+        // drift check unchecked -- that would silently invalidate the very
+        // invariant this registration exists to enforce.
+        #[expect(
+            clippy::expect_used,
+            reason = "registration-time invariant: a refused_git_subcommands entry that fails \
+                      ToolName::new is a programming error in the policy declaration, not a \
+                      runtime condition to recover from"
+        )]
+        let name = ToolName::new(&candidate).expect("policy entry must be a valid ToolName"); // INVARIANT: fix the policy (#7174), not this check
+        assert!(
+            registry.get_def(&name).is_none(),
+            "policy '{}' declares '{subcommand}' refused, but a tool named '{candidate}' is \
+             registered -- update the policy in git_ops.rs alongside this registration",
+            policy.name
+        );
+    }
+    // INVARIANT(#7174): the policy's fallback path (`exec`) must compose to
+    // Mandatory approval the same way the dispatch boundary derives it, or
+    // the policy's central claim -- that git_ops's refusals plus exec's
+    // Irreversible mapping together cover every destructive git operation
+    // -- no longer holds.
+    assert_eq!(
+        policy.fallback_approval(),
+        ApprovalRequirement::Mandatory,
+        "policy '{}' fallback tool '{}' no longer maps to Mandatory approval; the \
+         destructive-git-operation policy is no longer enforced end-to-end",
+        policy.name,
+        policy.fallback_tool
+    );
+
     Ok(())
 }
 
@@ -908,6 +967,44 @@ mod tests {
         ] {
             let tn = ToolName::new(name).expect("valid");
             assert!(reg.get_def(&tn).is_some(), "{name} should be registered");
+        }
+    }
+
+    // NOTE(#7174): `destructive_git_policy_composes_registered_refusals_with_exec_approval`
+    // lives in `git_ops_policy.rs` alongside the policy declaration it
+    // checks -- it needs only `register`/`workspace::register` and the
+    // registry, none of this module's private test scaffolding.
+
+    /// WHY: ties `checkout_denied_flags` to the executor's actual behavior
+    /// instead of leaving it as a field nothing exercises. Asserts the
+    /// error text names the policy and the specific flags, so the test
+    /// fails if the named check ahead of `validate_ref` (which would also
+    /// reject a dashed ref, but with a generic message) is ever removed.
+    #[tokio::test]
+    async fn destructive_git_policy_checkout_denied_flags_are_rejected() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        init_repo(dir.path());
+        let ctx = test_ctx(dir.path());
+        for flag in DESTRUCTIVE_GIT_OPERATION_POLICY.checkout_denied_flags {
+            let input = ToolInput {
+                name: ToolName::new("git_checkout").expect("valid"),
+                tool_use_id: "toolu_test".to_owned(),
+                arguments: serde_json::json!({ "branch": flag }),
+            };
+            let result = git_checkout_executor()
+                .execute(&input, &ctx)
+                .await
+                .expect("exec");
+            assert!(result.is_error, "checkout must reject denied flag {flag}");
+            let text = result.content.text_summary();
+            assert!(
+                text.contains(DESTRUCTIVE_GIT_OPERATION_POLICY.name),
+                "error for denied flag {flag} must name the policy, got: {text}"
+            );
+            assert!(
+                text.contains("never passes --force/-f"),
+                "error for denied flag {flag} must state the policy's guarantee, got: {text}"
+            );
         }
     }
 }

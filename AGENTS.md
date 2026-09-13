@@ -119,3 +119,70 @@ line, not a runtime or CI requirement.
 ## Optional: LSP-powered navigation
 
 External MCP servers can give an agent IDE-level navigation across the workspace. See [docs/MCP-SERVERS.md](docs/MCP-SERVERS.md) - `scripts/serena-mcp.sh register` wires up Serena (rust-analyzer via MCP) for `find_symbol`, `find_referencing_symbols`, and `rename_symbol` across crate boundaries.
+
+<!-- kanon:auto-start -->
+<!--
+scope: aletheia repo cross-tool agent guide (Claude Code, Kimi, Codex, Cursor, Windsurf, Copilot)
+generated_by: kanon docs sync
+defers_to: CLAUDE.md for Claude Code-specific behavior; ~/menos-ops/CLAUDE.md for machine + service topology
+tightens: repo-local MCP routing conventions; repo-local authoring conventions
+-->
+
+# aletheia
+
+Kanon-managed forkwright repository `aletheia`.
+
+## Commands
+
+Run `kanon --help` for all kanon-managed workflow commands. Run project-local
+build, test, and lint commands from this repository root.
+
+- `kanon gate` - full local gate for kanon-managed PRs
+- `kanon lint --fix` - deterministic standards fixes
+- `kanon lint --explain <RULE>` - rule rationale and fix guidance
+- `kanon pr open <head_ref> --title "..."` - open a forge PR
+- `kanon pr merge <N> [--strategy squash|ff|rebase]` - merge after CI and gate checks
+- `kanon docs sync --check --repo aletheia` - verify derived bootstrap docs
+- `kanon docs sync --apply --repo aletheia` - regenerate derived bootstrap docs
+
+For agent-native operations, prefer the `mcp__kanon__*` tool family. The canonical MCP routing catalog is not vendored in this repo; consult the kanon toolkit's `workflow/AGENTS-mcp-tools.md` for routing and fallback rules.
+
+## Standards
+
+Read `crates/basanos/standards/STANDARDS.md` § Philosophy before writing code. Key principles:
+no workarounds, define once, reference everywhere, no shortcuts, no compromise on quality.
+Rust work also reads `crates/basanos/standards/RUST.md` before editing Rust code.
+
+## Rules
+
+- Structured comment tags only: WHY, NOTE, WARNING, PERF, SAFETY, INVARIANT, TODO(#NNN), FIXME(#NNN)
+- Conventional commits: `type(scope): description`
+- Add `Gate-Passed: kanon 0.1.0` to validated commit bodies
+- Never add `#[allow]` suppressions; use `#[expect(lint, reason = "...")]` only when justified
+- Prefer MCP tools first; CLI commands are resilience fallbacks
+
+## Architecture
+
+- Registry name: `aletheia`
+- Repository identity: `forkwright/aletheia`
+- Hosting: `forge`
+- Push authority: Forge-primary - push and PR through the kanon forge (ratified at forkwright/kanon#3844)
+- Kanon prefix: `al`
+- Config source: `workflow/kanon.toml [projects.aletheia]`
+
+## Boundaries
+
+Always: run the applicable gate before pushing, stay inside the declared blast radius.
+Ask first: workflow, service, credential, schema, or deployment changes.
+Never: bypass CI, push to protected upstream refs, commit secrets, or suppress warnings.
+
+## Blast zone
+
+- Paths explicitly named by the rendered prompt, role, or template input.
+
+## Acceptance verifier
+
+```bash
+kanon gate
+```
+<!-- kanon:auto-end -->

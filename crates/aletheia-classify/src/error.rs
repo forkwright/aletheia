@@ -44,6 +44,33 @@ pub enum ClassifyError {
         "classifier artifact class order mismatch: expected [{expected}], artifact declares [{actual}]"
     ))]
     ClassOrderMismatch { expected: String, actual: String },
+
+    /// Calibration artifact schema version is incompatible with this runtime.
+    #[snafu(display(
+        "calibration artifact version incompatible: artifact schema {artifact_schema}, runtime expects {runtime_schema}"
+    ))]
+    CalibrationVersionMismatch {
+        artifact_schema: String,
+        runtime_schema: String,
+    },
+
+    /// Calibration artifact declares a per-class confidence threshold
+    /// outside the valid `[0.0, 1.0]` range.
+    #[snafu(display(
+        "calibration threshold out of range for class index {index}: {value} (expected 0.0..=1.0)"
+    ))]
+    InvalidCalibrationThreshold { index: usize, value: f32 },
+
+    /// Failed to load calibration artifact from the filesystem.
+    #[snafu(display("failed to load classifier calibration from {}: {source}", path.display()))]
+    CalibrationMissing {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    /// Failed to parse calibration JSON.
+    #[snafu(display("failed to parse classifier calibration: {source}"))]
+    InvalidCalibrationJson { source: serde_json::Error },
 }
 
 /// Result type alias for author-classifier operations.
