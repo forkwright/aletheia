@@ -80,7 +80,7 @@ place to register it.
 
 ## Known gaps
 
-This matrix currently covers workspace crates only. Per aletheia#4537's full
+This matrix covers workspace crates only. Per aletheia#4537's full
 scope, not yet covered here:
 
 - **HTTP routes** — `crates/pylon/src/openapi.rs` is the generated route

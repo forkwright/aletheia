@@ -122,7 +122,7 @@ An earlier draft of the integrating issue (#3355) proposed wiring Serena into th
 - **Lower blast radius.** Zero aletheia crate changes, zero new dependencies in `Cargo.toml`. The server lives outside the Rust workspace.
 - **Upstream stays upstream.** Serena releases often; vendoring would mean tracking their schema and prompts in-tree. Operators get upstream changes via `uv tool upgrade serena-agent` with no aletheia release required.
 - **Agents already have an MCP client.** Claude Code, Cursor, and Windsurf all speak MCP natively. Aletheia's internal tool loop uses `organon::registry::ToolRegistry` for tools the `nous` pipeline calls, not for operator-side coding helpers.
-- **Sovereignty path preserved.** If the upstream trajectory diverges from our needs, a Rust-native MCP server wrapping `rust-analyzer` directly can be added under `crates/` later. This is tracked as a follow-up (see PR body for #3355).
+- **In-tree fallback preserved.** If the upstream trajectory diverges from our needs, a Rust-native MCP server wrapping `rust-analyzer` directly can be added under `crates/` later. This is tracked as a follow-up (see PR body for #3355).
 
 ## See also
 

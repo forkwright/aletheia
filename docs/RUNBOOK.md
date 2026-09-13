@@ -778,7 +778,7 @@ Background distillation, knowledge extraction, and auto-dream consolidation each
 | Extraction | `extraction_model` | the agent's `model` |
 | Dream (auto-dream consolidation) | `distillation_model` (no dedicated key) | the agent's `model` |
 
-There is no `distillation_model` / `extraction_model` field under `[agents.defaults]` — these are per-agent `[[agents.list]]` generation settings (`NousGenerationConfig`, `crates/nous/src/config.rs`), not the `AgentBehaviorDefaults` documented under `docs/CONFIGURATION.md#agents`. When neither override is set, all three roles use the agent's own `model` (`model.primary` in the typed config, `docs/CONFIGURATION.md#agents`) — never a hardcoded cloud model — so a local-only agent's background work stays on the same local provider its turns use.
+`[agents.defaults]` has no `distillation_model` / `extraction_model` field — these are per-agent `[[agents.list]]` generation settings (`NousGenerationConfig`, `crates/nous/src/config.rs`), not the `AgentBehaviorDefaults` documented under `docs/CONFIGURATION.md#agents`. When neither override is set, all three roles use the agent's own `model` (`model.primary` in the typed config, `docs/CONFIGURATION.md#agents`) — never a hardcoded cloud model — so a local-only agent's background work stays on the same local provider its turns use.
 
 ---
 

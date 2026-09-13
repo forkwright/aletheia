@@ -1,6 +1,6 @@
 # shared/hooks
 
-> **Status: unsupported before v1.0.**  
+> **Status: unsupported before v1.0.**\
 > The YAML and shell files in this directory are **examples and templates only**. They are **not loaded, registered, or executed** by the current Aletheia runtime.
 
 ## What runs today
