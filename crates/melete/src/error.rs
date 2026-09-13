@@ -106,5 +106,66 @@ pub enum Error {
     },
 }
 
+impl Error {
+    /// Whether this is a typed front-door "provider not ready" refusal
+    /// (`hermeneus::error::Error::ProviderNotReady`, surfaced through
+    /// [`Error::LlmCall`]).
+    ///
+    /// WHY(#7261): the auto-dream loop (`crate::dream`) uses this to tell a
+    /// Sleeping/Loading/Failed refusal — deployment lifecycle state that
+    /// clears on its own — apart FROM a genuine, non-retryable distillation
+    /// failure, so the consolidation lock can be left un-advanced and the
+    /// affected sessions stay eligible for the next dream cycle instead of
+    /// being skipped forever.
+    #[must_use]
+    pub fn is_provider_not_ready(&self) -> bool {
+        matches!(
+            self,
+            Error::LlmCall {
+                source: hermeneus::error::Error::ProviderNotReady { .. },
+                ..
+            }
+        )
+    }
+}
+
 /// Convenience alias for `Result` with melete's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use snafu::ResultExt as _;
+
+    use super::*;
+
+    /// Regression test for #7261: the classification must key off the
+    /// specific `ProviderNotReady` variant, not merely "some `LlmCall` error".
+    #[test]
+    fn is_provider_not_ready_true_for_front_door_refusal() {
+        let front_door_err: hermeneus::error::Error = hermeneus::error::ProviderNotReadySnafu {
+            provider: "mock".to_owned(),
+            state: hermeneus::front_door::FrontDoorState::Loading,
+            retry_after_ms: 500_u64,
+        }
+        .build();
+        let err: Result<()> = Err(front_door_err).context(LlmCallSnafu);
+        assert!(err.unwrap_err().is_provider_not_ready());
+    }
+
+    #[test]
+    fn is_provider_not_ready_false_for_other_llm_call_errors() {
+        let other_err: hermeneus::error::Error = hermeneus::error::ApiRequestSnafu {
+            message: "boom".to_owned(),
+        }
+        .build();
+        let err: Result<()> = Err(other_err).context(LlmCallSnafu);
+        assert!(!err.unwrap_err().is_provider_not_ready());
+    }
+
+    #[test]
+    fn is_provider_not_ready_false_for_non_llm_call_errors() {
+        let err: Result<()> = EmptySummarySnafu.fail();
+        assert!(!err.unwrap_err().is_provider_not_ready());
+    }
+}

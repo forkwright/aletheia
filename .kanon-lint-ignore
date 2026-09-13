@@ -39,20 +39,8 @@ WRITING/paragraph-length:_llm/L3-api-index/*.md
 WRITING/temporal-staleness:_llm/L3-api-index/*.md
 WRITING/weasel-word:_llm/L3-api-index/*.md
 
-# WHY(#3987): legacy one-shot SQLite migrator tests use crate-level allows to keep historical fixture code stable
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/common/mod.rs
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/idempotency.rs
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/legacy_extras.rs
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/orphan_recovery.rs
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/round_trip_integrity.rs
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/schema_mismatch.rs
-RUST/crate-level-denied-allow:crates/aletheia-sessions-migrate/tests/tiny_synthetic.rs
-
 # WHY(#3987): benchmark integration fixture keeps crate-level lint relaxations around generated scenario code
 RUST/crate-level-denied-allow:crates/eval/tests/benchmark_runner.rs
-
-# WHY(#3987): legacy migrator main carries historical clippy suppression syntax until the migrator is retired
-RUST/no-tautological-clippy-suppress:crates/aletheia-sessions-migrate/src/main.rs
 
 # WHY(#3987): test-support helpers intentionally panic/expect on poisoned test harness state
 RUST/lock-expect-panics:crates/organon/src/testing.rs

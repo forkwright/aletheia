@@ -2,18 +2,35 @@
 //!
 //! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
+//!
+//! ## Atomicity and idempotency (#5311)
+//!
+//! A consolidation's full write set — consolidated facts, their multiplicity
+//! and provenance side-index rows, the supersession updates on the original
+//! facts, and the audit row — commits as one transaction via
+//! [`KnowledgeStore::commit_consolidation`](crate::knowledge_store::KnowledgeStore).
+//! The minted IDs are deterministic: the run key is a SHA-256 over the nous,
+//! trigger, consolidation config, and the sorted source fact IDs, the audit
+//! row's ID is `cons-audit-{run key}`, and each consolidated fact's ID
+//! (`cons-…`) derives from the run key, its batch's sorted source IDs, and
+//! its ordinal within the batch. A retry after a failure therefore converges
+//! on the same rows instead of minting fresh ULIDs, and a retry that finds
+//! the audit row already committed short-circuits before re-running the LLM.
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+use sha2::{Digest, Sha256};
 use tracing::instrument;
 
 use super::{
     CLUSTER_FACTS_FOR_CONSOLIDATION, COMMUNITY_OVERFLOW_CANDIDATES, CONSOLIDATION_AUDIT_DDL,
     CONSOLIDATION_AUDIT_OWNER_BACKFILL_DDL, ConsolidatedFact, ConsolidationAuditRecord,
-    ConsolidationCandidate, ConsolidationConfig, ConsolidationError, ConsolidationProvider,
-    ConsolidationResult, ConsolidationTrigger, ENTITY_FACTS_FOR_CONSOLIDATION,
-    ENTITY_OVERFLOW_CANDIDATES, FACT_MULTIPLICITY_DDL, FactMultiplicity, IncompatibleSourcesSnafu,
-    RateLimitedSnafu, SourceFact, StoreSnafu, age_cutoff, batch_facts, consolidation_system_prompt,
-    consolidation_user_message, parse_consolidation_response,
+    ConsolidationCandidate, ConsolidationConfig, ConsolidationError, ConsolidationProvenanceRow,
+    ConsolidationProvider, ConsolidationResult, ConsolidationTrigger, ConsolidationWritePlan,
+    ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, FACT_MULTIPLICITY_DDL,
+    FactMultiplicity, IncompatibleSourcesSnafu, RateLimitedSnafu, SourceFact, StoreSnafu,
+    age_cutoff, batch_facts, consolidation_system_prompt, consolidation_user_message,
+    parse_consolidation_response,
 };
 use crate::engine::DataValue;
 use crate::id::{EntityId, FactId};
@@ -229,6 +246,11 @@ impl KnowledgeStore {
 
     /// Execute a consolidation: insert new facts, supersede originals, record audit.
     ///
+    /// The write set commits atomically and the minted IDs are deterministic
+    /// (#5311): before calling the LLM, the derived run key is checked
+    /// against `consolidation_audit`, so a retry of an already-committed run
+    /// short-circuits with the recorded counts instead of re-consolidating.
+    ///
     /// If `dry_run` is true, returns the proposed result without mutations.
     #[instrument(skip(self, provider, candidate))]
     pub(crate) fn execute_consolidation(
@@ -268,6 +290,23 @@ impl KnowledgeStore {
             });
         }
 
+        let source_ids: Vec<FactId> = facts.iter().map(|s| s.id.clone()).collect();
+        let run_key = consolidation_run_key(candidate, &source_ids, nous_id, config);
+        if !dry_run && let Some(recorded) = self.completed_consolidation(&run_key)? {
+            // WHY(#5311): the audit row commits in the same transaction as the
+            // facts and supersessions, so its presence under the run's
+            // idempotency key proves the whole write set already landed. A
+            // retry — after a post-commit failure, or a caller that never
+            // learned the outcome — must not run the LLM again and mint a
+            // second set of outputs.
+            tracing::info!(
+                run_key,
+                nous_id,
+                "consolidation run already committed; returning the recorded result"
+            );
+            return Ok(recorded);
+        }
+
         let LlmConsolidationResult {
             result,
             supersession_batches,
@@ -277,101 +316,79 @@ impl KnowledgeStore {
             return Ok(result);
         }
 
-        let new_fact_ids = self.persist_consolidated_facts(&result, nous_id)?;
-        self.supersede_originals(&supersession_batches, &new_fact_ids)?;
-        self.write_audit_record(candidate, &result, &new_fact_ids, nous_id)?;
+        let plan = build_consolidation_write_plan(
+            candidate,
+            &result,
+            &supersession_batches,
+            nous_id,
+            &run_key,
+        )?;
+        self.commit_consolidation(&plan)?;
 
         Ok(result)
     }
 
-    /// Insert consolidated facts into the store.
-    fn persist_consolidated_facts(
+    /// Look up the idempotency record for a consolidation run (#5311).
+    ///
+    /// Returns the recorded outcome when `consolidation_audit` already holds
+    /// this run's `cons-audit-{run key}` row. The returned result carries the
+    /// recorded counts and superseded IDs but no `ConsolidatedFact` payloads
+    /// — callers only consume counts and IDs.
+    fn completed_consolidation(
         &self,
-        result: &ConsolidationResult,
-        nous_id: &str,
-    ) -> Result<Vec<FactId>, ConsolidationError> {
-        let now = jiff::Timestamp::now();
-        let far_future = crate::knowledge::far_future();
-        let now_str = crate::knowledge::format_timestamp(&now);
-        let mut new_fact_ids = Vec::new();
+        run_key: &str,
+    ) -> Result<Option<ConsolidationResult>, ConsolidationError> {
+        let script = r"
+?[original_count, consolidated_count, original_fact_ids] :=
+    *consolidation_audit{id: $id, original_count, consolidated_count, original_fact_ids}
+";
+        let mut params = BTreeMap::new();
+        params.insert(
+            "id".to_owned(),
+            DataValue::Str(audit_id_for_run_key(run_key).into()),
+        );
+        let result = self.run_query(script, params).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
 
-        for consolidated in &result.consolidated_facts {
-            // WHY(#4660): conservative merge of source policy metadata keeps
-            // a confidential or project-scoped input from silently becoming
-            // public/global.
-            let merged = merge_consolidated_metadata(consolidated)?;
-            let new_id = FactId::new(koina::ulid::Ulid::new().to_string()).map_err(|e| {
-                StoreSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-            let project_id = match merged.project_id {
-                Some(ref raw) => Some(ProjectId::from_sha256_hex(raw).map_err(|e| {
-                    StoreSnafu {
-                        message: format!("consolidated source has invalid project_id: {e}"),
-                    }
-                    .build()
-                })?),
-                None => None,
-            };
-            let fact = crate::knowledge::Fact {
-                id: new_id.clone(),
-                nous_id: nous_id.to_owned(),
-                content: consolidated.content.clone(),
-                fact_type: "observation".to_owned(),
-                scope: merged.scope,
-                project_id,
-                temporal: FactTemporal {
-                    valid_from: now,
-                    valid_to: far_future,
-                    recorded_at: now,
-                },
-                provenance: FactProvenance {
-                    confidence: consolidated.confidence,
-                    tier: EpistemicTier::Inferred,
-                    // Source session IDs are preserved in the side-index below;
-                    // the single-valued field intentionally stays None because
-                    // a consolidated fact has multiple sources.
-                    source_session_id: None,
-                    stability_hours: crate::knowledge::FactType::Observation.base_stability_hours(),
-                },
-                lifecycle: FactLifecycle {
-                    superseded_by: None,
-                    is_forgotten: false,
-                    forgotten_at: None,
-                    forget_reason: None,
-                },
-                access: FactAccess {
-                    access_count: 0,
-                    last_accessed_at: None,
-                },
-                sensitivity: merged.sensitivity,
-                visibility: merged.visibility,
-            };
-            self.insert_fact(&fact).map_err(|e| {
-                StoreSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-
-            // WHY(#3634): record multiplicity metadata in the side-index so
-            // downstream recall and conflict resolution can weight a
-            // consolidated fact by how many independent observations
-            // converged on it. Failing to record multiplicity must not
-            // prevent the fact from being persisted, but the error should
-            // surface to the caller.
-            let multiplicity = compute_multiplicity(&new_id, consolidated, &now_str);
-            self.record_fact_multiplicity(&multiplicity)?;
-
-            // WHY(#4660): keep source fact IDs and source session IDs
-            // inspectable from the consolidated fact's provenance side-index.
-            self.record_consolidation_provenance(&new_id, consolidated)?;
-
-            new_fact_ids.push(new_id);
+        if result.is_empty() {
+            return Ok(None);
         }
-        Ok(new_fact_ids)
+
+        let original_count = i64_as_usize(result.get_i64(0, "original_count").unwrap_or(0));
+        let consolidated_count = i64_as_usize(result.get_i64(0, "consolidated_count").unwrap_or(0));
+        // kanon:ignore RUST/no-result-unwrap-or-default — audit read: empty JSON decodes to an empty list below
+        let original_fact_ids_json = result
+            .get_string(0, "original_fact_ids")
+            .unwrap_or_default();
+        let id_strings: Vec<String> =
+            serde_json::from_str(&original_fact_ids_json).map_err(|e| {
+                StoreSnafu {
+                    message: format!(
+                        "failed to decode recorded consolidation source fact IDs: {e}"
+                    ),
+                }
+                .build()
+            })?;
+        let mut superseded_fact_ids = Vec::with_capacity(id_strings.len());
+        for id_string in id_strings {
+            superseded_fact_ids.push(FactId::new(id_string).map_err(|e| {
+                StoreSnafu {
+                    message: format!("invalid recorded consolidation source fact ID: {e}"),
+                }
+                .build()
+            })?);
+        }
+
+        Ok(Some(ConsolidationResult {
+            consolidated_facts: Vec::new(),
+            superseded_fact_ids,
+            original_count,
+            consolidated_count,
+        }))
     }
 
     /// Read the source provenance recorded for a consolidated fact.
@@ -441,101 +458,6 @@ impl KnowledgeStore {
             })?;
 
         Ok(Some((source_fact_ids, source_session_ids)))
-    }
-
-    /// Record the source fact/session provenance for a consolidated fact.
-    fn record_consolidation_provenance(
-        &self,
-        fact_id: &FactId,
-        consolidated: &ConsolidatedFact,
-    ) -> Result<(), ConsolidationError> {
-        let source_fact_ids_json = serde_json::to_string(
-            &consolidated
-                .source_fact_ids
-                .iter()
-                .map(FactId::as_str)
-                .collect::<Vec<_>>(),
-        )
-        .map_err(|e| {
-            StoreSnafu {
-                message: format!("failed to serialize source fact IDs: {e}"),
-            }
-            .build()
-        })?;
-        let source_session_ids: Vec<&str> = consolidated
-            .source_session_ids
-            .iter()
-            .filter_map(|s| s.as_deref())
-            .collect();
-        let source_session_ids_json = serde_json::to_string(&source_session_ids).map_err(|e| {
-            StoreSnafu {
-                message: format!("failed to serialize source session IDs: {e}"),
-            }
-            .build()
-        })?;
-
-        let script = r"
-?[consolidated_fact_id, source_fact_ids, source_session_ids] <-
-    [[$fact_id, $source_fact_ids, $source_session_ids]]
-
-:put consolidation_provenance {
-    consolidated_fact_id => source_fact_ids, source_session_ids
-}
-";
-        let mut params = BTreeMap::new();
-        params.insert(
-            "fact_id".to_owned(),
-            DataValue::Str(fact_id.as_str().into()),
-        );
-        params.insert(
-            "source_fact_ids".to_owned(),
-            DataValue::Str(source_fact_ids_json.into()),
-        );
-        params.insert(
-            "source_session_ids".to_owned(),
-            DataValue::Str(source_session_ids_json.into()),
-        );
-        self.run_mut_query(script, params).map(|_| ()).map_err(|e| {
-            StoreSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })
-    }
-
-    /// Persist a `FactMultiplicity` record for a consolidated fact (#3634).
-    fn record_fact_multiplicity(
-        &self,
-        record: &FactMultiplicity,
-    ) -> Result<(), ConsolidationError> {
-        let script = r"
-?[fact_id, source_count, first_observed, last_observed, time_spread_seconds, recorded_at] <-
-    [[$fact_id, $source_count, $first_observed, $last_observed, $time_spread_seconds, $recorded_at]]
-
-:put fact_multiplicity {fact_id => source_count, first_observed, last_observed,
-                        time_spread_seconds, recorded_at}
-";
-        let mut params = BTreeMap::new();
-        let str_val = |s: &str| DataValue::Str(s.into());
-        params.insert("fact_id".to_owned(), str_val(record.fact_id.as_str()));
-        params.insert(
-            "source_count".to_owned(),
-            DataValue::from(i64::from(record.source_count)),
-        );
-        params.insert("first_observed".to_owned(), str_val(&record.first_observed));
-        params.insert("last_observed".to_owned(), str_val(&record.last_observed));
-        params.insert(
-            "time_spread_seconds".to_owned(),
-            DataValue::from(record.time_spread_seconds),
-        );
-        params.insert("recorded_at".to_owned(), str_val(&record.recorded_at));
-        self.run_mut_query(script, params).map_err(|e| {
-            StoreSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-        Ok(())
     }
 
     /// Look up multiplicity metadata for a consolidated fact (#3634).
@@ -636,172 +558,13 @@ requested[fact_id] <- $fact_ids
         Ok(found)
     }
 
-    /// Mark each batch's original facts as superseded by its canonical output.
-    fn supersede_originals(
-        &self,
-        supersession_batches: &[BatchSupersession],
-        new_fact_ids: &[FactId],
-    ) -> Result<(), ConsolidationError> {
-        let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
-
-        for batch in supersession_batches {
-            let superseding_id = new_fact_ids
-                .get(batch.consolidated_fact_index)
-                .ok_or_else(|| {
-                    StoreSnafu {
-                        message: format!(
-                            "missing persisted consolidated fact at batch output index {} ({} IDs persisted)",
-                            batch.consolidated_fact_index,
-                            new_fact_ids.len()
-                        ),
-                    }
-                    .build()
-                })?;
-
-            for original_id in batch.source_fact_ids.iter() {
-                self.supersede_fact_by_id(original_id, superseding_id.as_str(), &now_str)
-                    .map_err(|e| {
-                        StoreSnafu {
-                            message: e.to_string(),
-                        }
-                        .build()
-                    })?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Write an audit trail record for a consolidation.
-    fn write_audit_record(
-        &self,
-        candidate: &ConsolidationCandidate,
-        result: &ConsolidationResult,
-        new_fact_ids: &[FactId],
-        nous_id: &str,
-    ) -> Result<(), ConsolidationError> {
-        let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
-        let audit_id = koina::ulid::Ulid::new().to_string();
-        let original_ids_json = serde_json::to_string(
-            &result
-                .superseded_fact_ids
-                .iter()
-                .map(FactId::as_str)
-                .collect::<Vec<_>>(),
-        )
-        .unwrap_or_else(|_| "[]".to_owned());
-        let consolidated_ids_json =
-            serde_json::to_string(&new_fact_ids.iter().map(FactId::as_str).collect::<Vec<_>>())
-                .unwrap_or_else(|_| "[]".to_owned());
-
-        self.record_consolidation_audit(&ConsolidationAuditRecord {
-            id: audit_id,
-            nous_id: nous_id.to_owned(),
-            trigger_type: candidate.trigger.trigger_type().to_owned(),
-            trigger_id: candidate.trigger.trigger_id(),
-            original_count: result.original_count,
-            consolidated_count: result.consolidated_count,
-            original_fact_ids: original_ids_json,
-            consolidated_fact_ids: consolidated_ids_json,
-            consolidated_at: now_str,
-        })
-    }
-
-    /// Mark a fact as superseded by ID, setting `valid_to` and `superseded_by`.
-    fn supersede_fact_by_id(
-        &self,
-        fact_id: &FactId,
-        superseding_id: &str,
-        now: &str,
-    ) -> crate::error::Result<()> {
-        let script = r"
-?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by,
-   source_session_id, recorded_at, access_count, last_accessed_at,
-   stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason,
-   scope, project_id, visibility, sensitivity] :=
-    *facts{id, valid_from, content, nous_id, confidence, tier,
-           source_session_id, recorded_at, access_count, last_accessed_at,
-           stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason,
-           scope, project_id, visibility, sensitivity},
-    id = $id,
-    valid_to = $now,
-    superseded_by = $superseding_id
-
-:put facts {id, valid_from => content, nous_id, confidence, tier, valid_to,
-            superseded_by, source_session_id, recorded_at, access_count,
-            last_accessed_at, stability_hours, fact_type, is_forgotten,
-            forgotten_at, forget_reason, scope, project_id, visibility, sensitivity}
-";
-        let mut params = BTreeMap::new();
-        params.insert("id".to_owned(), DataValue::Str(fact_id.as_str().into()));
-        params.insert("now".to_owned(), DataValue::Str(now.into()));
-        params.insert(
-            "superseding_id".to_owned(),
-            DataValue::Str(superseding_id.into()),
-        );
-        self.run_mut_query(script, params)?;
-        Ok(())
-    }
-
-    /// Record a consolidation audit entry.
-    fn record_consolidation_audit(
-        &self,
-        record: &ConsolidationAuditRecord,
-    ) -> Result<(), ConsolidationError> {
-        self.ensure_consolidation_audit_owner_scope()?;
-        let script = r"
-?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
-   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
-    [[$id, $nous_id, $trigger_type, $trigger_id, $original_count, $consolidated_count,
-      $original_fact_ids, $consolidated_fact_ids, $consolidated_at]]
-
-:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
-                          consolidated_count, original_fact_ids,
-                          consolidated_fact_ids, consolidated_at}
-";
-        let mut params = BTreeMap::new();
-        params.insert("id".to_owned(), DataValue::Str(record.id.clone().into()));
-        params.insert(
-            "nous_id".to_owned(),
-            DataValue::Str(record.nous_id.clone().into()),
-        );
-        params.insert(
-            "trigger_type".to_owned(),
-            DataValue::Str(record.trigger_type.clone().into()),
-        );
-        params.insert(
-            "trigger_id".to_owned(),
-            DataValue::Str(record.trigger_id.clone().into()),
-        );
-        params.insert(
-            "original_count".to_owned(),
-            DataValue::from(i64::try_from(record.original_count).unwrap_or(i64::MAX)),
-        );
-        params.insert(
-            "consolidated_count".to_owned(),
-            DataValue::from(i64::try_from(record.consolidated_count).unwrap_or(i64::MAX)),
-        );
-        params.insert(
-            "original_fact_ids".to_owned(),
-            DataValue::Str(record.original_fact_ids.clone().into()),
-        );
-        params.insert(
-            "consolidated_fact_ids".to_owned(),
-            DataValue::Str(record.consolidated_fact_ids.clone().into()),
-        );
-        params.insert(
-            "consolidated_at".to_owned(),
-            DataValue::Str(record.consolidated_at.clone().into()),
-        );
-        self.run_mut_query(script, params).map_err(|e| {
-            StoreSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-        Ok(())
-    }
-
-    fn ensure_consolidation_audit_owner_scope(&self) -> Result<(), ConsolidationError> {
+    /// Ensure the `consolidation_audit` relation carries the owner (`nous_id`)
+    /// column, backfilling legacy rows when it does not (#6380).
+    ///
+    /// Runs `::columns` (a sys-op), so it can never live inside the
+    /// consolidation commit's `MultiTransaction` — callers must run it before
+    /// the transaction opens. Idempotent.
+    pub(crate) fn ensure_consolidation_audit_owner_scope(&self) -> Result<(), ConsolidationError> {
         if self.consolidation_audit_has_nous_id()? {
             return Ok(());
         }
@@ -1131,6 +894,320 @@ fn run_llm_consolidation(
             superseded_fact_ids: all_superseded,
         },
         supersession_batches,
+    })
+}
+
+// ---------------------------------------------------------------------
+// Idempotency keys and the atomic write plan (#5311)
+// ---------------------------------------------------------------------
+
+/// Length-prefixed SHA-256 field update, matching the deterministic-ID idiom
+/// in `extract::engine` — length prefixes keep field concatenation
+/// unambiguous.
+fn hash_field(hasher: &mut Sha256, field: &str) {
+    hasher.update(u64::try_from(field.len()).unwrap_or(u64::MAX).to_le_bytes());
+    hasher.update(field.as_bytes());
+}
+
+/// Lowercase-hex encode a SHA-256 digest.
+fn hex_digest(digest: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        // WHY discard the Result: writing hex digits into a String never
+        // fails, and `expect_used` is denied crate-wide.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// Fingerprint of the consolidation knobs that shape a run's output, folded
+/// into the run's idempotency key (#5311). `rate_limit_hours` participates
+/// via its bit pattern so the fingerprint is stable across platforms.
+fn consolidation_config_fingerprint(config: &ConsolidationConfig) -> String {
+    format!(
+        "v1:{}:{}:{}:{}:{:x}",
+        config.entity_fact_threshold,
+        config.community_fact_threshold,
+        config.min_age_days,
+        config.batch_limit,
+        config.rate_limit_hours.to_bits()
+    )
+}
+
+/// Derive the idempotency key for one consolidation run: a SHA-256 over the
+/// nous, the trigger, the consolidation config fingerprint, and the sorted
+/// source fact IDs (#5311). The same inputs always yield the same key, so a
+/// retry after a failure identifies the run it resumes.
+fn consolidation_run_key(
+    candidate: &ConsolidationCandidate,
+    source_fact_ids: &[FactId],
+    nous_id: &str,
+    config: &ConsolidationConfig,
+) -> String {
+    let mut sorted: Vec<&str> = source_fact_ids.iter().map(FactId::as_str).collect();
+    sorted.sort_unstable();
+
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, nous_id);
+    hash_field(&mut hasher, candidate.trigger.trigger_type());
+    hash_field(&mut hasher, &candidate.trigger.trigger_id());
+    hash_field(&mut hasher, &consolidation_config_fingerprint(config));
+    for id in sorted {
+        hash_field(&mut hasher, id);
+    }
+    hex_digest(&hasher.finalize())
+}
+
+/// The audit row ID recording one consolidation run. The row commits in the
+/// same transaction as the facts and supersessions, so its presence proves
+/// the whole run landed — this is the idempotency record a retry checks.
+fn audit_id_for_run_key(run_key: &str) -> String {
+    format!("cons-audit-{run_key}")
+}
+
+/// Derive the deterministic ID of one consolidated output (#5311): the run
+/// key, the output batch's sorted source fact IDs (outputs from different
+/// batches of one run must not collide), and the output's ordinal within its
+/// batch (multiple outputs from one batch must not collide either).
+fn consolidated_fact_id(
+    run_key: &str,
+    consolidated: &ConsolidatedFact,
+    ordinal: usize,
+) -> Result<FactId, ConsolidationError> {
+    let mut sorted: Vec<&str> = consolidated
+        .source_fact_ids
+        .iter()
+        .map(FactId::as_str)
+        .collect();
+    sorted.sort_unstable();
+
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, run_key);
+    for id in sorted {
+        hash_field(&mut hasher, id);
+    }
+    hash_field(&mut hasher, &ordinal.to_string());
+    FactId::new(format!("cons-{}", hex_digest(&hasher.finalize()))).map_err(|e| {
+        StoreSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })
+}
+
+/// The staged rows for one consolidated output: the fact itself plus its
+/// multiplicity and provenance side-index rows.
+struct PlannedConsolidatedFact {
+    fact: crate::knowledge::Fact,
+    multiplicity: FactMultiplicity,
+    provenance: ConsolidationProvenanceRow,
+}
+
+/// Build one consolidated output's fact row and side-index rows (#5311).
+///
+/// `ordinal` is the output's position among the outputs sharing its batch's
+/// source set — the component of the derived ID that keeps multiple outputs
+/// from one batch distinct.
+fn plan_consolidated_fact(
+    consolidated: &ConsolidatedFact,
+    ordinal: usize,
+    nous_id: &str,
+    run_key: &str,
+    now: jiff::Timestamp,
+    now_str: &str,
+) -> Result<PlannedConsolidatedFact, ConsolidationError> {
+    // WHY(#4660): conservative merge of source policy metadata keeps
+    // a confidential or project-scoped input from silently becoming
+    // public/global.
+    let merged = merge_consolidated_metadata(consolidated)?;
+    let new_id = consolidated_fact_id(run_key, consolidated, ordinal)?;
+    let project_id = match merged.project_id {
+        Some(ref raw) => Some(ProjectId::from_sha256_hex(raw).map_err(|e| {
+            StoreSnafu {
+                message: format!("consolidated source has invalid project_id: {e}"),
+            }
+            .build()
+        })?),
+        None => None,
+    };
+    let fact = crate::knowledge::Fact {
+        id: new_id.clone(),
+        nous_id: nous_id.to_owned(),
+        content: consolidated.content.clone(),
+        fact_type: "observation".to_owned(),
+        scope: merged.scope,
+        project_id,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: consolidated.confidence,
+            tier: EpistemicTier::Inferred,
+            // Source session IDs are preserved in the side-index below;
+            // the single-valued field intentionally stays None because
+            // a consolidated fact has multiple sources.
+            source_session_id: None,
+            stability_hours: crate::knowledge::FactType::Observation.base_stability_hours(),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: merged.sensitivity,
+        visibility: merged.visibility,
+    };
+
+    // WHY(#3634): record multiplicity metadata in the side-index so
+    // downstream recall and conflict resolution can weight a
+    // consolidated fact by how many independent observations
+    // converged on it.
+    let multiplicity = compute_multiplicity(&new_id, consolidated, now_str);
+
+    // WHY(#4660): keep source fact IDs and source session IDs
+    // inspectable from the consolidated fact's provenance side-index.
+    let source_fact_ids_json = serde_json::to_string(
+        &consolidated
+            .source_fact_ids
+            .iter()
+            .map(FactId::as_str)
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|e| {
+        StoreSnafu {
+            message: format!("failed to serialize source fact IDs: {e}"),
+        }
+        .build()
+    })?;
+    let source_session_ids: Vec<&str> = consolidated
+        .source_session_ids
+        .iter()
+        .filter_map(|s| s.as_deref())
+        .collect();
+    let source_session_ids_json = serde_json::to_string(&source_session_ids).map_err(|e| {
+        StoreSnafu {
+            message: format!("failed to serialize source session IDs: {e}"),
+        }
+        .build()
+    })?;
+
+    Ok(PlannedConsolidatedFact {
+        fact,
+        multiplicity,
+        provenance: ConsolidationProvenanceRow {
+            fact_id: new_id,
+            source_fact_ids_json,
+            source_session_ids_json,
+        },
+    })
+}
+
+/// Build the fully validated write plan for one consolidation (#5311).
+///
+/// Every fallible step that does not need the store — the policy-metadata
+/// merge, deterministic ID derivation, provenance/audit JSON serialization,
+/// and the batch-output index validation — runs here, before the commit's
+/// transaction opens, so a planning failure leaves the store untouched by
+/// construction.
+fn build_consolidation_write_plan(
+    candidate: &ConsolidationCandidate,
+    result: &ConsolidationResult,
+    supersession_batches: &[BatchSupersession],
+    nous_id: &str,
+    run_key: &str,
+) -> Result<ConsolidationWritePlan, ConsolidationError> {
+    let now = jiff::Timestamp::now();
+    let now_str = crate::knowledge::format_timestamp(&now);
+
+    let mut facts = Vec::with_capacity(result.consolidated_facts.len());
+    let mut multiplicities = Vec::with_capacity(result.consolidated_facts.len());
+    let mut provenance = Vec::with_capacity(result.consolidated_facts.len());
+    // WHY(#5694): outputs from one batch share their source set, so the
+    // ordinal among same-source-set outputs is what distinguishes them in the
+    // derived ID. Ordinal assignment is stable within one run; across runs it
+    // only matters after an abort, which left nothing behind.
+    let mut seen_source_sets: Vec<&[FactId]> = Vec::with_capacity(result.consolidated_facts.len());
+    for consolidated in &result.consolidated_facts {
+        let this_set: &[FactId] = &consolidated.source_fact_ids;
+        let ordinal = seen_source_sets
+            .iter()
+            .filter(|prior| ***prior == *this_set)
+            .count();
+        let planned =
+            plan_consolidated_fact(consolidated, ordinal, nous_id, run_key, now, &now_str)?;
+        seen_source_sets.push(&consolidated.source_fact_ids);
+        facts.push(planned.fact);
+        multiplicities.push(planned.multiplicity);
+        provenance.push(planned.provenance);
+    }
+
+    let new_fact_ids: Vec<FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
+    let mut supersessions = Vec::new();
+    for batch in supersession_batches {
+        let superseding_id = new_fact_ids
+            .get(batch.consolidated_fact_index)
+            .ok_or_else(|| {
+                StoreSnafu {
+                    message: format!(
+                        "missing planned consolidated fact at batch output index {} ({} IDs planned)",
+                        batch.consolidated_fact_index,
+                        new_fact_ids.len()
+                    ),
+                }
+                .build()
+            })?;
+        for original_id in batch.source_fact_ids.iter() {
+            supersessions.push((original_id.clone(), superseding_id.clone()));
+        }
+    }
+
+    let original_ids_json = serde_json::to_string(
+        &result
+            .superseded_fact_ids
+            .iter()
+            .map(FactId::as_str)
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|e| {
+        StoreSnafu {
+            message: format!("failed to serialize original fact IDs for audit: {e}"),
+        }
+        .build()
+    })?;
+    let consolidated_ids_json =
+        serde_json::to_string(&new_fact_ids.iter().map(FactId::as_str).collect::<Vec<_>>())
+            .map_err(|e| {
+                StoreSnafu {
+                    message: format!("failed to serialize consolidated fact IDs for audit: {e}"),
+                }
+                .build()
+            })?;
+
+    Ok(ConsolidationWritePlan {
+        facts,
+        multiplicities,
+        provenance,
+        supersessions,
+        audit: ConsolidationAuditRecord {
+            id: audit_id_for_run_key(run_key),
+            nous_id: nous_id.to_owned(),
+            trigger_type: candidate.trigger.trigger_type().to_owned(),
+            trigger_id: candidate.trigger.trigger_id(),
+            original_count: result.original_count,
+            consolidated_count: result.consolidated_count,
+            original_fact_ids: original_ids_json,
+            consolidated_fact_ids: consolidated_ids_json,
+            consolidated_at: now_str.clone(),
+        },
+        now: now_str,
     })
 }
 

@@ -171,7 +171,10 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "canonical-gate": "78f789ffcde12193716211dd9fd6211be8d5a7c39351206d465a3e7bfe79ad35",
     "canonical-security": "ffd7b358618de7306658f5e7a942da8e5736a32f8c8597f4c7572111c5e21070",
     "prepare-release": "33887262e769a288c88c6dfae3b69a73c6bb0eefcc6d487281d21d56adff9fc5",
-    "test": "3d547d36bf722ba4de47f0239e1d3289c5bb02baf4f86067afad535118131c2a",
+    # WHY(#7063): regenerated -- the release `test` job gained the
+    # check-all-lockfiles-locked.py resolve steps so proskenion's standalone
+    # Cargo.lock is proven, not just the root workspace's.
+    "test": "f23256920983343d184bf5d8c90a9691bb592aaf5d8da8307952432b94ed2535",
     "feature-policy": "d4a8cff0daa2dec20e730973e287c0c64bbaed59fb2ce056a335d7ee072e6ad6",
     "feature-check": "b3ccb90378ff2091c7e49b7369b291ec47c69d1b2f90304907e5dbb4e3105383",
     "no-default-recipes": "446a7f993fe64047f37e95022e18d2185bd5f63a66614acbff45fcdd1681ea1a",
@@ -199,7 +202,9 @@ TRUSTED_CROSS_INPUTS = {
 # directory together. None marks the only two permitted artifact builds.
 SAFE_STEP_DIGESTS = (
     "31288298e225f078066ea178c65a3bc79d7bf0435bbeae39dc59e1ec6469dfa6",
-    "f15858d5aa5e3a0cdf7386474998073069eb5afb72d67368aa728ab1eafc37cf",
+    # WHY(aletheia#5328): regenerated for a trailing `pii-allow` marker added
+    # to the credential-helper printf line (scan-pii.sh now scans dotfiles).
+    "e269ab9194331bf6ea8cf607cb746f97e5c57a20af21c07f0fee0f32d7d8e9ca",
     "522453cb2d8914f58a3e2731c036e5964b973afe8663297937af774428158912",
     "6309c59e9b567f338b863c299ea22ae49a9c7675350701f2bf792ffaab6b8f33",
     "f927992240c2340ccbfd18b4e2dcd33769d33866b741eb278e8066ee03b0222d",

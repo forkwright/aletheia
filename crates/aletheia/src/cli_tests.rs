@@ -845,6 +845,12 @@ fn add_nous_defaults_parses() {
     }
 }
 
+// WHY(#7172): `poiesis` verb-parsing tests live in their own module
+// (`cli_tests_poiesis.rs`), not inlined here -- this file already sits at
+// the RUST/file-too-long threshold on `main` and the poiesis verb canon
+// (create/list/get/preview/qa/lint/verify/run) is sizeable enough to
+// justify its own file rather than growing this one further.
+
 #[test]
 fn add_nous_with_custom_model_parses() {
     let cli = Cli::parse_from([

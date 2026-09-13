@@ -57,6 +57,8 @@ pub mod self_prompt;
 pub mod state;
 /// Watchdog process monitor with heartbeat tracking and auto-recovery.
 pub mod watchdog;
+/// Workspace file materialization for daemon-required files (e.g. PROSOCHE.md).
+pub mod workspace;
 
 #[cfg(test)]
 mod assertions {

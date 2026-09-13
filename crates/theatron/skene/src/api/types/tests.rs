@@ -8,6 +8,8 @@ fn agent_display_name_uses_name_if_present() {
         model: None,
         emoji: None,
         status: None,
+        tools: Vec::new(),
+        enabled: None,
     };
     assert_eq!(agent.display_name(), "Syn");
 }
@@ -20,6 +22,8 @@ fn agent_display_name_falls_back_to_id() {
         model: None,
         emoji: None,
         status: None,
+        tools: Vec::new(),
+        enabled: None,
     };
     assert_eq!(agent.display_name(), "syn");
 }
@@ -32,6 +36,8 @@ fn agent_display_name_empty_string_uses_empty() {
         model: None,
         emoji: None,
         status: None,
+        tools: Vec::new(),
+        enabled: None,
     };
     // Empty string is still Some, so display_name returns it
     assert_eq!(agent.display_name(), "");
@@ -234,6 +240,7 @@ fn make_session(key: &str) -> Session {
         session_type: None,
         updated_at: None,
         display_name: None,
+        active_turn_id: None,
     }
 }
 

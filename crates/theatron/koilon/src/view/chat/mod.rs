@@ -130,8 +130,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         ]));
     }
 
-    render_decision_fact_cards(app, &mut lines, inner_width, theme);
-
     if !app.connection.streaming_text.is_empty()
         || !app.connection.streaming_thinking.is_empty()
         || app.connection.active_turn_id.is_some()
@@ -709,50 +707,5 @@ fn highlight_span(
         out.push(Span::styled(remaining, span.style));
     } else if last_char_idx == 0 {
         out.push(span.clone());
-    }
-}
-
-fn render_decision_fact_cards(
-    app: &App,
-    lines: &mut Vec<Line<'static>>,
-    inner_width: usize,
-    theme: &Theme,
-) {
-    if app.dashboard.submitted_decisions.is_empty() {
-        return;
-    }
-    for decision in &app.dashboard.submitted_decisions {
-        let border_len = inner_width.saturating_sub(14).min(30);
-        let border_line = "─".repeat(border_len);
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(
-                format!("─── decision {border_line}"),
-                Style::default().fg(theme.colors.accent),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled("Q: ", theme.style_dim()),
-            Span::styled(decision.question.clone(), theme.style_fg()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled("A: ", theme.style_dim()),
-            Span::styled(decision.chosen_label.clone(), theme.style_accent_bold()),
-        ]));
-        if !decision.notes.is_empty() {
-            lines.push(Line::from(vec![
-                Span::raw(" "),
-                Span::styled("  note: ", theme.style_dim()),
-                Span::styled(decision.notes.clone(), theme.style_muted()),
-            ]));
-        }
-        let bottom_border = "─".repeat(inner_width.saturating_sub(2).min(38));
-        lines.push(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(bottom_border, Style::default().fg(theme.colors.accent)),
-        ]));
-        lines.push(Line::raw(""));
     }
 }

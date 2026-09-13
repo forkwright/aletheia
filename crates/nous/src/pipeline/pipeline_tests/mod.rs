@@ -198,6 +198,53 @@ async fn stage_with_time_budget_records_timeout_status() {
     assert_eq!(summary[0].status, StageTimingStatus::TimedOut);
 }
 
+// --- recall-stage-timeout degrade categorization (aletheia#7218) ---
+
+#[test]
+fn recall_timeout_or_propagate_downgrades_only_a_recall_timeout() {
+    assert_eq!(
+        recall_timeout_or_propagate(Ok(())).expect("Ok should stay Ok"),
+        None,
+        "a completed recall stage carries no timeout marker"
+    );
+
+    let recall_timeout = error::PipelineTimeoutSnafu {
+        stage: "recall",
+        timeout_secs: 15u32,
+    }
+    .build();
+    assert_eq!(
+        recall_timeout_or_propagate(Err(recall_timeout)).expect("recall timeout must degrade"),
+        Some(15),
+        "a recall-stage timeout must downgrade to a degrade marker, not an error"
+    );
+}
+
+#[test]
+fn recall_timeout_or_propagate_still_fails_other_stage_timeouts() {
+    let history_timeout = error::PipelineTimeoutSnafu {
+        stage: "history",
+        timeout_secs: 5u32,
+    }
+    .build();
+    assert!(
+        recall_timeout_or_propagate(Err(history_timeout)).is_err(),
+        "a timeout on a different stage must still propagate and fail the turn"
+    );
+}
+
+#[test]
+fn recall_timeout_or_propagate_still_fails_non_timeout_errors() {
+    let guard_rejected = error::GuardRejectedSnafu {
+        reason: "denied".to_owned(),
+    }
+    .build();
+    assert!(
+        recall_timeout_or_propagate(Err(guard_rejected)).is_err(),
+        "a non-timeout error must still propagate unchanged"
+    );
+}
+
 #[tokio::test]
 async fn stage_with_time_budget_records_completed_status() {
     let config = NousConfig::default();

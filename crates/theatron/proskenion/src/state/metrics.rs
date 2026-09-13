@@ -266,6 +266,71 @@ impl TokenMetricsResponse {
     }
 }
 
+// WHY(#4565): these `From` impls are the boundary between skene's wire DTOs
+// (`skene::api::types::insights`) and this module's view-model types -- the
+// fields are identical by name/type (both mirror pylon's
+// `TokenMetricsResponse`), so this is a straight field copy, not a
+// transformation. The local types stay because their inherent methods
+// (`total`, `avg_per_session`, `pct_of_total`, ...) cannot live on skene's
+// foreign types under the orphan rule; keeping a thin, non-`Deserialize`
+// view-model type here is the smallest correct way to keep those methods
+// while sourcing the data from `skene::api::client::ApiClient::token_metrics`
+// instead of a hand-built `/api/v1/metrics/tokens` request.
+impl From<skene::api::types::TokenSeriesPoint> for TokenSeriesPoint {
+    fn from(value: skene::api::types::TokenSeriesPoint) -> Self {
+        Self {
+            date: value.date,
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+        }
+    }
+}
+
+impl From<skene::api::types::AgentTokenRow> for AgentTokenRow {
+    fn from(value: skene::api::types::AgentTokenRow) -> Self {
+        Self {
+            id: value.id,
+            name: value.name,
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            session_count: value.session_count,
+        }
+    }
+}
+
+impl From<skene::api::types::ModelTokenRow> for ModelTokenRow {
+    fn from(value: skene::api::types::ModelTokenRow) -> Self {
+        Self {
+            model: value.model,
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            session_count: value.session_count,
+        }
+    }
+}
+
+impl From<skene::api::types::TokenMetricsResponse> for TokenMetricsResponse {
+    fn from(value: skene::api::types::TokenMetricsResponse) -> Self {
+        Self {
+            series: value.series.into_iter().map(Into::into).collect(),
+            agents: value.agents.into_iter().map(Into::into).collect(),
+            models: value.models.into_iter().map(Into::into).collect(),
+            today_input: value.today_input,
+            today_output: value.today_output,
+            week_input: value.week_input,
+            week_output: value.week_output,
+            month_input: value.month_input,
+            month_output: value.month_output,
+            prev_today_input: value.prev_today_input,
+            prev_today_output: value.prev_today_output,
+            prev_week_input: value.prev_week_input,
+            prev_week_output: value.prev_week_output,
+            prev_month_input: value.prev_month_input,
+            prev_month_output: value.prev_month_output,
+        }
+    }
+}
+
 /// A single data point in a cost time series.
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
 pub(crate) struct CostSeriesPoint {
@@ -355,6 +420,51 @@ impl CostMetricsResponse {
             && self.month_cost == 0.0
             && self.series.iter().all(|p| p.cost_usd == 0.0)
             && self.agents.iter().all(|a| a.total_cost == 0.0)
+    }
+}
+
+// WHY(#4565): see the `TokenMetricsResponse` `From` impls above -- same
+// boundary, mirroring `skene::api::types::insights::CostMetricsResponse`.
+// `source` has no skene equivalent (pylon never populates it; the wire
+// field was always `#[serde(default)]` on the old direct-deserialize path
+// too), so it is set to its default here exactly as it always resolved to
+// before.
+impl From<skene::api::types::CostSeriesPoint> for CostSeriesPoint {
+    fn from(value: skene::api::types::CostSeriesPoint) -> Self {
+        Self {
+            date: value.date,
+            cost_usd: value.cost_usd,
+        }
+    }
+}
+
+impl From<skene::api::types::AgentCostRow> for AgentCostRow {
+    fn from(value: skene::api::types::AgentCostRow) -> Self {
+        Self {
+            id: value.id,
+            name: value.name,
+            total_cost: value.total_cost,
+            message_count: value.message_count,
+            session_count: value.session_count,
+            output_tokens: value.output_tokens,
+            prev_period_cost: value.prev_period_cost,
+        }
+    }
+}
+
+impl From<skene::api::types::CostMetricsResponse> for CostMetricsResponse {
+    fn from(value: skene::api::types::CostMetricsResponse) -> Self {
+        Self {
+            series: value.series.into_iter().map(Into::into).collect(),
+            agents: value.agents.into_iter().map(Into::into).collect(),
+            today_cost: value.today_cost,
+            week_cost: value.week_cost,
+            month_cost: value.month_cost,
+            prev_today_cost: value.prev_today_cost,
+            prev_week_cost: value.prev_week_cost,
+            prev_month_cost: value.prev_month_cost,
+            source: MetricSource::default(),
+        }
     }
 }
 

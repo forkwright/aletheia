@@ -2,7 +2,8 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
+use skene::api::types::WorkspaceSearchResult as SearchResult;
+
 use crate::state::connection::ConnectionConfig;
 
 const SEARCH_INPUT_STYLE: &str = "\
@@ -28,15 +29,8 @@ const RESULT_ITEM_STYLE: &str = "\
     white-space: nowrap;\
 ";
 
-/// API response shape for search results.
-#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
-struct SearchResult {
-    path: String,
-    #[serde(default)]
-    name: String,
-}
-
 const DEBOUNCE_MS: u64 = 300;
+const SEARCH_LIMIT: usize = 50;
 
 #[component]
 pub(crate) fn FileSearch(
@@ -71,18 +65,13 @@ pub(crate) fn FileSearch(
                 return;
             }
 
-            let Ok(client) = authenticated_client(&cfg)
-                .inspect_err(crate::api::client::log_authenticated_client_error)
+            let Ok(client) =
+                skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone())
             else {
                 return;
             };
-            let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = keryx::url::encode_path_segment(&q);
-            let url = format!("{base}/api/v1/workspace/search?q={encoded}&limit=50");
 
-            if let Ok(resp) = client.get(&url).send().await
-                && resp.status().is_success()
-                && let Ok(items) = resp.json::<Vec<SearchResult>>().await
+            if let Ok(items) = client.workspace_search(&q, SEARCH_LIMIT).await
                 && *debounce_generation.read() == current_gen
             {
                 results.set(items);
@@ -152,12 +141,12 @@ fn SearchResultItem(
     is_searching: Signal<bool>,
 ) -> Element {
     let path = result.path.clone();
-    let display_name = if result.name.is_empty() {
+    let display_name = result.path.clone();
+    let display_path = if result.snippet.is_empty() {
         result.path.clone()
     } else {
-        result.name.clone()
+        result.snippet.clone()
     };
-    let display_path = result.path.clone();
     let mut query = query;
     let mut results = results;
     let mut is_searching = is_searching;

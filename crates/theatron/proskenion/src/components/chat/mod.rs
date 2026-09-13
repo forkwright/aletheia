@@ -236,6 +236,17 @@ pub(crate) struct ChatStateManager {
     last_flush: Instant,
     /// Time of the most recent delta arrival -- used for adaptive debounce.
     last_delta: Instant,
+    /// Whether this manager is replaying a reattached turn (#7297) rather
+    /// than driving a freshly self-submitted one.
+    ///
+    /// WHY: a reattach's buffered replay includes the turn's original
+    /// `TurnStart`, which rebuilds `state.streaming` from scratch (see the
+    /// `TurnStart` arm below). Stamping `StreamingState::reattached` from
+    /// this flag on that rebuild is what keeps `InputBar` showing "Stop
+    /// watching" instead of "Abort" for the rest of the replay, instead of
+    /// the flag [`apply_active_turn_reattachment`] set up front being wiped
+    /// the instant the replay reaches `TurnStart`.
+    reattached: bool,
 }
 
 impl Default for ChatStateManager {
@@ -245,15 +256,26 @@ impl Default for ChatStateManager {
 }
 
 impl ChatStateManager {
-    /// Create a new manager with empty buffers.
+    /// Create a new manager for a freshly self-submitted turn.
     #[must_use]
     pub(crate) fn new() -> Self {
+        Self::with_reattached(false)
+    }
+
+    /// Create a new manager for replaying a reattached turn (#7297).
+    #[must_use]
+    pub(crate) fn new_reattached() -> Self {
+        Self::with_reattached(true)
+    }
+
+    fn with_reattached(reattached: bool) -> Self {
         let now = Instant::now();
         Self {
             text_buffer: String::new(),
             thinking_buffer: String::new(),
             last_flush: now,
             last_delta: now,
+            reattached,
         }
     }
 
@@ -292,6 +314,7 @@ impl ChatStateManager {
                     session_id: Some(session_id),
                     request_id,
                     error: None,
+                    reattached: self.reattached,
                 };
                 self.text_buffer.clear();
                 self.thinking_buffer.clear();
@@ -606,6 +629,39 @@ impl ChatStateManager {
             changed = true;
         }
         changed
+    }
+}
+
+/// How a turn's stream ended, for terminal-event bookkeeping shared by
+/// `views/chat.rs`'s `send_message` turn loop and `reattach_active_turn`'s
+/// reattached-watch loop.
+///
+/// WHY(#7299 x #7297): both loops dequeue a composer message queued behind
+/// the turn once it ends -- but never when it ended `Errored`, since
+/// dispatching immediately would clear `streaming.error` (via
+/// `send_message`'s own start-of-call reset) before the operator ever sees
+/// the retry banner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnEndKind {
+    /// The turn finished normally (`StreamEvent::TurnComplete`).
+    Completed,
+    /// The turn was aborted, by this client or another (`StreamEvent::TurnAbort`).
+    Aborted,
+    /// The turn (or the stream carrying it) errored (`StreamEvent::Error`).
+    Errored,
+}
+
+impl TurnEndKind {
+    /// Classify a stream event as ending its turn, or `None` if `event` is
+    /// not a terminal event.
+    #[must_use]
+    pub(crate) fn of(event: &StreamEvent) -> Option<Self> {
+        match event {
+            StreamEvent::TurnComplete { .. } => Some(Self::Completed),
+            StreamEvent::TurnAbort { .. } => Some(Self::Aborted),
+            StreamEvent::Error(_) => Some(Self::Errored),
+            _ => None,
+        }
     }
 }
 

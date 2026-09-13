@@ -9,21 +9,7 @@
 # Regenerate with: scripts/check-client-boundary.py --write-baseline
 
 [files]
-"crates/theatron/proskenion/src/api/client.rs" = 13
-"crates/theatron/proskenion/src/api/error.rs" = 1
+"crates/theatron/proskenion/src/api/client.rs" = 3
 "crates/theatron/proskenion/src/api/sse.rs" = 2
 "crates/theatron/proskenion/src/api/system_status.rs" = 2
 "crates/theatron/proskenion/src/services/connection.rs" = 3
-"crates/theatron/proskenion/src/views/chat.rs" = 1
-"crates/theatron/proskenion/src/views/files/diff.rs" = 1
-"crates/theatron/proskenion/src/views/files/search.rs" = 1
-"crates/theatron/proskenion/src/views/files/tree.rs" = 3
-"crates/theatron/proskenion/src/views/files/viewer.rs" = 1
-"crates/theatron/proskenion/src/views/memory/curation.rs" = 4
-"crates/theatron/proskenion/src/views/memory/mod.rs" = 6
-"crates/theatron/proskenion/src/views/meta/mod.rs" = 13
-"crates/theatron/proskenion/src/views/metrics/costs.rs" = 1
-"crates/theatron/proskenion/src/views/metrics/tokens.rs" = 1
-"crates/theatron/proskenion/src/views/ops/mod.rs" = 4
-"crates/theatron/proskenion/src/views/ops/toggles.rs" = 2
-"crates/theatron/proskenion/src/views/sessions/mod.rs" = 6

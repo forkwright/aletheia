@@ -1150,6 +1150,7 @@ async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
         let bridge = ProviderRecallBridge {
             providers: &providers,
             model: "test-model",
+            call_budget: Duration::from_secs(15),
         };
 
         let manifest_text = "- real-id Project conventions\n- other-id Another entry\n";
@@ -1163,6 +1164,90 @@ async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
         result,
         vec!["real-id"],
         "rank_memories should only return IDs present in the manifest"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_recall_bridge_call_budget_times_out_and_names_slow_component() {
+    // WHY(#7218): a recall-enhancement call that runs long must be bounded by
+    // its own budget instead of running past the whole recall stage's
+    // timeout uncancelled (see `ProviderRecallBridge::complete_blocking`).
+    // The error must also name which component was slow and what budget it
+    // exceeded, and the call must actually return at that budget rather than
+    // waiting for the underlying (here artificially slow) provider call.
+    let (rewrite_elapsed, rewrite_result, rank_elapsed, rank_result) =
+        tokio::task::spawn_blocking(move || {
+            let providers = sleeping_providers(Duration::from_secs(10));
+            let bridge = ProviderRecallBridge {
+                providers: &providers,
+                model: "test-model",
+                call_budget: Duration::from_secs(1),
+            };
+
+            let start = std::time::Instant::now();
+            let rewrite_result =
+                mneme::query_rewrite::RewriteProvider::complete(&bridge, "system", "query");
+            let rewrite_elapsed = start.elapsed();
+
+            let start = std::time::Instant::now();
+            let rank_result = bridge.rank_memories("query", "- real-id entry\n", 5);
+            let rank_elapsed = start.elapsed();
+
+            (rewrite_elapsed, rewrite_result, rank_elapsed, rank_result)
+        })
+        .await
+        .expect("spawn_blocking should succeed");
+
+    assert!(
+        rewrite_elapsed < Duration::from_secs(5),
+        "query-rewrite call should return at its own budget, not the provider's full sleep, took {rewrite_elapsed:?}"
+    );
+    let rewrite_message = rewrite_result
+        .expect_err("budget-exceeding rewrite call should fail rather than hang")
+        .to_string();
+    assert!(
+        rewrite_message.contains("query rewrite") && rewrite_message.contains("1s budget"),
+        "rewrite timeout error should name the slow component and its budget, got: {rewrite_message}"
+    );
+
+    assert!(
+        rank_elapsed < Duration::from_secs(5),
+        "side-query call should return at its own budget, not the provider's full sleep, took {rank_elapsed:?}"
+    );
+    let rank_message = rank_result
+        .expect_err("budget-exceeding rank call should fail rather than hang")
+        .to_string();
+    assert!(
+        rank_message.contains("side-query ranking") && rank_message.contains("1s budget"),
+        "side-query timeout error should name the slow component and its budget, got: {rank_message}"
+    );
+}
+
+#[test]
+fn recall_enhancement_call_budget_splits_usable_time_between_two_calls() {
+    // WHY(#7218): up to two sequential enhancement calls (query rewrite, then
+    // side-query ranking) can run within one recall invocation; each call's
+    // budget must leave enough headroom that both together, plus the
+    // non-LLM search work, still fit under the stage's own budget.
+    let budget = recall_enhancement_call_budget(15);
+    assert_eq!(budget, Duration::from_secs(6), "(15 - 2 reserve) / 2 = 6");
+    assert!(
+        budget.as_secs() * 2 + u64::from(RECALL_NON_LLM_RESERVE_SECS) <= 15,
+        "two enhancement calls plus the non-LLM reserve must fit the 15s default stage budget"
+    );
+}
+
+#[test]
+fn recall_enhancement_call_budget_never_drops_below_the_floor() {
+    // A small or misconfigured stage budget must not produce a near-zero
+    // per-call budget that would make every enhancement call fail instantly.
+    assert_eq!(
+        recall_enhancement_call_budget(0),
+        Duration::from_secs(RECALL_ENHANCEMENT_MIN_CALL_SECS)
+    );
+    assert_eq!(
+        recall_enhancement_call_budget(4),
+        Duration::from_secs(RECALL_ENHANCEMENT_MIN_CALL_SECS)
     );
 }
 

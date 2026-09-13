@@ -187,8 +187,8 @@ async fn assemble_conditional_conversation_loads_identity_only() {
     );
     assert_eq!(
         result.sections_included.len(),
-        5,
-        "4 identity-tier files + output-style should be included for Conversation"
+        6,
+        "4 identity-tier files + output-style + the absent-files roster (VOICE.md, CHECKLIST.md are absent from the fixture) should be included for Conversation"
     );
     // WHY: all operational files should be filtered
     assert_eq!(
@@ -224,8 +224,8 @@ async fn assemble_conditional_general_loads_all() {
 
     assert_eq!(
         result.sections_included.len(),
-        10,
-        "General hint should load all 9 workspace files + output-style"
+        11,
+        "General hint should load all 9 workspace files + output-style + the absent-files roster (VOICE.md, CHECKLIST.md are not in the fixture)"
     );
     assert!(
         result.sections_filtered.is_empty(),
@@ -291,8 +291,8 @@ async fn assemble_backward_compat_loads_all() {
 
     assert_eq!(
         result.sections_included.len(),
-        6,
-        "assemble() without hint should load all present files + output-style"
+        7,
+        "assemble() without hint should load all present files + output-style + the absent-files roster"
     );
     assert!(
         result.sections_filtered.is_empty(),

@@ -8,11 +8,12 @@ pub use approvals::{PendingApproval, PendingApprovalsResponse};
 
 pub mod knowledge;
 pub use knowledge::{
-    EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier,
+    EntitiesResponse, Entity, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier,
     ExplainCandidate, ExplainDecision, ExplainResponse, Fact, FactDetailResponse, FactSensitivity,
-    FactVisibility, FactorScoreBreakdown, FactsResponse, FlagRequest, FlagSeverity, MergeRequest,
-    RecallWeightsView, Relationship, RelationshipDirection, RelationshipsResponse, SearchResponse,
-    SearchResult, SimilarFact, TimelineEvent, TimelineResponse,
+    FactVisibility, FactorScoreBreakdown, FactsResponse, FlagRequest, FlagSeverity,
+    GraphCheckReport, KnowledgeEntitiesRequest, KnowledgeFactsRequest, MemoryHealthResponse,
+    MergeRequest, RecallWeightsView, Relationship, RelationshipDirection, RelationshipsResponse,
+    SearchResponse, SearchResult, SimilarFact, TimelineEvent, TimelineResponse,
 };
 
 pub mod insights;
@@ -42,13 +43,18 @@ pub use credentials::{
 };
 
 pub mod nous;
-pub use nous::{AddressMaskStatus, ModelProviderReadiness, NousStatus, RecoverResponse};
+pub use nous::{
+    AddressMaskStatus, ModelProviderReadiness, NousStatus, NousSummary, RecoverResponse,
+};
 
 pub mod config;
 pub use config::{ConfigReloadResponse, ConfigUpdateResponse};
 
 pub mod daemon;
 pub use daemon::{DaemonTask, DaemonTaskListResponse};
+
+pub mod ops;
+pub use ops::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry, ToolHistoryEntry};
 
 use serde::{Deserialize, Serialize};
 
@@ -122,6 +128,15 @@ pub struct Agent {
     /// `pylon::handlers::nous_dto::NousSummary::status` (#4641).
     #[serde(default)]
     pub status: Option<String>,
+    /// Whether the agent is enabled in the operator surface, mirroring
+    /// `pylon::handlers::nous_dto::NousSummary::enabled`.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// Tool toggle summaries for the agent, mirroring
+    /// `pylon::handlers::nous_dto::NousSummary::tools`. Empty for servers
+    /// old enough to omit the field.
+    #[serde(default)]
+    pub tools: Vec<NousTool>,
 }
 
 impl Agent {
@@ -165,6 +180,14 @@ pub struct Session {
     /// User-assigned display name.
     #[serde(default, alias = "name")]
     pub display_name: Option<String>,
+    /// The turn currently running against this session, if any, mirroring
+    /// `pylon::handlers::sessions::types_dto::SessionResponse::active_turn_id`
+    /// (PR #7267). `None` for an idle session. When set, a client that did
+    /// not submit the turn itself can reattach to its event stream via
+    /// `GET /api/v1/sessions/{id}/turns/{active_turn_id}/events`
+    /// ([`super::super::streaming::reattach_turn_stream`]).
+    #[serde(default)]
+    pub active_turn_id: Option<TurnId>,
 }
 
 impl Session {
@@ -838,10 +861,26 @@ fn default_true() -> bool {
 }
 
 /// Wrapper for the tools list endpoint.
+///
+/// The `*_applied`/`*_required` fields are only populated by the `PATCH`
+/// toggle endpoints (`GET /api/v1/nous/{id}/tools` always sends `None`);
+/// mirrors `pylon::handlers::nous_dto::ToolsResponse`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousToolsResponse {
     /// List of tools.
     pub tools: Vec<NousTool>,
+    /// Whether the requested config change was persisted.
+    #[serde(default)]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(default)]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(default)]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(default)]
+    pub restart_required: Option<bool>,
 }
 
 /// Server liveness response from `GET /api/health`.

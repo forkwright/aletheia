@@ -36,12 +36,10 @@ use crate::state::virtual_scroll::VirtualScroll;
 )]
 pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, BackendHealth, ChatMessage, CommandPaletteState,
-    ContextAction, ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay,
-    DecisionField, DecisionOption, ErrorBanner, FilterState, FocusedPane, InputState,
-    MemoryInspectorState, MessageKind, NotificationStore, OpsState, Overlay, PlanApprovalOverlay,
-    PlanStepApproval, SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase,
-    SubmittedDecision, TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View,
-    ViewStack,
+    ContextAction, ContextActionsOverlay, ControlMutationStatus, ErrorBanner, FilterState,
+    FocusedPane, InputState, MemoryInspectorState, MessageKind, NotificationStore, OpsState,
+    Overlay, SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase,
+    TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
 #[cfg(test)]
 use crate::theme::THEME;
@@ -75,7 +73,6 @@ pub struct DashboardState {
     pub context_tokens_total: Option<u32>,
     /// Last-active session per agent, loaded from disk on startup and saved on exit.
     pub(crate) saved_sessions: HashMap<ApiNousId, ApiSessionId>,
-    pub submitted_decisions: Vec<crate::state::SubmittedDecision>,
     pub(crate) new_session_status: ControlMutationStatus,
     /// WHY(#6814): a failed agents fetch must render distinctly from the
     /// pre-connect "waiting" state and keep pointing at `:reconnect`.
@@ -304,7 +301,6 @@ impl App {
                 context_tokens_used: None,
                 context_tokens_total: None,
                 saved_sessions,
-                submitted_decisions: Vec::new(),
                 new_session_status: ControlMutationStatus::Idle,
                 agents_load_failed: false,
             },
@@ -736,7 +732,7 @@ impl App {
                 .saved_sessions
                 .insert(agent_id.clone(), session_id.clone());
 
-            match self.client.history(&session_id).await {
+            match self.client.history(&session_id, None, None).await {
                 Ok(history) => {
                     // Epoch check: a stream event arrived while we awaited the history fetch.
                     if self.connection.state_epoch != epoch_before {

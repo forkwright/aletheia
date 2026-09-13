@@ -354,6 +354,150 @@ fn reembed_all_updates_embedding_meta() {
     assert_eq!(meta.dim, 4);
 }
 
+/// aletheia#6838 correction 2: a store whose pre-open manifest disagrees
+/// with this binary's `SCHEMA_VERSION` must refuse before `open_fjall` ever
+/// touches the fjall directory again, not merely after opening it. Before
+/// the pre-open guard existed, rewriting this file had no effect at all --
+/// `open_fjall` never read it, so the mismatch went undetected and the
+/// store opened normally.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn open_fjall_refuses_before_touching_fjall_on_manifest_mismatch() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("knowledge");
+    {
+        let _store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("open original store");
+    } // dropped here: releases the fjall lock before the manifest is rewritten
+
+    // Simulate a store last opened by a different binary version -- e.g.
+    // an older build re-opening a store a newer one already migrated --
+    // by rewriting the pre-open manifest directly, without touching fjall
+    // at all.
+    let manifest_path = path.join("schema_manifest.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test rewrites the pre-open manifest out-of-band on purpose, simulating a \
+                  version-mismatched store without touching fjall"
+    )]
+    std::fs::write(
+        &manifest_path,
+        format!(
+            r#"{{"schema_version":{}}}"#,
+            KnowledgeStore::SCHEMA_VERSION + 1
+        ),
+    )
+    .expect("rewrite manifest to simulate a version-mismatched store");
+
+    let Err(err) = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding")) else {
+        panic!("a store whose manifest disagrees with SCHEMA_VERSION must refuse to open");
+    };
+
+    assert!(
+        matches!(
+            err,
+            crate::error::Error::SchemaVersion {
+                expected: KnowledgeStore::SCHEMA_VERSION,
+                found,
+                ..
+            } if found == KnowledgeStore::SCHEMA_VERSION + 1
+        ),
+        "expected a typed schema version refusal, got: {err}"
+    );
+}
+
+/// A store with no manifest yet (one only ever opened by binaries that
+/// predate this guard) must still open normally via the existing in-band
+/// check, and gets a manifest backfilled so its *next* open gets the fast,
+/// pre-fjall refusal too. The guard must never introduce a new refusal for
+/// a store nothing has stamped.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn open_fjall_backfills_manifest_for_a_store_that_predates_the_guard() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("knowledge");
+    {
+        let _store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("open original store");
+    }
+
+    let manifest_path = path.join("schema_manifest.json");
+    std::fs::remove_file(&manifest_path).expect("remove manifest to simulate a pre-guard store");
+
+    let _store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+        .expect("a store with no manifest yet must still open via the existing in-band check");
+
+    let stamped = std::fs::read_to_string(&manifest_path).expect("manifest should be backfilled");
+    assert!(
+        stamped.contains(&KnowledgeStore::SCHEMA_VERSION.to_string()),
+        "backfilled manifest should record the current schema version, got: {stamped}"
+    );
+}
+
+/// aletheia#6838 correction 2 required fix: `check_before_open` refuses
+/// only a manifest *newer* than `SCHEMA_VERSION`, never one older. A
+/// manifest stamped below `SCHEMA_VERSION` is the ordinary upgrade path --
+/// a newer binary opening a store a prior release left behind mid-lineage
+/// -- and must migrate forward through the existing in-band machinery
+/// (`protect_pre_migration` + `init_schema`/`apply_pending_migrations`),
+/// the same as a store with no manifest at all, then have the manifest
+/// re-stamped at the new `SCHEMA_VERSION`. Refusing here instead would
+/// stop every future schema bump for every existing instance at its very
+/// next start.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn open_fjall_migrates_a_store_whose_manifest_predates_schema_version() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("knowledge");
+    // `migration_registry_is_sequential_and_current` (above) guarantees
+    // `MIGRATIONS` is contiguous from target 2 up to `SCHEMA_VERSION`, so
+    // `SCHEMA_VERSION - 1` is a real, registered migration target -- not
+    // an arbitrary number this test invented.
+    let previous_target = KnowledgeStore::SCHEMA_VERSION - 1;
+
+    {
+        let store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("open original store");
+        // Roll the in-band schema_version relation back to the last real
+        // migration target below current, simulating a store a prior
+        // release of this binary left behind mid-lineage.
+        store
+            .stamp_schema_version(previous_target, "test: simulate a store predating a bump")
+            .expect("stamp store back to a real prior migration target");
+    } // dropped here: releases the fjall lock before the manifest is rewritten
+
+    // Roll the pre-open manifest back to match -- the same store's
+    // manifest as it would have been left by that older release.
+    let manifest_path = path.join("schema_manifest.json");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test rewrites the pre-open manifest out-of-band on purpose, simulating a \
+                  store an older release last stamped, without touching fjall"
+    )]
+    std::fs::write(
+        &manifest_path,
+        format!(r#"{{"schema_version":{previous_target}}}"#),
+    )
+    .expect("rewrite manifest to simulate a store predating the current schema version");
+
+    let store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+        .expect("a manifest older than SCHEMA_VERSION must migrate forward, not refuse");
+
+    assert_eq!(
+        store
+            .schema_version()
+            .expect("read schema version after reopen"),
+        KnowledgeStore::SCHEMA_VERSION,
+        "reopening must run the pending migration(s) up to the current schema version"
+    );
+
+    let stamped = std::fs::read_to_string(&manifest_path).expect("read re-stamped manifest");
+    assert!(
+        stamped.contains(&KnowledgeStore::SCHEMA_VERSION.to_string()),
+        "manifest must be re-stamped at SCHEMA_VERSION once the migration completes, got: {stamped}"
+    );
+}
+
 #[cfg(feature = "storage-fjall")]
 #[test]
 fn open_fjall_detects_embedding_drift() {
@@ -390,6 +534,102 @@ fn open_fjall_passes_matching_embedding_meta() {
 
     KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
         .expect("matching embedding metadata should open");
+}
+
+/// aletheia#7162 F1: the pre-migration snapshot must never land as a
+/// `<cohort>.pre-migration-snapshot` sibling directly inside the
+/// knowledge root -- the same directory every cohort-directory walker
+/// (`is_cohort_dir`, the recall recovery walk, `memory reembed`)
+/// enumerates. Before this fix, `protect_pre_migration` used
+/// `path.with_extension(...)`, which does exactly that; only relying on
+/// every current and future walker remembering to call `is_cohort_dir`
+/// kept it from being mistaken for a live cohort (aletheia#7165's own
+/// near-miss). Nesting it under `.pre-migration-snapshots` instead removes
+/// the hazard structurally rather than depending on that convention being
+/// followed correctly everywhere, forever.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn pre_migration_snapshot_lands_outside_the_enumerable_root() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("knowledge.fjall");
+    let path = root.join("shared");
+
+    {
+        let store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("create fresh store");
+        store
+            .stamp_schema_version(13, "test")
+            .expect("force a stale stamp so a migration reads as pending");
+    } // dropped here: releases the fjall lock before protect_pre_migration reopens it
+
+    let taken = KnowledgeStore::protect_pre_migration(&path)
+        .expect("protect_pre_migration should not error")
+        .expect("a stale stamp must be protected with a snapshot");
+
+    assert!(taken.path.exists(), "the snapshot must exist on disk");
+    assert_eq!(
+        taken.path,
+        KnowledgeStore::pre_migration_snapshot_dir(&path),
+        "protect_pre_migration must use its own documented snapshot location"
+    );
+    assert_ne!(
+        taken.path.parent(),
+        Some(root.as_path()),
+        "the snapshot's parent must not be the knowledge root that \
+         cohort-directory walkers enumerate, got {}",
+        taken.path.display()
+    );
+    assert!(
+        !root.join("shared.pre-migration-snapshot").exists(),
+        "the snapshot must never land at the old `<cohort>.pre-migration-snapshot` \
+         sibling path inside the knowledge root"
+    );
+}
+
+/// aletheia#7162 F2 / aletheia#5779 F1: a cohort literally named `psyche`
+/// is the copy *root* of its own pre-migration snapshot, not a refused
+/// descendant -- [`snapshot::REFUSED_COMPONENT`]'s policy only refuses a
+/// nested `psyche` directory found *below* a different cohort's root.
+/// Confirms this holds at the `protect_pre_migration` entry point named in
+/// aletheia#7162, not only at `copy_excluding_psyche`'s own unit level: the
+/// psyche cohort's own snapshot must be a full copy, never a silent no-op
+/// that still reports success.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn a_cohort_named_psyche_gets_its_own_complete_pre_migration_snapshot() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("knowledge.fjall");
+    let path = root.join("psyche");
+
+    {
+        let store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("create fresh psyche cohort");
+        store
+            .insert_fact(&make_fact(
+                "f-psyche",
+                "alice",
+                "identity-continuity content",
+            ))
+            .expect("insert fact into psyche cohort");
+        store
+            .stamp_schema_version(13, "test")
+            .expect("force a stale stamp so a migration reads as pending");
+    }
+
+    let source_rows = crate::knowledge_store::snapshot::count_data_keyspace_rows(&path)
+        .expect("count source rows");
+    assert!(source_rows > 0, "sanity: the source cohort must hold data");
+
+    let taken = KnowledgeStore::protect_pre_migration(&path)
+        .expect("protect_pre_migration should not error")
+        .expect("a stale stamp must be protected with a snapshot");
+
+    let snapshot_rows = crate::knowledge_store::snapshot::count_data_keyspace_rows(&taken.path)
+        .expect("count snapshot rows");
+    assert_eq!(
+        snapshot_rows, source_rows,
+        "the psyche cohort's own pre-migration snapshot must be a complete copy"
+    );
 }
 
 const V13_FACTS_DDL: &str = r":create facts {

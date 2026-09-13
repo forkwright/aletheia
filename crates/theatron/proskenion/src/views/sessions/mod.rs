@@ -5,14 +5,14 @@ pub(crate) mod detail;
 pub(crate) mod list;
 pub(crate) mod search;
 
+#[cfg(test)]
+mod mount_fetch_loop_tests;
+
 use dioxus::prelude::*;
-use skene::api::error::{format_http_error_body, parse_pylon_error_body};
-use skene::api::types::{
-    HistoryMessage, HistoryResponse, PaginatedSessionsResponse, Session, SessionsResponse,
-};
+use skene::api::error::ApiError;
+use skene::api::types::{HistoryMessage, Session};
 use skene::id::ApiSessionId;
 
-use crate::api::client::authenticated_client;
 use crate::components::resize_handle::{ResizeDir, ResizeHandle, use_resize_state};
 use crate::state::agents::AgentStore;
 use crate::state::chat::ChatSelection;
@@ -88,103 +88,49 @@ fn chat_selection_for_session(session: &Session) -> ChatSelection {
     )
 }
 
-#[derive(Debug)]
-struct ParsedSessionsPage {
-    sessions: Vec<Session>,
-    has_more: bool,
-    next_cursor: Option<String>,
-    total_count: Option<usize>,
-}
-
-fn response_request_id(headers: &reqwest::header::HeaderMap) -> Option<String> {
-    ["x-request-id", "request-id"].iter().find_map(|name| {
-        headers
-            .get(*name)
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.trim().is_empty())
-            .map(ToOwned::to_owned)
-    })
-}
-
-fn make_failure(
-    path: String,
-    status: Option<u16>,
-    request_id: Option<String>,
-    message: String,
-) -> SessionLoadFailure {
-    SessionLoadFailure {
-        path,
-        status,
-        request_id,
-        message,
-    }
-}
-
-fn http_failure(
-    path: String,
-    status: reqwest::StatusCode,
-    request_id: Option<String>,
-    body: &str,
-) -> SessionLoadFailure {
-    let request_id =
-        request_id.or_else(|| parse_pylon_error_body(body).and_then(|error| error.request_id));
-    let reason = status.canonical_reason().unwrap_or("HTTP error");
-    let message = if body.trim().is_empty() {
-        format!("server returned {} {reason}", status.as_u16())
-    } else {
-        format_http_error_body(status.as_u16(), reason, body)
-    };
-
-    make_failure(path, Some(status.as_u16()), request_id, message)
-}
-
-fn parse_sessions_response(text: &str) -> Result<ParsedSessionsPage, String> {
-    match serde_json::from_str::<PaginatedSessionsResponse>(text) {
-        Ok(envelope) => {
-            let total_count = envelope.total.and_then(|total| usize::try_from(total).ok());
-            // WHY: has_more without a cursor cannot be continued.
-            let has_more = envelope.has_more && envelope.next_cursor.is_some();
-            Ok(ParsedSessionsPage {
-                sessions: envelope.items,
-                has_more,
-                next_cursor: envelope.next_cursor,
-                total_count,
+/// Classify an [`ApiError`] from a sessions-view request into the load state
+/// the UI renders.
+///
+/// WHY(#7198): `skene::api::client::ApiClient::sessions_paginated` and
+/// `::history` decode their response with `reqwest::Response::json`, which
+/// folds a dropped connection and an undecodable body into the same
+/// `ApiError::Http` variant (unlike `health_details`, which hand-parses its
+/// body and can report `ApiError::BadResponse` distinctly). Proskenion has
+/// no way to re-derive that distinction from outside skene, so it is not
+/// invented here: `Http`/`Timeout`/`InvalidToken` (nothing usable was ever
+/// received) become `TransportError`, everything else (a response came
+/// back, it just was not success) becomes `HttpError`. `operation` labels
+/// which request failed for the `path` field of [`SessionLoadFailure`],
+/// which now names the operation rather than a literal request path --
+/// `ApiError`'s `Display` does not carry the wire path either.
+fn session_load_state_for_error<T>(err: ApiError, operation: &'static str) -> SessionLoadState<T> {
+    let message = err.to_string();
+    match err {
+        ApiError::Http { .. } | ApiError::Timeout { .. } | ApiError::InvalidToken => {
+            SessionLoadState::TransportError(SessionLoadFailure {
+                path: operation.to_string(),
+                status: None,
+                request_id: None,
+                message,
             })
         }
-        Err(envelope_err) => {
-            if let Ok(wrapper) = serde_json::from_str::<SessionsResponse>(text) {
-                return Ok(ParsedSessionsPage {
-                    sessions: wrapper.sessions,
-                    has_more: false,
-                    next_cursor: None,
-                    total_count: None,
-                });
-            }
-
-            match serde_json::from_str::<Vec<Session>>(text) {
-                Ok(list) => Ok(ParsedSessionsPage {
-                    sessions: list,
-                    has_more: false,
-                    next_cursor: None,
-                    total_count: None,
-                }),
-                Err(list_err) => Err(format!(
-                    "expected paginated sessions envelope, sessions wrapper, or array: {envelope_err}; {list_err}"
-                )),
-            }
-        }
-    }
-}
-
-fn parse_history_response(text: &str) -> Result<Vec<HistoryMessage>, String> {
-    match serde_json::from_str::<HistoryResponse>(text) {
-        Ok(wrapper) => Ok(wrapper.messages),
-        Err(wrapper_err) => match serde_json::from_str::<Vec<HistoryMessage>>(text) {
-            Ok(messages) => Ok(messages),
-            Err(list_err) => Err(format!(
-                "expected history wrapper or message array: {wrapper_err}; {list_err}"
-            )),
-        },
+        ApiError::Server { status, .. } => SessionLoadState::HttpError(SessionLoadFailure {
+            path: operation.to_string(),
+            status: Some(status),
+            request_id: None,
+            message,
+        }),
+        // WHY: RateLimited, BadResponse, BodyTooLarge, Auth, and any future
+        // `ApiError` variant (the enum is `#[non_exhaustive]`) all mean a
+        // response came back and was rejected for a reason with no status
+        // code this view can extract; grouped as `HttpError` with `status`
+        // left unset rather than invented.
+        _ => SessionLoadState::HttpError(SessionLoadFailure {
+            path: operation.to_string(),
+            status: None,
+            request_id: None,
+            message,
+        }),
     }
 }
 
@@ -324,154 +270,86 @@ pub(crate) fn Sessions() -> Element {
             list_store.write().mark_loading();
 
             spawn(async move {
-                let base = cfg.server_url.trim_end_matches('/');
-
-                let mut path = format!("/api/v1/sessions?limit={}", SessionListStore::PAGE_SIZE);
-
-                if let Some(cursor) = &cursor {
-                    let encoded: String = keryx::url::encode_path_segment(cursor);
-                    path.push_str(&format!("&after={encoded}"));
-                }
-
-                if !search.is_empty() {
-                    let encoded: String = keryx::url::encode_path_segment(&search);
-                    path.push_str(&format!("&search={encoded}"));
-                }
-
-                if let Some(status) = status.query_value() {
-                    path.push_str("&status=");
-                    path.push_str(status);
-                }
-
-                for agent in &agent_filter {
-                    let encoded: String = keryx::url::encode_path_segment(agent);
-                    path.push_str(&format!("&nous_id={encoded}"));
-                }
-
-                let url = format!("{base}{path}");
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
-                        let failure = make_failure(path, None, None, err.to_string());
-                        list_store
-                            .write()
-                            .mark_failed(SessionLoadState::TransportError(failure));
+                        list_store.write().mark_failed(session_load_state_for_error(
+                            err,
+                            "build sessions client",
+                        ));
                         return;
                     }
                 };
 
-                match client.get(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
-                        let status = resp.status().as_u16();
-                        let request_id = response_request_id(resp.headers());
+                // WHY(#7198): pylon's `nous_id` filter is a single scalar
+                // (`crates/pylon/src/handlers/sessions/mod.rs`), never a
+                // multi-value one -- the prior hand-rolled request sent one
+                // `&nous_id=` per selected agent, which pylon's own `Option
+                // <String>` extractor cannot honor as a set. The first
+                // selection is the only one that was ever actually
+                // reachable server-side; this keeps that behavior explicit
+                // instead of an accident of query-string repetition.
+                let params = skene::api::types::ListSessionsRequest {
+                    nous_id: agent_filter.first().cloned(),
+                    search: (!search.is_empty()).then(|| search.clone()),
+                    status: match status {
+                        StatusFilter::All => None,
+                        StatusFilter::Active => Some(skene::api::types::SessionLifecycle::Active),
+                        StatusFilter::Archived => {
+                            Some(skene::api::types::SessionLifecycle::Archived)
+                        }
+                        StatusFilter::Distilled => {
+                            Some(skene::api::types::SessionLifecycle::Distilled)
+                        }
+                    },
+                    limit: Some(u32::try_from(SessionListStore::PAGE_SIZE).unwrap_or(u32::MAX)),
+                    after: cursor,
+                };
 
-                        let text = match resp.text().await {
-                            Ok(t) => t,
-                            Err(e) => {
-                                let failure = make_failure(
-                                    path.clone(),
-                                    Some(status),
-                                    request_id,
-                                    format!("failed to read sessions response: {e}"),
-                                );
-                                tracing::warn!(
-                                    path = %failure.path,
-                                    status = failure.status.unwrap_or_default(),
-                                    request_id = failure.request_id.as_deref().unwrap_or(""),
-                                    error = %e,
-                                    "sessions response transport error"
-                                );
-                                list_store
-                                    .write()
-                                    .mark_failed(SessionLoadState::TransportError(failure));
-                                return;
-                            }
-                        };
-
-                        let parsed = match parse_sessions_response(&text) {
-                            Ok(parsed) => parsed,
-                            Err(e) => {
-                                let failure = make_failure(
-                                    path.clone(),
-                                    Some(status),
-                                    request_id,
-                                    format!("failed to parse sessions response: {e}"),
-                                );
-                                tracing::warn!(
-                                    path = %failure.path,
-                                    status = failure.status.unwrap_or_default(),
-                                    request_id = failure.request_id.as_deref().unwrap_or(""),
-                                    error = %e,
-                                    "sessions response contract error"
-                                );
-                                list_store
-                                    .write()
-                                    .mark_failed(SessionLoadState::ContractError(failure));
-                                return;
-                            }
-                        };
-
-                        next_cursor.set(parsed.next_cursor);
+                match client.sessions_paginated(&params).await {
+                    Ok(envelope) => {
+                        let total_count =
+                            envelope.total.and_then(|total| usize::try_from(total).ok());
+                        // WHY: has_more without a cursor cannot be continued.
+                        let has_more = envelope.has_more && envelope.next_cursor.is_some();
+                        next_cursor.set(envelope.next_cursor);
 
                         let mut store = list_store.write();
                         if page == 0 {
-                            store.load(parsed.sessions, parsed.has_more);
+                            store.load(envelope.items, has_more);
                         } else {
-                            store.append(parsed.sessions, parsed.has_more);
+                            store.append(envelope.items, has_more);
                         }
-                        store.total_count = parsed.total_count;
+                        store.total_count = total_count;
                         store.sort_sessions();
                     }
-                    Ok(resp) => {
-                        let status = resp.status();
-                        let request_id = response_request_id(resp.headers());
-                        let body = match resp.text().await {
-                            Ok(text) => text,
-                            Err(e) => {
-                                tracing::warn!(
-                                    path = %path,
-                                    status = status.as_u16(),
-                                    request_id = request_id.as_deref().unwrap_or(""),
-                                    error = %e,
-                                    "failed to read sessions error response"
-                                );
-                                String::new()
-                            }
-                        };
-                        let failure = http_failure(path.clone(), status, request_id, &body);
-                        tracing::warn!(
-                            path = %failure.path,
-                            status = failure.status.unwrap_or_default(),
-                            request_id = failure.request_id.as_deref().unwrap_or(""),
-                            error = %failure.message,
-                            "sessions request failed"
-                        );
+                    Err(err) => {
+                        tracing::warn!(error = %err, "sessions request failed");
                         list_store
                             .write()
-                            .mark_failed(SessionLoadState::HttpError(failure));
-                    }
-                    Err(e) => {
-                        let failure = make_failure(
-                            path,
-                            None,
-                            None,
-                            format!("sessions connection error: {e}"),
-                        );
-                        tracing::warn!(
-                            path = %failure.path,
-                            error = %e,
-                            "sessions request transport error"
-                        );
-                        list_store
-                            .write()
-                            .mark_failed(SessionLoadState::TransportError(failure));
+                            .mark_failed(session_load_state_for_error(err, "load sessions"));
                     }
                 }
             });
         }
     };
 
-    use_effect(move || {
+    // WHY(#7280): this must run exactly once at mount, not react to
+    // `list_store` changes. `fetch_sessions` both reads `list_store` (for
+    // the current filters) and writes it (`mark_loading`, then the spawned
+    // request's own completion). A `use_effect` here would track that read
+    // as a dependency and re-run on every write `fetch_sessions` itself
+    // makes -- including the async completion -- producing a standing
+    // refetch loop (continuous flicker, unbounded duplicate requests) for
+    // as long as the view stays mounted. Every filter/search/refresh/retry
+    // action below already calls `fetch_sessions()` explicitly from its own
+    // event handler, so a reactive re-run on `list_store` change is never
+    // needed for those paths; `use_hook` runs the closure once on the
+    // component's first render and is not part of any reactive context.
+    use_hook(|| {
         fetch_sessions();
     });
 
@@ -482,107 +360,27 @@ pub(crate) fn Sessions() -> Element {
             detail_state.set(SessionLoadState::Loading);
 
             spawn(async move {
-                let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
-                let path = format!("/api/v1/sessions/{encoded}/history");
-                let url = format!("{base}{path}");
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
-                        let failure = make_failure(path, None, None, err.to_string());
-                        detail_state.set(SessionLoadState::TransportError(failure));
+                        detail_state.set(session_load_state_for_error(
+                            err,
+                            "build session history client",
+                        ));
                         return;
                     }
                 };
 
-                match client.get(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
-                        let status = resp.status().as_u16();
-                        let request_id = response_request_id(resp.headers());
-
-                        let text = match resp.text().await {
-                            Ok(t) => t,
-                            Err(e) => {
-                                let failure = make_failure(
-                                    path.clone(),
-                                    Some(status),
-                                    request_id,
-                                    format!("failed to read session history: {e}"),
-                                );
-                                tracing::warn!(
-                                    path = %failure.path,
-                                    status = failure.status.unwrap_or_default(),
-                                    request_id = failure.request_id.as_deref().unwrap_or(""),
-                                    error = %e,
-                                    "session history transport error"
-                                );
-                                detail_state.set(SessionLoadState::TransportError(failure));
-                                return;
-                            }
-                        };
-
-                        let messages = match parse_history_response(&text) {
-                            Ok(messages) => messages,
-                            Err(e) => {
-                                let failure = make_failure(
-                                    path.clone(),
-                                    Some(status),
-                                    request_id,
-                                    format!("failed to parse session history: {e}"),
-                                );
-                                tracing::warn!(
-                                    path = %failure.path,
-                                    status = failure.status.unwrap_or_default(),
-                                    request_id = failure.request_id.as_deref().unwrap_or(""),
-                                    error = %e,
-                                    "session history contract error"
-                                );
-                                detail_state.set(SessionLoadState::ContractError(failure));
-                                return;
-                            }
-                        };
-
+                match client.history(session_id.as_ref(), None, None).await {
+                    Ok(messages) => {
                         detail_state.set(detail_state_from_history(session, messages));
                     }
-                    Ok(resp) => {
-                        let status = resp.status();
-                        let request_id = response_request_id(resp.headers());
-                        let body = match resp.text().await {
-                            Ok(text) => text,
-                            Err(e) => {
-                                tracing::warn!(
-                                    path = %path,
-                                    status = status.as_u16(),
-                                    request_id = request_id.as_deref().unwrap_or(""),
-                                    error = %e,
-                                    "failed to read session history error response"
-                                );
-                                String::new()
-                            }
-                        };
-                        let failure = http_failure(path.clone(), status, request_id, &body);
-                        tracing::warn!(
-                            path = %failure.path,
-                            status = failure.status.unwrap_or_default(),
-                            request_id = failure.request_id.as_deref().unwrap_or(""),
-                            error = %failure.message,
-                            "session history request failed"
-                        );
-                        detail_state.set(SessionLoadState::HttpError(failure));
-                    }
-                    Err(e) => {
-                        let failure = make_failure(
-                            path,
-                            None,
-                            None,
-                            format!("session history connection error: {e}"),
-                        );
-                        tracing::warn!(
-                            path = %failure.path,
-                            error = %e,
-                            "session history transport error"
-                        );
-                        detail_state.set(SessionLoadState::TransportError(failure));
+                    Err(err) => {
+                        tracing::warn!(error = %err, "session history request failed");
+                        detail_state.set(session_load_state_for_error(err, "load session history"));
                     }
                 }
             });
@@ -595,7 +393,10 @@ pub(crate) fn Sessions() -> Element {
             let id = session_id.clone();
 
             spawn(async move {
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
                         if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
@@ -604,27 +405,16 @@ pub(crate) fn Sessions() -> Element {
                         return;
                     }
                 };
-                let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String = keryx::url::encode_path_segment(id.as_ref());
-                let url = format!("{base}/api/v1/sessions/{encoded}/archive");
 
-                match client.post(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
+                match client.archive_session(id.as_ref()).await {
+                    Ok(()) => {
                         tracing::info!("archived session {id}");
                     }
-                    Ok(resp) => {
-                        let status = resp.status();
-                        tracing::warn!(%status, "archive failed");
+                    Err(err) => {
+                        tracing::warn!("archive failed: {err}");
                         if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                             ts.write()
-                                .push(ToastSeverity::Error, format!("Archive failed: {status}"));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("archive error: {e}");
-                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                            ts.write()
-                                .push(ToastSeverity::Error, format!("Archive error: {e}"));
+                                .push(ToastSeverity::Error, format!("Archive failed: {err}"));
                         }
                     }
                 }
@@ -638,7 +428,10 @@ pub(crate) fn Sessions() -> Element {
             let id = session_id.clone();
 
             spawn(async move {
-                let client = match authenticated_client(&cfg) {
+                let client = match skene::api::client::ApiClient::new(
+                    &cfg.server_url,
+                    cfg.auth_token.clone(),
+                ) {
                     Ok(client) => client,
                     Err(err) => {
                         if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
@@ -647,27 +440,16 @@ pub(crate) fn Sessions() -> Element {
                         return;
                     }
                 };
-                let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String = keryx::url::encode_path_segment(id.as_ref());
-                let url = format!("{base}/api/v1/sessions/{encoded}/unarchive");
 
-                match client.post(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
+                match client.unarchive_session(id.as_ref()).await {
+                    Ok(()) => {
                         tracing::info!("restored session {id}");
                     }
-                    Ok(resp) => {
-                        let status = resp.status();
-                        tracing::warn!(%status, "restore failed");
+                    Err(err) => {
+                        tracing::warn!("restore failed: {err}");
                         if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                             ts.write()
-                                .push(ToastSeverity::Error, format!("Restore failed: {status}"));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("restore error: {e}");
-                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
-                            ts.write()
-                                .push(ToastSeverity::Error, format!("Restore error: {e}"));
+                                .push(ToastSeverity::Error, format!("Restore failed: {err}"));
                         }
                     }
                 }
@@ -810,8 +592,7 @@ pub(crate) fn Sessions() -> Element {
                                     | SessionLoadState::Empty(store) => store.session.clone(),
                                     SessionLoadState::Loading
                                     | SessionLoadState::TransportError(_)
-                                    | SessionLoadState::HttpError(_)
-                                    | SessionLoadState::ContractError(_) => None,
+                                    | SessionLoadState::HttpError(_) => None,
                                 }
                                 .or_else(|| {
                                     list_store
@@ -885,6 +666,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: display_name.map(str::to_string),
+            active_turn_id: None,
         }
     }
 
@@ -930,81 +712,106 @@ mod tests {
         assert_eq!(selection.title, "incident-review");
     }
 
-    #[test]
-    fn list_http_500_preserves_status_path_and_request_id() {
-        let failure = http_failure(
-            "/api/v1/sessions?limit=50".to_string(),
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
-            None,
-            r#"{"error":{"code":"session_store_failed","message":"session store unavailable","request_id":"req-500"}}"#,
-        );
-        let state: SessionLoadState<()> = SessionLoadState::HttpError(failure);
+    fn install_crypto() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
 
+    /// Spawn a one-shot raw-TCP HTTP server that replies with a fixed
+    /// status/body to the single request it receives. Mirrors
+    /// `crate::api::client::tests::spawn_auth_required_roster`.
+    async fn spawn_http_response(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> std::io::Result<(String, tokio::task::JoinHandle<std::io::Result<()>>)> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let handle = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut buf = [0_u8; 4096];
+            let _ = stream.read(&mut buf).await?;
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await?;
+            Ok(())
+        });
+        Ok((format!("http://{addr}"), handle))
+    }
+
+    #[tokio::test]
+    async fn session_list_server_error_becomes_http_error_state()
+    -> Result<(), Box<dyn std::error::Error>> {
+        install_crypto();
+        let (server_url, server) = spawn_http_response(
+            "500 Internal Server Error",
+            r#"{"error":{"code":"session_store_failed","message":"session store unavailable","request_id":"req-500"}}"#,
+        )
+        .await?;
+        let client = skene::api::client::ApiClient::new(&server_url, None)?;
+
+        let err = client
+            .sessions_paginated(&skene::api::types::ListSessionsRequest::default())
+            .await
+            .expect_err("500 response should fail");
+
+        let state: SessionLoadState<()> = session_load_state_for_error(err, "load sessions");
         let SessionLoadState::HttpError(failure) = state else {
             panic!("500 response should become an HTTP error state");
         };
-        assert_eq!(failure.path, "/api/v1/sessions?limit=50");
         assert_eq!(failure.status, Some(500));
-        assert_eq!(failure.request_id.as_deref(), Some("req-500"));
         assert!(failure.message.contains("session store unavailable"));
+
+        server.await??;
+        Ok(())
     }
 
-    #[test]
-    fn invalid_session_list_json_becomes_contract_error() {
-        let error = match parse_sessions_response(r#"{"items":"not a list"}"#) {
-            Ok(_) => panic!("invalid sessions response should not parse"),
-            Err(error) => error,
-        };
-        let state: SessionLoadState<()> = SessionLoadState::ContractError(make_failure(
-            "/api/v1/sessions?limit=50".to_string(),
-            Some(200),
-            Some("req-contract".to_string()),
-            format!("failed to parse sessions response: {error}"),
-        ));
+    #[tokio::test]
+    async fn malformed_history_body_becomes_transport_error_state()
+    -> Result<(), Box<dyn std::error::Error>> {
+        // WHY(#7198): `skene::api::client::ApiClient::history` decodes via
+        // `reqwest::Response::json`, which reports a body that fails to
+        // deserialize as the same `ApiError::Http` variant as a dropped
+        // connection -- see `session_load_state_for_error`'s doc comment.
+        // This pins that behavior so a future skene change that starts
+        // distinguishing the two (`ApiError::BadResponse`) is caught here
+        // rather than silently changing which UI state operators see.
+        install_crypto();
+        let (server_url, server) =
+            spawn_http_response("200 OK", r#"{"messages":[{"role":5}]}"#).await?;
+        let client = skene::api::client::ApiClient::new(&server_url, None)?;
 
-        let SessionLoadState::ContractError(failure) = state else {
-            panic!("invalid sessions response should become a contract error");
-        };
-        assert_eq!(failure.status, Some(200));
-        assert_eq!(failure.request_id.as_deref(), Some("req-contract"));
-        assert!(
-            failure
-                .message
-                .contains("failed to parse sessions response")
-        );
-    }
+        let err = client
+            .history("session-id", None, None)
+            .await
+            .expect_err("malformed history body should fail to decode");
+        assert!(matches!(err, ApiError::Http { .. }));
 
-    #[test]
-    fn malformed_history_does_not_become_empty_detail() {
-        let error = match parse_history_response(r#"{"messages":[{"role":5}]}"#) {
-            Ok(_) => panic!("malformed history response should not parse"),
-            Err(error) => error,
-        };
         let state: SessionLoadState<SessionDetailStore> =
-            SessionLoadState::ContractError(make_failure(
-                "/api/v1/sessions/session-id/history".to_string(),
-                Some(200),
-                Some("req-history".to_string()),
-                format!("failed to parse session history: {error}"),
-            ));
-
-        let SessionLoadState::ContractError(failure) = state else {
-            panic!("malformed history should become a contract error");
+            session_load_state_for_error(err, "load session history");
+        let SessionLoadState::TransportError(failure) = state else {
+            panic!("malformed history body should become a transport error state");
         };
-        assert_eq!(failure.path, "/api/v1/sessions/session-id/history");
-        assert_eq!(failure.request_id.as_deref(), Some("req-history"));
-        assert!(failure.message.contains("failed to parse session history"));
+        assert!(!failure.message.is_empty());
+
+        server.await??;
+        Ok(())
     }
 
     #[test]
     fn legitimate_empty_sessions_response_sets_empty_state() {
-        let parsed = match parse_sessions_response(r#"{"items":[],"has_more":false,"total":0}"#) {
-            Ok(parsed) => parsed,
-            Err(error) => panic!("empty sessions response should parse: {error}"),
+        let envelope = skene::api::types::PaginatedSessionsResponse {
+            items: vec![],
+            has_more: false,
+            next_cursor: None,
+            total: Some(0),
         };
         let mut store = SessionListStore::new();
-        store.load(parsed.sessions, parsed.has_more);
-        store.total_count = parsed.total_count;
+        store.load(envelope.items, envelope.has_more);
+        store.total_count = envelope.total.and_then(|total| usize::try_from(total).ok());
 
         assert!(store.sessions.is_empty());
         assert_eq!(store.total_count, Some(0));

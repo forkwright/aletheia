@@ -9,10 +9,10 @@ use crate::error;
 use super::{
     BackupBuild, BackupManifest, EntryManifestMetadata, MANIFEST_CHECKPOINT_GENERATIONS_FIELD,
     MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD, MANIFEST_FILE_COUNT_FIELD,
-    MANIFEST_OBSERVED_SKEW_SECONDS_FIELD, MANIFEST_QUIESCE_MECHANISM_FIELD,
-    MANIFEST_RESTORE_PATH_FIELD, MANIFEST_TOTAL_FILES_FIELD, MANIFEST_VERSION, ManifestEvidence,
-    ManifestSection, SNAPSHOT_PROTOCOL_VERSION, STATUS_EXCLUDED, STATUS_OK, SYMLINK_POLICY,
-    StoreEntry,
+    MANIFEST_OBSERVED_SKEW_SECONDS_FIELD, MANIFEST_PLANNING_SYMLINKS_EXCLUDED_FIELD,
+    MANIFEST_QUIESCE_MECHANISM_FIELD, MANIFEST_RESTORE_PATH_FIELD, MANIFEST_TOTAL_FILES_FIELD,
+    MANIFEST_VERSION, ManifestEvidence, ManifestSection, SNAPSHOT_PROTOCOL_VERSION,
+    STATUS_EXCLUDED, STATUS_OK, SYMLINK_POLICY, StoreEntry,
 };
 
 pub(crate) fn join_manifest_backup_path(
@@ -219,7 +219,26 @@ pub(crate) fn inject_credential_evidence(
     };
     object.insert(
         String::from(MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD),
-        serde_json::Value::from(build.credential_keys_excluded),
+        serde_json::Value::from(build.exclusions.credential_keys),
+    );
+}
+
+/// Inject the count of excluded `.planning` symlinks as raw manifest
+/// evidence. (#7246)
+///
+/// WHY: mirrors `inject_credential_evidence` -- not a `BackupManifest`
+/// struct field so out-of-crate `BackupManifest { .. }` literals are
+/// unaffected.
+pub(crate) fn inject_planning_evidence(
+    manifest_value: &mut serde_json::Value,
+    build: &BackupBuild,
+) {
+    let Some(object) = manifest_value.as_object_mut() else {
+        return;
+    };
+    object.insert(
+        String::from(MANIFEST_PLANNING_SYMLINKS_EXCLUDED_FIELD),
+        serde_json::Value::from(build.exclusions.planning_symlinks),
     );
 }
 

@@ -243,6 +243,8 @@ Default per-agent behavioral parameters (safety, hooks, distillation, etc.).
 | `toolMaxImageBytes` | integer | 20_971_520 | Maximum image file size in bytes for the view-file tool. |
 | `toolMaxPdfBytes` | integer | 33_554_432 | Maximum PDF file size in bytes for the view-file tool. |
 | `toolApprovalTimeoutSecs` | float | 120.0 | Seconds to wait for an operator decision on a Required/Mandatory tool-approval request before it default-denies. Default: 120.0. |
+| `toolApprovalRequiredPolicy` | "gate" \| "auto_approve" | "gate" | Posture for `Required` (high-risk) tool calls. `gate` (default) requires a wired operator approval gate and default-denies without one; `auto_approve` executes without a gate and records a `policy_auto_approved` audit outcome. |
+| `toolApprovalMandatoryPolicy` | "gate" \| "auto_approve" | "gate" | Posture for `Mandatory` (critical-risk) tool calls such as `exec`. Same semantics as `tool_approval_required_policy`; kept as a separate knob so a deployment can relax high-risk writes while still gating irreversible execution. Default: `gate`. |
 | `bootstrapMinTruncationBudget` | integer | 200 | Minimum token budget remaining before attempting section truncation. Below this threshold the section is dropped rather than truncated. Default: 200. |
 | `correctionsMaxCorrections` | integer | 50 | Maximum correction entries stored per agent. Default: 50. |
 | `tuningEligible` | bool | true | Whether this agent participates in the self-tuning loop. Default: true. When false, the agent's metrics are collected but no proposals are generated. Combined with the global `TuningConfig::enabled` kill switch. |
@@ -415,6 +417,8 @@ Per-agent behavioral override; when `None`, inherits from [`AgentDefaults::behav
 | `toolMaxImageBytes` | integer | 20_971_520 | Maximum image file size in bytes for the view-file tool. |
 | `toolMaxPdfBytes` | integer | 33_554_432 | Maximum PDF file size in bytes for the view-file tool. |
 | `toolApprovalTimeoutSecs` | float | 120.0 | Seconds to wait for an operator decision on a Required/Mandatory tool-approval request before it default-denies. Default: 120.0. |
+| `toolApprovalRequiredPolicy` | "gate" \| "auto_approve" | "gate" | Posture for `Required` (high-risk) tool calls. `gate` (default) requires a wired operator approval gate and default-denies without one; `auto_approve` executes without a gate and records a `policy_auto_approved` audit outcome. |
+| `toolApprovalMandatoryPolicy` | "gate" \| "auto_approve" | "gate" | Posture for `Mandatory` (critical-risk) tool calls such as `exec`. Same semantics as `tool_approval_required_policy`; kept as a separate knob so a deployment can relax high-risk writes while still gating irreversible execution. Default: `gate`. |
 | `bootstrapMinTruncationBudget` | integer | 200 | Minimum token budget remaining before attempting section truncation. Below this threshold the section is dropped rather than truncated. Default: 200. |
 | `correctionsMaxCorrections` | integer | 50 | Maximum correction entries stored per agent. Default: 50. |
 | `tuningEligible` | bool | true | Whether this agent participates in the self-tuning loop. Default: true. When false, the agent's metrics are collected but no proposals are generated. Combined with the global `TuningConfig::enabled` kill switch. |
@@ -1306,7 +1310,7 @@ LLM provider definitions (#3424, #3414). Ordered list of backends — the provid
 
 *(optional table)*
 
-Optional per-provider admission bound (#7152). When omitted, [`Self::effective_admission`] derives the default from [`deployment_target`](Self::deployment_target).
+Optional per-provider admission bound (#7152). When omitted, `effective_admission` derives the default from `deployment_target`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

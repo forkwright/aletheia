@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -48,6 +49,45 @@ class LocalPathPattern(unittest.TestCase):
                 for m in dc.LOCAL_PATH.finditer(f"/home/{allowed}/aletheia")
             )
         )
+
+
+class CiConfigHygiene(unittest.TestCase):
+    """Exercises check_ci_config_hygiene() (aletheia#5328) against synthetic
+    fixtures rather than the checked-out repo."""
+
+    def run_check(self, overrides: dict[str, str]) -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for surface in dc.CI_CONFIG_SURFACES:
+                target = root / surface
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(overrides.get(surface, "# nothing sensitive here\n"), encoding="utf-8")
+            original_root, original_failures = dc.ROOT, dc.FAILURES
+            dc.ROOT, dc.FAILURES = root, []
+            try:
+                dc.check_ci_config_hygiene()
+                return list(dc.FAILURES)
+            finally:
+                dc.ROOT, dc.FAILURES = original_root, original_failures
+
+    def test_a_hardware_brand_detail_is_caught(self) -> None:
+        failures = self.run_check({".kanon-ci.toml": "# 64 on this Threadripper\n"})
+        self.assertTrue(any("Threadripper" in f for f in failures))
+
+    def test_the_match_is_case_insensitive(self) -> None:
+        """Matches .github/workflows/pr-title-pii.yml's `grep -qiE` behavior
+        rather than a case-sensitive substring check."""
+        failures = self.run_check({".kanon-ci.toml": "# 64 on this threadripper\n"})
+        self.assertTrue(any("threadripper" in f for f in failures))
+
+    def test_the_match_is_word_bounded(self) -> None:
+        """A longer word that merely contains the token must not match --
+        mirrors pr-title-pii.yml's `\\b...\\b` bounding."""
+        failures = self.run_check({".kanon-ci.toml": "# ThreadripperFarmNode, not a real CPU name\n"})
+        self.assertEqual(failures, [])
+
+    def test_clean_surfaces_produce_no_findings(self) -> None:
+        self.assertEqual(self.run_check({}), [])
 
 
 class ThisRepository(unittest.TestCase):

@@ -114,6 +114,26 @@ class HealthTests(unittest.TestCase):
     def test_orphaned_release_is_not_called_a_deleted_tag(self) -> None:
         self.assertEqual(health.violations([], [release(self.tag)], NOW, 12), [])
 
+    def test_known_unremediable_legacy_tags_are_excluded_from_the_contract(
+        self,
+    ) -> None:
+        for tag in sorted(health.KNOWN_UNREMEDIABLE_LEGACY_TAGS):
+            self.assertFalse(health.in_contract(tag), tag)
+        # A zero-asset published release and a never-published draft would
+        # both normally fail -- confirm the exclusion actually suppresses
+        # that, not just that in_contract() says False in isolation.
+        zero_assets = release("v0.39.0", names=[])
+        never_published = release("v0.40.0", draft=True, updated_at=OLD)
+        self.assertEqual(
+            health.violations(
+                rows("v0.39.0") + rows("v0.40.0"),
+                [zero_assets, never_published],
+                NOW,
+                12,
+            ),
+            [],
+        )
+
     def test_fresh_draft_on_old_commit_is_inside_update_grace(self) -> None:
         fresh = release(
             self.tag, draft=True, created_at=OLD, updated_at=FRESH, published_at=None

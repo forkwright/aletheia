@@ -141,6 +141,22 @@ async fn dispatch_one(
         return;
     }
 
+    // SECURITY(#5194): checked before route resolution, same as
+    // allows_sender above -- a sender rejected by a restricted group's
+    // participant allowlist (`taxis::config::GroupParticipantPolicy`) is
+    // refused here rather than silently falling through to that channel's
+    // wildcard default or the global default nous, either of which would
+    // still hand the rejected sender an agent.
+    if !router.group_participant_allows(&msg) {
+        warn!(
+            channel = %msg.channel,
+            sender = %redact_channel_id(&msg.sender),
+            group_id = %msg.group_id.as_deref().map(redact_channel_id).unwrap_or_default(),
+            "inbound sender denied by group participant allowlist"
+        );
+        return;
+    }
+
     let Some(decision) = router.resolve(&msg) else {
         warn!(
             channel = %msg.channel,
@@ -897,7 +913,9 @@ mod tests {
     use nous::manager::NousManager;
     use organon::registry::ToolRegistry;
     use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
-    use taxis::config::{ChannelBinding, CommandTier, InboundMessagePolicy};
+    use taxis::config::{
+        ChannelBinding, CommandTier, GroupParticipantPolicy, InboundMessagePolicy,
+    };
     use taxis::oikos::Oikos;
     use tokio::sync::Mutex;
 
@@ -1512,6 +1530,134 @@ mod tests {
         assert!(
             harness.sent.lock().await.is_empty(),
             "a denied sender must never reach the channel"
+        );
+
+        shutdown_harness(harness).await;
+    }
+
+    fn group_command_message(
+        sender: &str,
+        group_id: &str,
+        text: &str,
+        timestamp: u64,
+    ) -> InboundMessage {
+        InboundMessage {
+            channel: "signal".to_owned(),
+            sender: sender.to_owned(),
+            sender_name: Some(sender.to_owned()),
+            group_id: Some(group_id.to_owned()),
+            message_id: None,
+            text: text.to_owned(),
+            timestamp,
+            attachments: vec![],
+            receiving_account_id: None,
+            raw: None,
+        }
+    }
+
+    fn group_router_with_participant_policy() -> Arc<MessageRouter> {
+        // WHY a channel wildcard AND a global default alongside the group
+        // binding (unlike the #5193 strict_router above, which has only
+        // the group/wildcard tier): this is the exact shape #5194 flagged
+        // -- without the caller's `group_participant_allows` precheck, a
+        // denied group sender would still resolve, just via a *different*
+        // tier (ChannelDefault or GlobalDefault) instead of being refused
+        // outright. Both fallback tiers route to "alice" too, so the only
+        // way `dispatch_one_denies_a_group_participant...` below can prove
+        // "no message reached the channel" is if the precheck itself
+        // short-circuits before any of those tiers run.
+        let mut policy = GroupParticipantPolicy::default();
+        policy
+            .allowlist
+            .entry("signal".to_owned())
+            .or_default()
+            .insert("group-xyz".to_owned(), vec!["+15550100".to_owned()]);
+        Arc::new(
+            MessageRouter::new(
+                vec![
+                    ChannelBinding {
+                        channel: "signal".to_owned(),
+                        source: "group-xyz".to_owned(),
+                        nous_id: "alice".to_owned(),
+                        session_key: "signal:group:{group_id}".to_owned(),
+                        receiving_account_id: None,
+                        command_tier: CommandTier::default(),
+                    },
+                    ChannelBinding {
+                        channel: "signal".to_owned(),
+                        source: "*".to_owned(),
+                        nous_id: "alice".to_owned(),
+                        session_key: "signal:{source}".to_owned(),
+                        receiving_account_id: None,
+                        command_tier: CommandTier::default(),
+                    },
+                ],
+                Some("alice".to_owned()),
+            )
+            .with_inbound_policy(InboundMessagePolicy {
+                default_deny: false,
+                ..InboundMessagePolicy::default()
+            })
+            .with_group_participants(policy),
+        )
+    }
+
+    // PROOF(#5194): a sender rejected by a restricted group's participant
+    // allowlist must never reach the channel -- not even via the channel
+    // wildcard or global default nous that `group_router_with_participant_
+    // policy` deliberately also configures for "group-xyz"'s channel. If
+    // `dispatch_one` only gated the group tier inside `match_route` (the
+    // superseded design), this message would still resolve and dispatch
+    // through one of those other tiers; this test fails under that design
+    // and passes only because `dispatch_one` calls
+    // `router.group_participant_allows` as a hard precheck.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dispatch_one_denies_a_group_participant_not_in_the_allowlist() {
+        let harness = make_dispatch_harness().await;
+        let router = group_router_with_participant_policy();
+        let msg = group_command_message("+15559999", "group-xyz", "hello", 1_709_312_345_682);
+
+        dispatch_one(
+            msg,
+            router,
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+        )
+        .await;
+
+        assert!(
+            harness.sent.lock().await.is_empty(),
+            "a group sender denied by the allowlist must never reach the channel"
+        );
+
+        shutdown_harness(harness).await;
+    }
+
+    // PROOF(#5194, mixed privilege): in the SAME group, on the SAME
+    // router, the allowlisted sender still dispatches normally while a
+    // non-allowlisted sender (previous test) is denied -- the policy
+    // discriminates by sender identity within one group rather than
+    // gating the group as a whole.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dispatch_one_still_dispatches_an_allowlisted_group_participant() {
+        let harness = make_dispatch_harness().await;
+        let router = group_router_with_participant_policy();
+        let msg = group_command_message("+15550100", "group-xyz", "hello", 1_709_312_345_683);
+
+        dispatch_one(
+            msg,
+            router,
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+        )
+        .await;
+
+        assert_eq!(
+            harness.sent.lock().await.len(),
+            1,
+            "an allowlisted group participant must still be dispatched"
         );
 
         shutdown_harness(harness).await;

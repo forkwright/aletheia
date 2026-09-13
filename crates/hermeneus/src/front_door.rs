@@ -27,13 +27,22 @@
 
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async — lock held only during brief state reads/writes, never across .await
 
-/// Consecutive transport failures before [`FrontDoorState::Sleeping`] or
-/// [`FrontDoorState::Loading`] escalates to [`FrontDoorState::Failed`].
+/// Consecutive connection-refused failures before the front door escalates
+/// to [`FrontDoorState::Failed`].
 ///
 /// WHY: a single dropped connection or slow cold start is expected and
-/// self-resolving; a fourth consecutive failure without ever completing a
-/// request means something needs operator attention, not another silent
-/// retry-later hint.
+/// self-resolving; a fourth consecutive connection refusal without ever
+/// completing a request means nothing is accepting connections at all and
+/// something needs operator attention, not another silent retry-later hint.
+///
+/// Only [`TransportFailureKind::ConnectRefused`] counts toward this
+/// threshold. A [`TransportFailureKind::Timeout`] means the backend
+/// *accepted the connection* but has not answered yet — positive evidence
+/// the process is alive and mid-cold-start ([`FrontDoorState::Loading`]),
+/// i.e. deployment lifecycle state, not failure evidence. Counting timeouts
+/// here latched `Failed` on healthy-but-busy providers: a maintenance
+/// cycle hitting a `--parallel 1` llama.cpp during a ~15s model load
+/// accumulated three Loading timeouts and latched `Failed` until restart.
 pub const FRONT_DOOR_FAILURE_THRESHOLD: u32 = 3;
 
 /// Retry hint for a [`FrontDoorState::Sleeping`] refusal, in milliseconds.
@@ -65,6 +74,13 @@ pub const FAILED_RETRY_HINT_MS: u64 = 30_000;
 /// Derived directly from `reqwest::Error::is_connect()` /
 /// `reqwest::Error::is_timeout()` at the call site — see
 /// `crates/hermeneus/src/openai/error.rs::map_request_error`.
+///
+/// The kinds differ in what they prove about the backend:
+/// [`ConnectRefused`](Self::ConnectRefused) means nothing accepted the
+/// connection (genuine availability-failure evidence, counted toward
+/// [`FRONT_DOOR_FAILURE_THRESHOLD`]); [`Timeout`](Self::Timeout) means the
+/// backend accepted the connection but has not answered (lifecycle evidence
+/// of a cold start in progress, never counted toward the threshold).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TransportFailureKind {
@@ -97,9 +113,12 @@ pub enum FrontDoorState {
     /// see the module docs for why this state has no separate refusal
     /// error of its own.
     Overloaded,
-    /// [`FRONT_DOOR_FAILURE_THRESHOLD`] consecutive transport failures
-    /// without an intervening success. Needs operator attention; the front
-    /// door does not attempt to recover this state on its own.
+    /// [`FRONT_DOOR_FAILURE_THRESHOLD`] consecutive connection-refused
+    /// failures without an intervening success. Needs operator attention;
+    /// the front door does not attempt to recover this state on its own.
+    ///
+    /// Loading timeouts never reach this state on their own — only a
+    /// provider that repeatedly refuses connections latches here.
     Failed,
 }
 
@@ -222,23 +241,40 @@ impl FrontDoorTracker {
     /// Record a transport failure and return the resulting state.
     ///
     /// [`TransportFailureKind::ConnectRefused`] moves to
-    /// [`FrontDoorState::Sleeping`] (nothing is accepting connections yet);
+    /// [`FrontDoorState::Sleeping`] (nothing is accepting connections) and
+    /// counts toward [`FRONT_DOOR_FAILURE_THRESHOLD`], escalating to
+    /// [`FrontDoorState::Failed`] at the threshold.
+    ///
     /// [`TransportFailureKind::Timeout`] moves to [`FrontDoorState::Loading`]
-    /// (a request reached the backend but did not complete). Either kind
-    /// escalates to [`FrontDoorState::Failed`] after
-    /// [`FRONT_DOOR_FAILURE_THRESHOLD`] consecutive failures.
+    /// (the backend accepted the connection but has not answered — a cold
+    /// start already in progress) and NEVER counts toward the threshold:
+    /// an accepted-but-unanswered connection is proof the process is alive,
+    /// not evidence it is failing. A provider that is busy loading or
+    /// serving its single slot must not latch `Failed` no matter how many
+    /// consecutive requests time out waiting on it. The timeout leaves the
+    /// accumulated connect-refused count untouched (neither incrementing
+    /// nor resetting it — a timeout is not a success either).
+    ///
+    /// A timeout observed while already [`FrontDoorState::Failed`] keeps the
+    /// latch: only [`Self::note_success`] recovers from `Failed`.
     pub fn note_transport_failure(&self, kind: TransportFailureKind) -> FrontDoorState {
         // kanon:ignore RUST/pub-visibility
         let mut inner = self.lock_inner();
-        inner.consecutive_failures = inner.consecutive_failures.saturating_add(1);
-        inner.state = if inner.consecutive_failures >= FRONT_DOOR_FAILURE_THRESHOLD {
-            FrontDoorState::Failed
-        } else {
-            match kind {
-                TransportFailureKind::ConnectRefused => FrontDoorState::Sleeping,
-                TransportFailureKind::Timeout => FrontDoorState::Loading,
+        match kind {
+            TransportFailureKind::ConnectRefused => {
+                inner.consecutive_failures = inner.consecutive_failures.saturating_add(1);
+                inner.state = if inner.consecutive_failures >= FRONT_DOOR_FAILURE_THRESHOLD {
+                    FrontDoorState::Failed
+                } else {
+                    FrontDoorState::Sleeping
+                };
             }
-        };
+            TransportFailureKind::Timeout => {
+                if inner.state != FrontDoorState::Failed {
+                    inner.state = FrontDoorState::Loading;
+                }
+            }
+        }
         inner.state
     }
 }
@@ -271,33 +307,73 @@ mod tests {
     #[test]
     fn success_moves_to_ready_and_resets_failures() {
         let tracker = FrontDoorTracker::new();
-        tracker.note_transport_failure(TransportFailureKind::Timeout);
+        tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
+        tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
         tracker.note_success();
         assert_eq!(tracker.state(), FrontDoorState::Ready);
 
-        // WHY: the reset must be real, not cosmetic — two more failures
-        // after a success should not immediately reach Failed.
-        tracker.note_transport_failure(TransportFailureKind::Timeout);
-        tracker.note_transport_failure(TransportFailureKind::Timeout);
-        assert_eq!(tracker.state(), FrontDoorState::Loading);
+        // WHY: the reset must be real, not cosmetic — two more connect
+        // refusals after a success should not reach Failed.
+        tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
+        tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
+        assert_eq!(tracker.state(), FrontDoorState::Sleeping);
+
+        // ...but the counting is equally real: the next refusal hits the
+        // threshold and latches.
+        let state = tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
+        assert_eq!(state, FrontDoorState::Failed);
     }
 
     #[test]
     fn threshold_consecutive_failures_escalate_to_failed() {
         let tracker = FrontDoorTracker::new();
         for _ in 0..FRONT_DOOR_FAILURE_THRESHOLD - 1 {
-            let state = tracker.note_transport_failure(TransportFailureKind::Timeout);
-            assert_ne!(state, FrontDoorState::Failed);
+            let state = tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
+            assert_eq!(state, FrontDoorState::Sleeping);
         }
-        let state = tracker.note_transport_failure(TransportFailureKind::Timeout);
+        let state = tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
         assert_eq!(state, FrontDoorState::Failed);
     }
 
     #[test]
-    fn mixed_failure_kinds_accumulate_toward_the_same_threshold() {
+    fn loading_timeouts_never_escalate_to_failed() {
+        // WHY: a Loading refusal is deployment lifecycle state (the backend
+        // accepted the connection and is mid-cold-start), not failure
+        // evidence — no number of consecutive timeouts may latch Failed.
+        let tracker = FrontDoorTracker::new();
+        for _ in 0..FRONT_DOOR_FAILURE_THRESHOLD * 4 {
+            let state = tracker.note_transport_failure(TransportFailureKind::Timeout);
+            assert_eq!(state, FrontDoorState::Loading);
+        }
+        assert_eq!(tracker.state(), FrontDoorState::Loading);
+    }
+
+    #[test]
+    fn loading_timeouts_after_a_success_never_escalate_to_failed() {
+        // WHY: a provider that is actively completing requests must never be
+        // latched Failed — successes keep resetting the connect-refused
+        // count, and timeouts never count at all.
+        let tracker = FrontDoorTracker::new();
+        tracker.note_success();
+        assert_eq!(tracker.state(), FrontDoorState::Ready);
+        for _ in 0..FRONT_DOOR_FAILURE_THRESHOLD * 4 {
+            let state = tracker.note_transport_failure(TransportFailureKind::Timeout);
+            assert_ne!(state, FrontDoorState::Failed);
+        }
+        assert_eq!(tracker.state(), FrontDoorState::Loading);
+    }
+
+    #[test]
+    fn connect_refusals_accumulate_across_interleaved_timeouts() {
+        // WHY: a timeout neither increments nor resets the connect-refused
+        // count — it is lifecycle evidence, not success evidence. Refusals
+        // on either side of a Loading observation still accumulate toward
+        // the same threshold.
         let tracker = FrontDoorTracker::new();
         tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
-        tracker.note_transport_failure(TransportFailureKind::Timeout);
+        let state = tracker.note_transport_failure(TransportFailureKind::Timeout);
+        assert_eq!(state, FrontDoorState::Loading);
+        tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
         let state = tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
         assert_eq!(state, FrontDoorState::Failed);
     }
@@ -306,12 +382,16 @@ mod tests {
     fn failed_state_requires_a_success_to_recover() {
         let tracker = FrontDoorTracker::new();
         for _ in 0..FRONT_DOOR_FAILURE_THRESHOLD {
-            tracker.note_transport_failure(TransportFailureKind::Timeout);
+            tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
         }
         assert_eq!(tracker.state(), FrontDoorState::Failed);
 
         // WHY: a failure recorded while already Failed does not un-fail it
-        // (it is already the worst state) — only note_success recovers.
+        // (it is already the worst state) — only note_success recovers. A
+        // timeout while latched must not quietly downgrade to Loading
+        // either: the latch holds until a request actually completes.
+        tracker.note_transport_failure(TransportFailureKind::ConnectRefused);
+        assert_eq!(tracker.state(), FrontDoorState::Failed);
         tracker.note_transport_failure(TransportFailureKind::Timeout);
         assert_eq!(tracker.state(), FrontDoorState::Failed);
 

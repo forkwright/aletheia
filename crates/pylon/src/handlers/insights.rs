@@ -40,6 +40,7 @@ fn i64_to_f64(n: i64) -> f64 {
     responses(
         (status = 200, description = "Agent performance list", body = AgentPerformanceListResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -171,6 +172,7 @@ pub async fn get_agent_perf_one(
         (status = 200, description = "Quality metrics", body = QualityMetricsResponse),
         (status = 400, description = "Invalid query parameters", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -293,6 +295,7 @@ fn validate_optional_date(field: &str, value: Option<&str>) -> Result<(), ApiErr
         (status = 200, description = "Token metrics", body = TokenMetricsResponse),
         (status = 400, description = "Invalid query parameters", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -321,6 +324,7 @@ pub async fn get_token_metrics(
         (status = 200, description = "Cost metrics", body = CostMetricsResponse),
         (status = 400, description = "Invalid query parameters", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -349,6 +353,7 @@ pub async fn get_cost_metrics(
     responses(
         (status = 200, description = "Journal events", body = JournalResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -405,6 +410,7 @@ const TOOL_AUDIT_FETCH_LIMIT: usize = 200;
     responses(
         (status = 200, description = "Tool usage statistics", body = ToolStatsResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]

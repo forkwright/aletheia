@@ -658,24 +658,12 @@ impl crate::app::App {
                 Some(Msg::ToolApprovalAlwaysAllow)
             }
 
-            (_, KeyCode::Char(' ')) if self.is_plan_approval_overlay() => Some(Msg::OverlaySelect),
-            (_, KeyCode::Char('a' | 'A')) if self.is_plan_approval_overlay() => {
-                Some(Msg::OverlaySelect)
-            }
-            (_, KeyCode::Char('c' | 'C')) if self.is_plan_approval_overlay() => {
-                Some(Msg::CloseOverlay)
-            }
-
             _ => None,
         }
     }
 
     pub(crate) fn is_tool_approval_overlay(&self) -> bool {
         matches!(&self.layout.overlay, Some(Overlay::ToolApproval(_)))
-    }
-
-    fn is_plan_approval_overlay(&self) -> bool {
-        matches!(&self.layout.overlay, Some(Overlay::PlanApproval(_)))
     }
 
     #[expect(

@@ -26,6 +26,16 @@ def require_absent(path: str, needle: str, reason: str) -> None:
         FAILURES.append(f"{path}: forbidden {reason}: {needle!r}")
 
 
+def require_absent_word(path: str, token: str, reason: str) -> None:
+    """Like require_absent, but case-insensitive and word-bounded -- matches
+    .github/workflows/pr-title-pii.yml's `\\b...\\b` / `grep -qiE` behavior
+    rather than a bare case-sensitive substring check."""
+    pattern = re.compile(rf"\b{re.escape(token)}\b", re.IGNORECASE)
+    match = pattern.search(read(path))
+    if match:
+        FAILURES.append(f"{path}: forbidden {reason}: {match.group()!r}")
+
+
 def forbid_same_line(path: str, word_a: str, word_b: str, reason: str) -> None:
     a = word_a.lower()
     b = word_b.lower()
@@ -220,6 +230,29 @@ def check_onboarding_contract() -> None:
     require_absent("docs/QUICKSTART.md", "### Current supported path: desktop", "current supported path flipped to desktop")
 
 
+# WHY(aletheia#5328): .kanon-ci.toml renders in a public repo's root
+# directory listing, so its comments get the same scrutiny as any other
+# first-contact surface. Hardware-brand detail is generic and non-identifying,
+# so it is safe to name in a shared, public token list like this one; a
+# maintainer-private fleet hostname is not, so that class is guarded instead
+# via a maintainer-supplied PII_PATTERNS_EXTRA_FILE (scripts/scan-pii.sh) and
+# deliberately never added here.
+CI_CONFIG_FORBIDDEN_TOKENS = (
+    ("Threadripper", "private host hardware detail"),
+)
+CI_CONFIG_SURFACES = (
+    ".kanon-ci.toml",
+    ".github/workflows/gate-attestation.yml",
+    ".github/workflows/no-ai-attribution.yml",
+)
+
+
+def check_ci_config_hygiene() -> None:
+    for path in CI_CONFIG_SURFACES:
+        for token, reason in CI_CONFIG_FORBIDDEN_TOKENS:
+            require_absent_word(path, token, reason)
+
+
 def check_llms_references() -> None:
     """Fail when llms.txt links to _llm files that do not exist on disk."""
     llms = (ROOT / "llms.txt").read_text(encoding="utf-8")
@@ -238,6 +271,7 @@ def main() -> int:
     check_env_contract()
     reconcile_env_vars()
     check_onboarding_contract()
+    check_ci_config_hygiene()
     check_llms_references()
     if FAILURES:
         for failure in FAILURES:

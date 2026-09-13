@@ -546,6 +546,7 @@ mod tests {
                 session_type: None,
                 updated_at: None,
                 display_name: None,
+                active_turn_id: None,
             });
 
         handle_sse_session_archived(&mut app, "syn".into(), "s1".into());

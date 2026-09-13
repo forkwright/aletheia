@@ -54,6 +54,7 @@ fn top_level_help_lists_all_subcommands() {
         "export-skills",
         "review-skills",
         "completions",
+        "poiesis",
     ];
     let output = aletheia()
         .arg("--help")
@@ -109,6 +110,266 @@ help_test!(review_skills_help, "review-skills");
 help_test!(completions_help, "completions");
 help_test!(config_help, "config");
 help_test!(config_diff_help, "config", "diff");
+help_test!(poiesis_help, "poiesis");
+help_test!(poiesis_create_help, "poiesis", "create");
+help_test!(poiesis_list_help, "poiesis", "list");
+help_test!(poiesis_get_help, "poiesis", "get");
+help_test!(poiesis_preview_help, "poiesis", "preview");
+help_test!(poiesis_qa_help, "poiesis", "qa");
+help_test!(poiesis_lint_help, "poiesis", "lint");
+help_test!(poiesis_verify_help, "poiesis", "verify");
+help_test!(poiesis_run_help, "poiesis", "run");
+
+// ── Poiesis: end-to-end, no server or instance required ──────────────────────
+
+#[test]
+fn poiesis_list_components_lists_the_shipped_packs() {
+    // forkwright/aletheia#7172 acceptance: `poiesis list-components` must
+    // work end-to-end and enumerate the shipped Deck component packs.
+    aletheia()
+        .arg("poiesis")
+        .arg("list-components")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("title"))
+        .stdout(predicate::str::contains("bullet"))
+        .stdout(predicate::str::contains("chart"));
+}
+
+#[test]
+fn poiesis_list_json_is_parseable() {
+    let output = aletheia()
+        .args(["poiesis", "list", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output).expect("poiesis list --json must emit valid JSON");
+    let components = parsed
+        .get("components")
+        .and_then(serde_json::Value::as_array)
+        .expect("components must be an array");
+    assert!(
+        components.iter().any(|v| v.as_str() == Some("title")),
+        "expected 'title' in {components:?}"
+    );
+}
+
+#[test]
+fn poiesis_get_unknown_component_fails_loud() {
+    aletheia()
+        .args(["poiesis", "get", "no-such-component"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown component"));
+}
+
+#[test]
+fn poiesis_get_known_component_prints_schema() {
+    aletheia()
+        .args(["poiesis", "get", "title"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"schema\""));
+}
+
+#[tokio::test]
+async fn poiesis_preview_renders_a_pdf_end_to_end() {
+    // forkwright/aletheia#7172 acceptance: `poiesis preview` must work
+    // end-to-end. The default built-in Typst template needs no `--data`.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let out_path = dir.path().join("preview.pdf");
+    aletheia()
+        .args([
+            "poiesis",
+            "preview",
+            "--out",
+            out_path.to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .success();
+    let bytes = tokio::fs::read(&out_path)
+        .await
+        .expect("preview must write the output file");
+    assert!(
+        bytes.starts_with(b"%PDF"),
+        "preview output must be a real PDF"
+    );
+}
+
+#[test]
+fn poiesis_preview_rejects_unknown_template() {
+    // forkwright/aletheia#7172 required-fixes: a `--template` slug the
+    // engine does not recognize must fail loud, naming the slug, rather
+    // than silently falling back to a default.
+    aletheia()
+        .args(["poiesis", "preview", "--template", "no-such-template"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no-such-template"));
+}
+
+#[tokio::test]
+async fn poiesis_create_scaffolds_a_project_to_a_directory() {
+    // forkwright/aletheia#7172: canon `create` is `scaffold_report`, not a
+    // render -- this proves the CLI -> tool wiring writes real files to
+    // `--dir`, decoded from the tool's base64 manifest.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    aletheia()
+        .args([
+            "poiesis",
+            "create",
+            "--slug",
+            "quarterly-review",
+            "--format",
+            "typst",
+        ])
+        .arg("--dir")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("wrote"));
+    let report_path = dir.path().join("report.typ");
+    let bytes = tokio::fs::read(&report_path)
+        .await
+        .expect("create --dir must write the scaffolded report.typ");
+    assert!(!bytes.is_empty(), "scaffolded report.typ must not be empty");
+}
+
+#[tokio::test]
+async fn poiesis_run_renders_a_document_end_to_end() {
+    // WHY --format odt: `generate_document`'s docx/html/md/latex/epub/pdf
+    // paths all shell out to a system Pandoc install (`poiesis-doc`'s
+    // `pandoc` feature); odt is the one format rendered by a pure-Rust
+    // writer (`poiesis-text::OdtRenderer`), so this proves the CLI -> tool
+    // wiring end-to-end without depending on box-specific tooling.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let content_path = dir.path().join("blocks.json");
+    tokio::fs::write(
+        &content_path,
+        r#"[{"type":"heading","level":1,"text":"Hello"},{"type":"paragraph","text":"World"}]"#,
+    )
+    .await
+    .expect("write content fixture");
+    let out_path = dir.path().join("out.odt");
+
+    aletheia()
+        .args(["poiesis", "run", "--format", "odt"])
+        .arg("--content")
+        .arg(&content_path)
+        .arg("--out")
+        .arg(&out_path)
+        .assert()
+        .success();
+    let bytes = tokio::fs::read(&out_path)
+        .await
+        .expect("run must write the output file");
+    assert!(
+        bytes.starts_with(b"PK"),
+        "ODT output must be a real zip-based document"
+    );
+}
+
+#[tokio::test]
+async fn poiesis_run_rejects_non_json_content() {
+    // forkwright/aletheia#7172 required-fixes: malformed `--content` must
+    // fail loud naming `--content`, not fail deep inside the render tool.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let content_path = dir.path().join("blocks.txt");
+    tokio::fs::write(&content_path, "not json at all")
+        .await
+        .expect("write malformed content fixture");
+
+    aletheia()
+        .args(["poiesis", "run", "--format", "odt"])
+        .arg("--content")
+        .arg(&content_path)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--content"));
+}
+
+#[tokio::test]
+async fn poiesis_qa_passes_clean_prose() {
+    // WHY this exact fixture: `qa_gate`'s prose lint requires a lead
+    // section (`## Summary` et al.) and a closing section (`## Appendix`
+    // et al.) in addition to no banned words/citations/theme-token
+    // violations -- see `poiesis_lint::structure::check_sections`.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let prose_path = dir.path().join("prose.txt");
+    tokio::fs::write(
+        &prose_path,
+        "## Summary\n\nThis is a perfectly ordinary sentence about the project status.\n\n## Appendix\n",
+    )
+    .await
+    .expect("write prose fixture");
+
+    aletheia()
+        .args(["poiesis", "qa", "--prose"])
+        .arg(&prose_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"has_issues\":false"));
+}
+
+#[tokio::test]
+async fn poiesis_qa_reports_prose_findings() {
+    // forkwright/aletheia#7172 required-fixes: `qa` must exit non-zero when
+    // `QaReport.has_issues` is true, not just print the report and exit 0.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let prose_path = dir.path().join("prose.txt");
+    tokio::fs::write(
+        &prose_path,
+        "This report will delve into the quarterly numbers.",
+    )
+    .await
+    .expect("write prose fixture");
+
+    aletheia()
+        .args(["poiesis", "qa", "--prose"])
+        .arg(&prose_path)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("\"has_issues\":true"));
+}
+
+#[tokio::test]
+async fn poiesis_lint_reports_banned_word_findings() {
+    // forkwright/aletheia#7172 required-fixes: `lint` (the standalone
+    // decomposition of `qa`'s prose half) must exit non-zero on findings.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let prose_path = dir.path().join("prose.txt");
+    tokio::fs::write(
+        &prose_path,
+        "This report will delve into the quarterly numbers.",
+    )
+    .await
+    .expect("write prose fixture");
+
+    aletheia()
+        .args(["poiesis", "lint", "--prose"])
+        .arg(&prose_path)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("delve"));
+}
+
+#[tokio::test]
+async fn poiesis_verify_rejects_malformed_manifest() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let manifest_path = dir.path().join("manifest.json");
+    tokio::fs::write(&manifest_path, "not json at all")
+        .await
+        .expect("write malformed manifest fixture");
+
+    aletheia()
+        .args(["poiesis", "verify", "--manifest"])
+        .arg(&manifest_path)
+        .assert()
+        .failure();
+}
 
 // ── Completions (fully offline) ───────────────────────────────────────────────
 

@@ -30,7 +30,10 @@ futures = { workspace = true }
 [dev-dependencies]
 koina = { path = "../koina", features = ["test-support"] }
 organon = { path = "../organon", features = ["test-support"] }
-tokio = { workspace = true }
+# WHY: `#[tokio::test(start_paused = true)]` (crates/agora/src/registry.rs,
+# #6908) needs tokio's test-util feature to compile at all -- unrelated to
+# #5194, but this crate's test target does not build without it.
+tokio = { workspace = true, features = ["test-util"] }
 wiremock = { workspace = true }
 tempfile = { workspace = true }
 toml = { workspace = true }

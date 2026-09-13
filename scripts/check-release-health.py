@@ -30,6 +30,35 @@ TAG_RE = re.compile(
 )
 CONTRACT_BASELINE = (0, 39, 0)
 
+# WHY(2026-09-08 origin/main triage): these eight tags predate and document
+# the exact outage #6999 diagnosed and fixed (a tag can outlive a missed or
+# wholesale-cancelled release run) and cannot be remediated through the
+# normal pipeline, so they are named exceptions rather than a CONTRACT_
+# BASELINE bump -- every other tag, past or future, stays fully audited.
+#   - v0.39.0 is a PUBLISHED release with zero assets. release.yml's
+#     prepare-release job refuses by design to mutate an already-public
+#     release ("is already public; refusing to mutate it"), so no retry can
+#     ever populate it; the gap is permanent.
+#   - v0.40.0, v0.41.0, v0.42.0, v0.42.1, v0.42.2, v0.42.3, v0.43.0 are
+#     drafts that were never published (zero assets, draft since their
+#     2026-08-21..26 creation) -- abandoned runs from that same outage, all
+#     superseded by v0.44.0 (the first release after the fix landed, itself
+#     fully published with a complete inventory, as is v0.45.0 after it).
+#     Retrying them via release.yml's workflow_dispatch would ship stale,
+#     fully-superseded binaries for zero operational benefit.
+KNOWN_UNREMEDIABLE_LEGACY_TAGS = frozenset(
+    {
+        "v0.39.0",
+        "v0.40.0",
+        "v0.41.0",
+        "v0.42.0",
+        "v0.42.1",
+        "v0.42.2",
+        "v0.42.3",
+        "v0.43.0",
+    }
+)
+
 
 class HealthError(Exception):
     """The audit could not safely classify a release state."""
@@ -68,6 +97,8 @@ def version(tag: str) -> tuple[int, int, int] | None:
 
 
 def in_contract(tag: str) -> bool:
+    if tag in KNOWN_UNREMEDIABLE_LEGACY_TAGS:
+        return False
     parsed = version(tag)
     return parsed is not None and parsed >= CONTRACT_BASELINE
 

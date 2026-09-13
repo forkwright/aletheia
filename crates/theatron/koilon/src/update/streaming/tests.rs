@@ -5,7 +5,6 @@
 )]
 
 use super::*;
-use crate::api::types::PlanStep;
 use crate::app::test_helpers::*;
 
 #[test]
@@ -208,81 +207,6 @@ fn tool_approval_resolved_ignores_non_approval_overlay() {
 
     handle_stream_tool_approval_resolved(&mut app);
     assert!(matches!(app.layout.overlay, Some(Overlay::Help { .. })));
-}
-
-#[test]
-fn plan_proposed_opens_overlay() {
-    let mut app = test_app();
-    let plan = Plan {
-        id: "plan1".into(),
-        session_id: "s1".into(),
-        nous_id: "syn".into(),
-        steps: vec![PlanStep {
-            id: 1,
-            label: "Step 1".to_string(),
-            role: "analyst".to_string(),
-            parallel: None,
-            status: "pending".to_string(),
-            result: None,
-        }],
-        total_estimated_cost_cents: 50,
-        status: "proposed".to_string(),
-    };
-
-    handle_stream_plan_proposed(&mut app, plan);
-
-    assert!(matches!(app.layout.overlay, Some(Overlay::PlanApproval(_))));
-    if let Some(Overlay::PlanApproval(ref plan_overlay)) = app.layout.overlay {
-        assert_eq!(plan_overlay.steps.len(), 1);
-        assert!(plan_overlay.steps[0].checked);
-        assert_eq!(plan_overlay.total_cost_cents, 50);
-    }
-}
-
-#[test]
-fn plan_step_start_adds_ops_entry() {
-    let mut app = test_app();
-    handle_stream_plan_step_start(&mut app, 1);
-    assert_eq!(app.layout.ops.tool_calls.len(), 1);
-    assert_eq!(app.layout.ops.tool_calls[0].name, "plan step 1");
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Running
-    );
-}
-
-#[test]
-fn plan_step_complete_marks_done() {
-    let mut app = test_app();
-    handle_stream_plan_step_start(&mut app, 2);
-    handle_stream_plan_step_complete(&mut app, 2, "done".to_string());
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Complete
-    );
-}
-
-#[test]
-fn plan_step_complete_marks_failed_on_error_status() {
-    let mut app = test_app();
-    handle_stream_plan_step_start(&mut app, 3);
-    handle_stream_plan_step_complete(&mut app, 3, "failed".to_string());
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Failed
-    );
-}
-
-#[test]
-fn plan_complete_adds_completed_ops_entry() {
-    let mut app = test_app();
-    handle_stream_plan_complete(&mut app, "done".to_string());
-    assert_eq!(app.layout.ops.tool_calls.len(), 1);
-    assert_eq!(app.layout.ops.tool_calls[0].name, "plan: done");
-    assert_eq!(
-        app.layout.ops.tool_calls[0].status,
-        crate::state::ops::OpsToolStatus::Complete
-    );
 }
 
 #[test]
