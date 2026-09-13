@@ -26,8 +26,7 @@ pub(crate) struct SessionExportArgs {
     pub output: Option<PathBuf>,
 
     /// Server URL
-    #[arg(long, default_value = "http://127.0.0.1:18789")]
-    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    #[arg(long, default_value = crate::cli::DEFAULT_GATEWAY_URL)]
     pub url: String,
 
     /// Bearer token for authenticated endpoints
@@ -331,5 +330,23 @@ mod tests {
     #[test]
     fn validate_accepts_well_formed_args() {
         assert!(validate_args(&base_args()).is_ok());
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn default_url_matches_the_shared_gateway_default() {
+        use clap::Parser as _;
+
+        #[derive(Debug, clap::Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            export: SessionExportArgs,
+        }
+
+        // PROOF(#5100): `session-export` no longer restates its own
+        // gateway-URL default — it resolves to the one constant every
+        // HTTP-backed command shares.
+        let wrapper = Wrapper::try_parse_from(["session-export", "s1"]).unwrap();
+        assert_eq!(wrapper.export.url, crate::cli::DEFAULT_GATEWAY_URL);
     }
 }

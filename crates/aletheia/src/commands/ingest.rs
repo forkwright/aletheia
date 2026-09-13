@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use snafu::prelude::*;
 
+use pylon::client::GatewayClient;
+
 use crate::error::Result;
 
 /// Arguments for the `ingest` subcommand.
@@ -22,8 +24,7 @@ pub(crate) struct IngestArgs {
     #[arg(long)]
     pub dry_run: bool,
     /// Server URL for API routing when server is running.
-    #[arg(long, default_value = "http://127.0.0.1:18789")]
-    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    #[arg(long, default_value = crate::cli::DEFAULT_GATEWAY_URL)]
     pub url: String,
     /// Bearer token for API routes that require authentication.
     #[arg(long, env = "ALETHEIA_API_TOKEN")]
@@ -95,24 +96,6 @@ fn is_valid_format(s: &str) -> bool {
 // `is_knowledge_server_running` is canonical at `crate::commands` (#7023) —
 // its own tests live there rather than being restated per call site.
 
-/// Per-fact error returned by the ingest API.
-#[derive(Debug, serde::Deserialize)]
-struct IngestApiFactError {
-    index: usize,
-    #[serde(default)]
-    id: Option<String>,
-    message: String,
-}
-
-/// Response body returned by the ingest API.
-#[derive(Debug, serde::Deserialize)]
-struct IngestApiResponse {
-    inserted: usize,
-    skipped: usize,
-    #[serde(default)]
-    errors: Vec<IngestApiFactError>,
-}
-
 #[expect(
     clippy::too_many_lines,
     reason = "API ingest preserves direct-mode per-file reporting in one command flow"
@@ -124,8 +107,8 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
         return Ok(());
     }
 
-    let endpoint = format!("{}/api/v1/knowledge/ingest", args.url);
-    let client = reqwest::Client::new();
+    let client = GatewayClient::new(&args.url, args.token.clone())
+        .whatever_context("failed to build HTTP client")?;
 
     let mut total_inserted = 0usize;
     let mut total_skipped = 0usize;
@@ -180,86 +163,58 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
             continue;
         }
 
-        let body = serde_json::json!({
-            "content": content,
-            "format": format_str,
-            "nous_id": args.nous_id,
-        });
-
-        let mut request = client.post(&endpoint).json(&body);
-        if let Some(t) = &args.token {
-            request = request.header("Authorization", format!("Bearer {t}"));
-        }
-
-        let resp = request
-            .send()
+        // WHY(#5100): auth (bearer token), CSRF, and content-type headers are
+        // no longer built per call site — `GatewayClient` applies them once,
+        // from the token this client was constructed with.
+        match client
+            .ingest(&content, format_str, args.nous_id.as_str())
             .await
-            .whatever_context("failed to send ingest request")?;
-
-        if resp.status() == reqwest::StatusCode::BAD_REQUEST
-            || resp.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY
         {
-            let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "<unable to read response>".to_owned());
-            let msg = format!("{status}: {text}");
-            tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
-            eprintln!("[warn] {}: {msg}", file.display());
-            errored.push((file.clone(), msg));
-            continue;
-        }
+            Ok(result) => {
+                println!(
+                    "{}: inserted {}, skipped {}",
+                    file.display(),
+                    result.inserted,
+                    result.skipped
+                );
 
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            whatever!("authentication failed: API token required or invalid");
-        }
-        if resp.status() == reqwest::StatusCode::FORBIDDEN {
-            whatever!("authorization failed: token lacks required permissions");
-        }
-        if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
-            whatever!("knowledge store is not enabled on the running server");
-        }
+                for err in &result.errors {
+                    tracing::warn!(
+                        file = %file.display(),
+                        index = err.index,
+                        fact_id = ?err.id,
+                        error = %err.message,
+                        "fact insert failed"
+                    );
+                    eprintln!(
+                        "  [warn] fact {} ({}): {}",
+                        err.index,
+                        err.id.as_deref().unwrap_or("?"),
+                        err.message
+                    );
+                }
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "<unable to read response>".to_owned());
-            whatever!("ingest API returned {status}: {text}");
+                total_inserted += result.inserted;
+                total_skipped += result.skipped;
+            }
+            // A malformed request (400) or a validation failure (422) is
+            // this file's problem, not the run's -- log it and keep going,
+            // matching every other per-file failure in this loop.
+            Err(pylon::client::Error::Server {
+                status, message, ..
+            }) if matches!(status, 400 | 422) => {
+                let msg = format!("{status}: {message}");
+                tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
+                eprintln!("[warn] {}: {msg}", file.display());
+                errored.push((file.clone(), msg));
+            }
+            // Everything else (auth failure, the knowledge store being
+            // unavailable, a transport error) is fatal for the whole run --
+            // `GatewayClient`'s `Error` already renders it clearly.
+            Err(e) => {
+                whatever!("ingest API request failed: {e}");
+            }
         }
-
-        let result: IngestApiResponse = resp
-            .json()
-            .await
-            .whatever_context("failed to parse ingest response")?;
-
-        println!(
-            "{}: inserted {}, skipped {}",
-            file.display(),
-            result.inserted,
-            result.skipped
-        );
-
-        for err in &result.errors {
-            tracing::warn!(
-                file = %file.display(),
-                index = err.index,
-                fact_id = ?err.id,
-                error = %err.message,
-                "fact insert failed"
-            );
-            eprintln!(
-                "  [warn] fact {} ({}): {}",
-                err.index,
-                err.id.as_deref().unwrap_or("?"),
-                err.message
-            );
-        }
-
-        total_inserted += result.inserted;
-        total_skipped += result.skipped;
     }
 
     println!(
@@ -483,6 +438,49 @@ mod tests {
 
     use super::*;
 
+    /// Spawn a one-shot stub server: accept a single connection, read
+    /// whatever the caller sends, and reply with `status_line` + a JSON
+    /// `body`. Returns the address to point `--url` at and a handle that
+    /// resolves to the raw request text once awaited — shared by every test
+    /// below that only cares about one request/response round trip.
+    async fn spawn_stub_response(
+        status_line: &str,
+        body: &str,
+    ) -> (std::net::SocketAddr, tokio::task::JoinHandle<String>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status_line = status_line.to_owned();
+        let body = body.to_owned();
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 4096];
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            let request = String::from_utf8_lossy(buf.get(..n).unwrap_or_default()).into_owned();
+            let response = format!(
+                "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            request
+        });
+        (addr, handle)
+    }
+
+    /// `IngestArgs` for a live (non-dry-run) run against `url`, format and
+    /// agent id fixed — shared by every test below that only varies the
+    /// stub response and the bearer token.
+    fn live_args(input: PathBuf, url: String, token: Option<String>) -> IngestArgs {
+        IngestArgs {
+            path: input,
+            format: "auto".to_owned(),
+            nous_id: koina::id::NousId::new("alice").unwrap(),
+            dry_run: false,
+            url,
+            token,
+        }
+    }
+
     #[tokio::test]
     async fn api_dry_run_does_not_send_post() {
         organon::testing::install_crypto_provider();
@@ -527,6 +525,112 @@ mod tests {
             0,
             "dry-run must not contact the API"
         );
+    }
+
+    /// PROOF(#5100): `ingest` now goes through `pylon::client::GatewayClient`
+    /// instead of a hand-rolled `reqwest::Client` — the shared client
+    /// attaches the bearer token and CSRF header on every request rather
+    /// than `run_via_api` building an `Authorization` header itself. This
+    /// fails before the migration (no header would be attached without the
+    /// removed manual `.header("Authorization", ...)` call, and the CSRF
+    /// header was never sent at all) and passes after.
+    #[tokio::test]
+    async fn api_live_run_sends_through_the_shared_client() {
+        organon::testing::install_crypto_provider();
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.txt");
+        std::fs::write(&input, "one fact").unwrap();
+
+        let (addr, server) = spawn_stub_response(
+            "HTTP/1.1 200 OK",
+            r#"{"inserted":1,"skipped":0,"errors":[]}"#,
+        )
+        .await;
+        let args = live_args(input, format!("http://{addr}"), Some("tok".to_owned()));
+
+        run_via_api(&args).await.unwrap();
+        let request = server.await.unwrap();
+
+        assert!(
+            request.starts_with("POST /api/v1/knowledge/ingest"),
+            "got: {request}"
+        );
+        assert!(
+            request.to_lowercase().contains("authorization: bearer tok"),
+            "shared client must attach the bearer token: {request}"
+        );
+        assert!(
+            request.contains("x-requested-with"),
+            "shared client must attach the CSRF header: {request}"
+        );
+    }
+
+    /// PROOF(review #5100): a 422 (validation failure) from the shared
+    /// client is per-file recoverable, exactly like every other per-file
+    /// failure in this loop — it must not abort the run. Reaching `Ok(())`
+    /// here is only possible if the loop matched the `Error::Server{422}`
+    /// arm and `continue`d rather than falling through to the fatal `Err(e)`
+    /// arm, since a single-file run that hit the fatal arm would return
+    /// `Err` instead.
+    #[tokio::test]
+    async fn api_live_run_recovers_from_a_422_and_continues() {
+        organon::testing::install_crypto_provider();
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.txt");
+        std::fs::write(&input, "one fact").unwrap();
+
+        let (addr, server) = spawn_stub_response(
+            "HTTP/1.1 422 Unprocessable Entity",
+            r#"{"error":{"code":"validation_failed","message":"bad fact shape","request_id":null}}"#,
+        )
+        .await;
+        let args = live_args(input, format!("http://{addr}"), None);
+
+        let result = run_via_api(&args).await;
+        server.await.unwrap();
+
+        assert!(
+            result.is_ok(),
+            "a 422 must be recoverable per-file, not fatal to the whole run: {result:?}"
+        );
+    }
+
+    /// PROOF(review #5100): everything other than a per-file-recoverable
+    /// 400/422 is fatal for the whole run, including an auth failure — the
+    /// shared client's `Error::Auth` must propagate out of `run_via_api`
+    /// rather than being swallowed as another skipped file.
+    #[tokio::test]
+    async fn api_live_run_fails_the_whole_run_on_a_401() {
+        organon::testing::install_crypto_provider();
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.txt");
+        std::fs::write(&input, "one fact").unwrap();
+
+        let (addr, server) = spawn_stub_response(
+            "HTTP/1.1 401 Unauthorized",
+            r#"{"error":{"code":"unauthorized","message":"missing or invalid token","request_id":null}}"#,
+        )
+        .await;
+        let args = live_args(input, format!("http://{addr}"), None);
+
+        let err = run_via_api(&args).await.unwrap_err();
+        server.await.unwrap();
+
+        assert!(
+            err.to_string().to_lowercase().contains("auth"),
+            "got: {err}"
+        );
+    }
+
+    /// PROOF(#5100): `ingest`'s `--url` no longer restates its own
+    /// gateway-URL default — it resolves to the one constant every
+    /// HTTP-backed command shares.
+    #[test]
+    fn default_url_matches_the_shared_gateway_default() {
+        use clap::Parser as _;
+
+        let args = IngestArgs::try_parse_from(["ingest", "/tmp/x"]).unwrap();
+        assert_eq!(args.url, crate::cli::DEFAULT_GATEWAY_URL);
     }
 
     fn args_with(path: PathBuf, format: &str, nous_id: &str) -> IngestArgs {

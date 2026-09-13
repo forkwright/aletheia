@@ -34,6 +34,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::CommandFactory;
+use snafu::ResultExt as _;
 use taxis::oikos::Oikos;
 
 use crate::cli::{Cli, Command};
@@ -210,17 +211,16 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
 /// coerce to "server not running" and let a caller fall through to direct
 /// knowledge-store access with garbage in `--url`. Canonical for every
 /// direct-store command that must not open the store out from under a
-/// running server (#7023) — uses [`koina::http::API_HEALTH`] rather than a
-/// hand-built route string, so a health-route change is one edit.
+/// running server (#7023) — routed through [`pylon::client::GatewayClient`]
+/// (#5100) rather than a hand-rolled `reqwest::get`, so URL resolution and
+/// the health route both come from the one shared client.
 pub(crate) async fn is_knowledge_server_running(url: &str) -> crate::error::Result<bool> {
     if let Err(e) = reqwest::Url::parse(url) {
         snafu::whatever!("--url is not a valid URL: {e} (got {:?})", url);
     }
-    let endpoint = format!("{url}{}", koina::http::API_HEALTH);
-    match reqwest::get(&endpoint).await {
-        Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
-        Err(_) => Ok(false),
-    }
+    let client = pylon::client::GatewayClient::new(url, None)
+        .whatever_context("failed to build HTTP client")?;
+    Ok(client.health().await.unwrap_or(false))
 }
 
 /// Fail with the canonical "the running server holds the knowledge-store
