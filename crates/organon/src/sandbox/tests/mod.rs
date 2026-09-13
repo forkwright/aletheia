@@ -439,16 +439,28 @@ fn landlock_applies_in_child() {
 
     let config = SandboxConfig::default();
     let dir = tempfile::tempdir().expect("create temp dir");
+    // WHY(#7338): probe a file this test creates under the workspace it owns
+    // rather than /etc/hostname -- a CI sandbox (e.g. the forge's bubblewrap
+    // jail) may not bind /etc/hostname into the outer mount namespace at all,
+    // which failed this test for a reason unrelated to landlock. The
+    // workspace directory is already granted read+write+exec by
+    // `build_policy`, so it proves the same thing hermetically.
+    let probe_file = dir.path().join("landlock-probe.txt");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test setup requires direct filesystem access"
+    )]
+    std::fs::write(&probe_file, "landlock probe").expect("write probe file");
     let policy = config.build_policy(dir.path(), &[]);
 
     let mut cmd = Command::new("cat");
-    cmd.arg("/etc/hostname");
+    cmd.arg(&probe_file);
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
     let output = cmd.output().expect("spawn child");
     assert!(
         output.status.success(),
-        "reading /etc/hostname should be allowed"
+        "reading a file inside the granted workspace root should be allowed"
     );
 }
 

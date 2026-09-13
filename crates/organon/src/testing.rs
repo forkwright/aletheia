@@ -15,12 +15,12 @@
 //! ```
 
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use koina::id::{NousId, SessionId, ToolName};
+use koina::system::{Environment, RealSystem};
 use taxis::config::ToolLimitsConfig;
 
 use crate::error::Result;
@@ -324,13 +324,24 @@ pub fn test_receipt_signer() -> crate::receipts::ReceiptSigner {
     reason = "test-support: 'alice' is a known-valid NousId in synthetic test data"
 )]
 pub fn make_test_context() -> ToolContext {
+    // WHY(#7338): derive the default workspace/allowed-roots from the same
+    // system temp directory `tempfile::tempdir()` uses (`RealSystem::temp_dir()`,
+    // i.e. `std::env::temp_dir()`, which honors `TMPDIR`) instead of a
+    // hardcoded `/tmp`. A test built on this context that also stages fixture
+    // paths via `tempfile::tempdir()` must see them fall under
+    // `allowed_roots`; a literal `/tmp` only matched by coincidence on hosts
+    // where `TMPDIR` happens to be unset or `/tmp`, and diverged from it in
+    // the forge sandbox, which sets `TMPDIR` to a per-run cache path. Mirrors
+    // the identical fix already applied to production sandbox policy
+    // construction (see the WHY in `sandbox/config.rs::build_policy`).
+    let temp_root = RealSystem.temp_dir();
     ToolContext {
         nous_id: NousId::new("alice").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         turn_identity: test_turn_identity(0),
         receipt_signer: test_receipt_signer(),
-        workspace: PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
+        workspace: temp_root.join("aletheia-test"),
+        allowed_roots: vec![temp_root],
         services: None,
         active_tools: Arc::new(RwLock::new(std::collections::HashSet::new())),
         tool_config: Arc::new(ToolLimitsConfig::default()),
@@ -351,8 +362,9 @@ pub fn make_tool_input(name: &ToolName) -> ToolInput {
 ///
 /// Unlike [`make_test_context`], both `workspace` and the sole
 /// `allowed_roots` entry are the caller's directory — the shape every
-/// filesystem- or workspace-touching builtin test needs (a `tempdir`, not the
-/// fixed `/tmp/aletheia-test`). No runtime services are attached.
+/// filesystem- or workspace-touching builtin test needs (a `tempdir`, not
+/// [`make_test_context`]'s own system-temp-dir default). No runtime services
+/// are attached.
 #[must_use]
 #[expect(
     clippy::expect_used,
@@ -372,11 +384,12 @@ pub fn make_test_context_at(dir: &std::path::Path) -> ToolContext {
     }
 }
 
-/// Build a [`ToolContext`] with no runtime services attached, at the fixed
-/// `/tmp/test` workspace.
+/// Build a [`ToolContext`] with no runtime services attached, at a `test`
+/// subdirectory of the system temp dir (honors `TMPDIR`; see the WHY on
+/// [`make_test_context`]).
 ///
 /// Companion to [`make_test_context_at`] for tests that don't need a real
-/// temp directory but do need the `test-agent` / `/tmp/test` shape shared
+/// temp directory but do need the `test-agent` / system-temp-dir shape shared
 /// with [`make_test_context_with`] and [`make_test_context_with_services`] --
 /// e.g. an executor's "service not configured" error path, where a populated
 /// [`ToolServices`] (even all-`None`) would take a different code path than
@@ -387,21 +400,26 @@ pub fn make_test_context_at(dir: &std::path::Path) -> ToolContext {
     reason = "test-support: 'test-agent' is a known-valid NousId in synthetic test data"
 )]
 pub fn make_test_context_without_services() -> ToolContext {
+    // WHY(#7338): see `make_test_context`'s WHY -- derive from the real
+    // system temp dir (honoring `TMPDIR`) instead of a hardcoded `/tmp`, so
+    // this shape stays consistent with fixture paths built via
+    // `tempfile::tempdir()` regardless of where the host points `TMPDIR`.
+    let temp_root = RealSystem.temp_dir();
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         turn_identity: test_turn_identity(0),
         receipt_signer: test_receipt_signer(),
-        workspace: std::path::PathBuf::from("/tmp/test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+        workspace: temp_root.join("test"),
+        allowed_roots: vec![temp_root],
         services: None,
         active_tools: Arc::new(RwLock::new(std::collections::HashSet::new())),
         tool_config: Arc::new(ToolLimitsConfig::default()),
     }
 }
 
-/// Build a [`ToolContext`] with the given [`ToolServices`] attached, at the
-/// fixed `/tmp/test` workspace.
+/// Build a [`ToolContext`] with the given [`ToolServices`] attached, at
+/// [`make_test_context_without_services`]'s system-temp-dir workspace.
 ///
 /// Installs the default crypto provider first, since every caller of this
 /// shape exercises an executor that may reach for TLS (HTTP client, research,
@@ -419,7 +437,8 @@ pub fn make_test_context_with(services: ToolServices) -> ToolContext {
 }
 
 /// Build a [`ToolContext`] with a service-populated (but all-`None`)
-/// [`ToolServices`] attached, at the fixed `/tmp/test` workspace.
+/// [`ToolServices`] attached, at
+/// [`make_test_context_without_services`]'s system-temp-dir workspace.
 ///
 /// Individual services are `None`; call [`make_test_context_with`] directly
 /// for a test that needs one populated.
