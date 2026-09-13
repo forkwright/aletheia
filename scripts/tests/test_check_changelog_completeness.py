@@ -249,5 +249,32 @@ class RefValidation(unittest.TestCase):
                 ccc.commits_in_range(root, "--output=/tmp/pwned", "HEAD")
 
 
+class BackfilledEntryStaysCovered(unittest.TestCase):
+    """Regression guard for aletheia#7270: release-please dropped commit 5e62b60
+    (`fix(poiesis) #7062`) from the shipped 0.44.0 changelog -- the same silent
+    parser drop #7107/#7273 describe, on a second commit #7273 named but did not
+    backfill. This reads the real, checked-in CHANGELOG.md (not a synthetic repo)
+    so it fails on the pre-#7270 tree and passes once the entry is restored."""
+
+    def test_commit_5e62b60_is_named_in_the_real_0_44_0_section(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        lines = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+        heading_indices = [
+            i for i, line in enumerate(lines) if ccc.CHANGELOG_HEADING_RE.match(line)
+        ]
+        start = next(i for i in heading_indices if lines[i].startswith("## [0.44.0]"))
+        end = next((i for i in heading_indices if i > start), len(lines))
+        section = "\n".join(lines[start:end])
+
+        dropped_commit = ccc.RangeCommit(
+            sha="5e62b60d075f991b6990743a7d2792c61ea94c07",
+            subject=(
+                "fix(poiesis): consolidate small forks in ids, XML, charts, sources, "
+                "and model helpers (#7062)"
+            ),
+        )
+        self.assertEqual(ccc.missing_entries([dropped_commit], {"fix"}, section), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -24,10 +24,25 @@ use crate::commands::migrate::MigrateArgs;
 use crate::commands::poiesis;
 use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
+use crate::commands::service;
 use crate::commands::session_create::SessionCreateArgs;
 use crate::commands::session_export::SessionExportArgs;
 use crate::commands::session_store;
 use crate::commands::tls;
+
+/// Default gateway base URL every HTTP-backed CLI command falls back to when
+/// its own `--url` is not supplied.
+///
+/// WHY(#5100): `health`, `session-export`, `eval`, `benchmark`, `ingest`,
+/// `repl`, `session-create`, `migrate`, and this file's own `memory`/`status`
+/// subcommands each used to restate this literal independently, letting one
+/// drift from the rest silently. Defined once here and referenced everywhere
+/// instead. (`agent-io`'s init/import/export-skills/seed-skills/review-skills/
+/// migrate-memory subcommands still restate it for their own
+/// lock-detection `--url` — out of scope for #5100, which named health,
+/// session-export, ingest, eval, and benchmark.)
+// kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+pub(crate) const DEFAULT_GATEWAY_URL: &str = "http://127.0.0.1:18789";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -91,8 +106,7 @@ pub(crate) enum Command {
     /// Knowledge graph inspection and maintenance
     Memory {
         /// Server URL for API routing when server is running
-        #[arg(long, default_value = "http://127.0.0.1:18789")]
-        // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+        #[arg(long, default_value = DEFAULT_GATEWAY_URL)]
         url: String,
         /// Bearer token for API routes that require authentication
         #[arg(long, env = "ALETHEIA_API_TOKEN")]
@@ -105,11 +119,16 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: tls::Action,
     },
+    /// Generate, install, or verify a systemd user service unit from
+    /// resolved install paths
+    Service {
+        #[command(subcommand)]
+        action: service::Action,
+    },
     /// Show system status
     Status {
         /// Server URL to check
-        #[arg(long, default_value = "http://127.0.0.1:18789")]
-        // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+        #[arg(long, default_value = DEFAULT_GATEWAY_URL)]
         url: String,
     },
     /// Credential management

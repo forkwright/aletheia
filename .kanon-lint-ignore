@@ -139,3 +139,15 @@ API/mixed-casing:crates/hermeneus/src/provider.rs
 # source while labelling it a snapshot of the original. It has to stay wrong by our standards to stay
 # right as evidence. It is also not a workspace member, so nothing under it is ever compiled.
 **:crates/krites/upstream-snapshot/**
+
+# WHY(#7347): crates/third-party/lopdf/README.md is the vendored upstream
+# lopdf README (J-F-Liu/lopdf), kept byte-faithful to the source it
+# documents. Rewording it to satisfy these WRITING findings would diverge
+# the vendored copy from upstream; every other WRITING lint debt finding in
+# the tree was fixed in place in #7347 instead.
+WRITING/vague-link-text:crates/third-party/lopdf/README.md
+WRITING/em-dash:crates/third-party/lopdf/README.md
+WRITING/title-case-header:crates/third-party/lopdf/README.md
+WRITING/temporal-staleness:crates/third-party/lopdf/README.md
+WRITING/ai-trope:comprehensive:crates/third-party/lopdf/README.md
+WRITING/weasel-word:crates/third-party/lopdf/README.md

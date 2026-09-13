@@ -3,7 +3,7 @@
 ## Before anything else: find the binary that owns your store
 
 **Do not run a bare `aletheia` during an upgrade.** An instance that has been upgraded
-before very often has two binaries — the one its unit runs by absolute path, and an
+before often has two binaries — the one its unit runs by absolute path, and an
 older one still on `PATH` from an earlier install. They can be many versions apart:
 
 ```bash
@@ -41,7 +41,8 @@ started. Do not guess, and do not fall back to `which aletheia`.
 
 ## Upgrade process
 
-1. Confirm what owns the store — the section above. Every command below uses
+1. Confirm what owns the store, per "Before anything else: find the binary
+   that owns your store". Every command in this procedure uses
    `$ALETHEIA_BIN`, never a bare `aletheia`.
 2. Back up, with the binary that owns the store:
    ```bash

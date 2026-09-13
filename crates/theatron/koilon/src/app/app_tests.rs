@@ -377,10 +377,22 @@ mod tests {
     #[tokio::test]
     async fn reauthenticate_surfaces_gateway_unreachable_distinctly_from_auth_rejected() {
         let mut app = test_app();
-        // WHY: test_app()'s default URL (localhost:18789) has no listener,
-        // so the probe hits a connection refusal rather than a 401/403 —
-        // the other branch of the same classification this issue exists
-        // to split apart.
+        // WHY(forge sandbox hermeticity): test_app()'s default URL points at
+        // aletheia's compiled-in default gateway port (localhost:18789).
+        // Under the forge sandbox's shared network namespace that port can
+        // reach an unrelated live gateway instead of refusing the
+        // connection, turning this into a false 2xx. Reserve our own
+        // ephemeral port and drop the listener immediately: nothing is
+        // bound there, so the probe hits a genuine connection refusal
+        // rather than a 401/403 — the other branch of the same
+        // classification this issue exists to split apart.
+        let reserved = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("reserve an unused test port");
+        let addr = reserved.local_addr().expect("read reserved port");
+        drop(reserved);
+        app.config.url = format!("http://{addr}");
+
         let err = app
             .reauthenticate("some-token")
             .await

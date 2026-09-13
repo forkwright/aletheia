@@ -12,9 +12,6 @@ preview and uses the same HTTP API and SSE stream as the TUI, but it is not the
 default public onboarding path until the release train ships matching desktop
 artifacts.
 
-This document describes the v1.0 target workflow and labels each surface by its
-current implementation status.
-
 Status labels in this document mean:
 
 - **Implemented:** present in the current source and wired into a desktop view.
@@ -58,6 +55,7 @@ per `agents.list[]` entry. Provider backends live in `[[providers]]` tables.
 Each provider declares `name`, `providerType`, optional `baseUrl`, optional
 `apiKeyEnv`, subprocess-only `binary`/`workdir`/`timeoutSecs`,
 `deploymentTarget`, and the `models` it can serve.
+
 When this list is non-empty, it is the complete provider ordering surface:
 providers are registered in list order. String model routes use that order as
 the equal-specificity tie breaker, while object routes such as

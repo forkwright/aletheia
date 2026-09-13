@@ -189,8 +189,7 @@ git commit -m "fix(scope): description"
 
 # Advance every version owner, commit, then push the branch and exact tag
 scripts/bump-version.sh 0.10.1
-git add Cargo.toml Cargo.lock crates/theatron/proskenion/Cargo.lock \
-  .release-please-manifest.json
+git add Cargo.toml Cargo.lock .release-please-manifest.json
 git commit -m "chore(main): release 0.10.1"
 git tag v0.10.1
 git push origin hotfix/0.10.1

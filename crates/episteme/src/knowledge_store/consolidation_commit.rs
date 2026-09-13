@@ -115,6 +115,23 @@ fn tx_error(err: &crate::engine::MultiTransactionError) -> ConsolidationError {
     .build()
 }
 
+/// Surface a failed transaction abort that followed a write failure
+/// (RUST/no-silent-result-swallow — aletheia#7290).
+///
+/// `write_err` is what the caller already sees returned; `abort_err` is
+/// otherwise discarded with nothing to show for it, which hides the signal
+/// that the engine could not roll back its own failed transaction.
+fn log_abort_failure(
+    write_err: &ConsolidationError,
+    abort_err: &crate::engine::MultiTransactionError,
+) {
+    tracing::warn!(
+        write_error = %write_err,
+        abort_error = %abort_err,
+        "consolidation transaction abort failed after write error"
+    );
+}
+
 /// Send one `:put` payload into the transaction.
 fn tx_put(
     tx: &crate::engine::MultiTransaction,
@@ -330,10 +347,15 @@ impl KnowledgeStore {
         let tx = self.db.multi_transaction(true);
         if let Err(err) = transact_consolidation_writes(&tx, plan) {
             // WHY: abort is best-effort cleanup after the real error is
-            // already in hand — a failed abort (worker gone) changes nothing
-            // about what the caller learns, and dropping the handle releases
-            // the worker regardless.
-            let _ = tx.abort();
+            // already in hand (the write error `err` below is what the
+            // caller sees either way) — the same shape the entity-merge
+            // commit path uses once it lands (aletheia#7289) — but a failed
+            // abort still needs to be visible to an operator: an engine
+            // that cannot roll back its own failed transaction is a signal
+            // worth surfacing, not silence (aletheia#7290).
+            if let Err(abort_err) = tx.abort() {
+                log_abort_failure(&err, &abort_err);
+            }
             return Err(err);
         }
         tx.commit().map_err(|err| tx_error(&err))?;
@@ -418,5 +440,92 @@ pub(crate) mod failpoint {
             }
             Ok(())
         })
+    }
+}
+
+/// Proves aletheia#7290: a failed `tx.abort()` after a write error is
+/// surfaced via `tracing::warn!`, not discarded with `let _ = tx.abort();`.
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod abort_failure_logging {
+    use std::fmt::Write as _;
+    use std::sync::{Arc, Mutex};
+
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Level, Subscriber};
+    use tracing_subscriber::Layer;
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::registry::LookupSpan;
+
+    use super::{ConsolidationError, StoreSnafu, log_abort_failure};
+
+    /// Captures every event's level plus its fields (rendered with `Debug`,
+    /// which is how `tracing`'s `%value` shorthand routes Display output
+    /// too) as one string, for substring assertions below.
+    #[derive(Default, Clone)]
+    struct CapturedEvents(Arc<Mutex<Vec<(Level, String)>>>);
+
+    struct FieldsToString(String);
+
+    impl Visit for FieldsToString {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            write!(self.0, " {}={value:?}", field.name()).expect("writing to a String cannot fail");
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = FieldsToString(String::new());
+            event.record(&mut visitor);
+            self.0
+                .lock()
+                .expect("capture lock")
+                .push((*event.metadata().level(), visitor.0));
+        }
+    }
+
+    #[test]
+    fn abort_failure_after_write_error_is_logged_not_swallowed() {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        let write_err: ConsolidationError = StoreSnafu {
+            message: "injected write failure".to_owned(),
+        }
+        .build();
+        // A unit variant of a #[non_exhaustive] krites::MultiTransactionError
+        // — constructible outside krites; only its struct-shaped `Query`
+        // variant is not.
+        let abort_err = crate::engine::MultiTransactionError::WorkerPanicked;
+
+        tracing::subscriber::with_default(subscriber, || {
+            log_abort_failure(&write_err, &abort_err);
+        });
+
+        let events = captured.0.lock().expect("capture lock");
+        let warning = events
+            .iter()
+            .find(|(level, _)| *level == Level::WARN)
+            .map(|(_, fields)| fields.clone())
+            .expect(
+                "log_abort_failure must emit a WARN event instead of \
+                 swallowing the abort error",
+            );
+
+        assert!(
+            warning.contains("consolidation transaction abort failed after write error"),
+            "unexpected warning fields: {warning}"
+        );
+        assert!(
+            warning.contains("injected write failure"),
+            "warning must surface the original write error: {warning}"
+        );
+        assert!(
+            warning.contains("panicked"),
+            "warning must surface the abort error: {warning}"
+        );
     }
 }

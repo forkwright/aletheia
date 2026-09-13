@@ -8,7 +8,7 @@ use hermeneus::complexity::ComplexityConfig;
 use mneme::knowledge::{EpistemicTier, MemoryScope};
 use mneme::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
-use taxis::config::{AgentBehaviorDefaults, TuningConfig};
+use taxis::config::{AgentBehaviorDefaults, StageBudgetConfig, TuningConfig};
 use tracing::warn;
 
 use crate::recall::RecallConfig;
@@ -750,6 +750,29 @@ impl Default for StageBudget {
 const fn default_reflection_secs() -> u32 {
     30
 }
+
+/// Converts the operator-facing `[stageBudget]` TOML section into the
+/// pipeline's own `StageBudget` (aletheia#7296).
+///
+/// Field-for-field: every stage budget the pipeline enforces is deployment
+/// configurable, not just a compile-time constant. Values are carried
+/// through verbatim (no clamping) — `check-config` validates ranges, not
+/// this cascade step.
+impl From<StageBudgetConfig> for StageBudget {
+    fn from(s: StageBudgetConfig) -> Self {
+        Self {
+            context_secs: s.context_secs,
+            recall_secs: s.recall_secs,
+            history_secs: s.history_secs,
+            guard_secs: s.guard_secs,
+            execute_secs: s.execute_secs,
+            finalize_secs: s.finalize_secs,
+            reflection_secs: s.reflection_secs,
+            total_secs: s.total_secs,
+        }
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::expect_used,
@@ -891,6 +914,52 @@ mod tests {
         );
         assert_eq!(budget.execute_secs, 0);
         assert_eq!(budget.total_secs, 300);
+    }
+
+    #[test]
+    fn stage_budget_config_default_matches_prior_compile_time_constants() {
+        // WHY(aletheia#7296): StageBudget's fields used to be the only
+        // source of truth; StageBudgetConfig::default() must reproduce them
+        // exactly so omitting `[stageBudget]` from aletheia.toml is a no-op.
+        let from_config: StageBudget = StageBudgetConfig::default().into();
+        let compiled = StageBudget::default();
+        assert_eq!(from_config.context_secs, compiled.context_secs);
+        assert_eq!(from_config.recall_secs, compiled.recall_secs);
+        assert_eq!(from_config.history_secs, compiled.history_secs);
+        assert_eq!(from_config.guard_secs, compiled.guard_secs);
+        assert_eq!(from_config.execute_secs, compiled.execute_secs);
+        assert_eq!(from_config.finalize_secs, compiled.finalize_secs);
+        assert_eq!(from_config.reflection_secs, compiled.reflection_secs);
+        assert_eq!(from_config.total_secs, compiled.total_secs);
+    }
+
+    #[test]
+    fn stage_budget_config_round_trips_a_configured_value_to_the_stage() {
+        // WHY(aletheia#7296): an operator-set recall_secs (and siblings)
+        // must reach the pipeline's StageBudget unchanged, not just the
+        // compiled default.
+        let configured = StageBudgetConfig {
+            context_secs: 11,
+            recall_secs: 42,
+            history_secs: 6,
+            guard_secs: 3,
+            execute_secs: 90,
+            finalize_secs: 12,
+            reflection_secs: 31,
+            total_secs: 301,
+        };
+        let budget: StageBudget = configured.into();
+        assert_eq!(
+            budget.recall_secs, 42,
+            "configured recall_secs should reach the stage"
+        );
+        assert_eq!(budget.context_secs, 11);
+        assert_eq!(budget.history_secs, 6);
+        assert_eq!(budget.guard_secs, 3);
+        assert_eq!(budget.execute_secs, 90);
+        assert_eq!(budget.finalize_secs, 12);
+        assert_eq!(budget.reflection_secs, 31);
+        assert_eq!(budget.total_secs, 301);
     }
 
     #[test]

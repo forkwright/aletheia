@@ -1663,6 +1663,63 @@ mod tests {
         shutdown_harness(harness).await;
     }
 
+    // PROOF(#5194 follow-up): a group with NO exact `ChannelBinding` --
+    // only a channel wildcard, which resolves via
+    // `MatchReason::ChannelDefault` -- must still honor a
+    // `groupParticipants` allowlist entry naming that group. Before the
+    // router-level fix, `group_participant_allows` returned `true`
+    // whenever no exact `(channel, group_id)` binding existed, so this
+    // message would have silently dispatched through the wildcard tier.
+    fn group_router_with_participant_policy_and_no_exact_binding() -> Arc<MessageRouter> {
+        let mut policy = GroupParticipantPolicy::default();
+        policy
+            .allowlist
+            .entry("signal".to_owned())
+            .or_default()
+            .insert("group-xyz".to_owned(), vec!["+15550100".to_owned()]);
+        Arc::new(
+            MessageRouter::new(
+                vec![ChannelBinding {
+                    channel: "signal".to_owned(),
+                    source: "*".to_owned(),
+                    nous_id: "alice".to_owned(),
+                    session_key: "signal:{source}".to_owned(),
+                    receiving_account_id: None,
+                    command_tier: CommandTier::default(),
+                }],
+                Some("alice".to_owned()),
+            )
+            .with_inbound_policy(InboundMessagePolicy {
+                default_deny: false,
+                ..InboundMessagePolicy::default()
+            })
+            .with_group_participants(policy),
+        )
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dispatch_one_denies_a_group_participant_with_no_exact_group_binding() {
+        let harness = make_dispatch_harness().await;
+        let router = group_router_with_participant_policy_and_no_exact_binding();
+        let msg = group_command_message("+15559999", "group-xyz", "hello", 1_709_312_345_684);
+
+        dispatch_one(
+            msg,
+            router,
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+        )
+        .await;
+
+        assert!(
+            harness.sent.lock().await.is_empty(),
+            "a group sender denied by the allowlist must never reach the channel, even absent an exact group binding"
+        );
+
+        shutdown_harness(harness).await;
+    }
+
     #[cfg(feature = "recall")]
     fn make_dispatch_manager(
         oikos: Arc<Oikos>,

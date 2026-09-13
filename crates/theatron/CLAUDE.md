@@ -14,7 +14,7 @@ Presentation umbrella grouping the three UI crates: core (shared infrastructure)
 |-------|------|-------|--------|---------|
 | `skene` | `core/` | 3K | ✓ | Shared API client, types, SSE parser, streaming infrastructure |
 | `koilon` | `tui/` | 37K | ✓ | Ratatui terminal dashboard (Elm architecture, feature-gated in workspace) |
-| `proskenion` | `desktop/` | 45K | ✓ | Dioxus desktop app (excluded from workspace, GTK deps) |
+| `proskenion` | `desktop/` | 45K | ✓ | Dioxus desktop app (non-default workspace member, GTK deps) |
 
 ## Dependency graph
 

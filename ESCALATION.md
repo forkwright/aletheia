@@ -72,7 +72,7 @@ payload — out of scope for B-002. The shipped assets keep the font references 
 ## Open questions for T0 review
 
 1. Should `emit_base_pptx` expose the blank slide count as a parameter (default 1) or hardcode 1?
-   **Recommendation**: hardcode 1 for now; parameterization is B-004 scope.
+   **Recommendation**: hardcode 1; parameterization is B-004 scope.
 2. Should `emit_reference_docx`/`emit_reference_odt` accept a locale parameter for `lang` attributes?
    **Recommendation**: hardcode `en-US`; locale is B-006 scope.
 
@@ -181,7 +181,7 @@ know:
 defined.
 
 **Questions:**
-1. For now, should `apx-figure.lua` be a stub that passes `Figure` Divs through unchanged?
+1. Should `apx-figure.lua` be a stub that passes `Figure` Divs through unchanged until B-005's SVG API lands?
 2. When B-005's SVG API lands, what is the subprocess contract for calling it from Lua? (Pandoc
    Lua filters run inside Pandoc's Lua 5.4 interpreter; they cannot `require` Rust crates. The
    only integration path is a subprocess call or a pre-baked sidecar file written by the Rust

@@ -247,7 +247,7 @@ NextAction)` triple with no catch-all, applied unconditionally to every
 `ApiError`-returning handler across the crate, and a second path
 (`classify_by_status()`) covers the handful of sites that build a response
 directly (CSRF, rate limiters, the plain-text `/metrics` route via a global
-enrichment middleware). This is genuinely comprehensive, not spot-covered.
+enrichment middleware). Every handler in the crate is covered by one of the two paths, not a spot-checked subset.
 
 The remaining gaps are all about *granularity* within an otherwise-working
 mechanism, and are filed individually above rather than repeated here: the
@@ -277,7 +277,7 @@ session through every state named above in one pass:
 3. **Tool call + approval** — prompt the agent to use a tool configured to
    require approval. Watch the inline approval card render (both clients);
    approve it and watch the turn resume. This exercises the one state
-   currently degraded on both clients if a *second* agent's approval is
+   degraded on both clients if a *second* agent's approval is
    triggered while the first is focused — the cross-agent gap #6813/#6807/#4871
    describe.
 4. **Error** — kill the configured LLM provider mid-turn (stop `ollama` or

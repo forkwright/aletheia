@@ -21,6 +21,8 @@ use koina::http::{
 use koina::secret::SecretString;
 
 use crate::handlers::health::{HealthResponse, LivenessResponse};
+use crate::handlers::knowledge::IngestRequest;
+pub use crate::handlers::knowledge::{IngestFactError, IngestResponse};
 use crate::handlers::sessions::types::ListSessionsResponse;
 pub use crate::handlers::sessions::types::{
     HistoryResponse, ReplayMessage, ReplaySession, ReplayToolAuditRecord, ReplayTurnAttempt,
@@ -394,6 +396,43 @@ impl GatewayClient {
         resp.json().await.context(DecodeSnafu)
     }
 
+    /// Ingest raw content into the knowledge store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Auth`] when the caller lacks a valid operator token.
+    /// Returns [`Error::Server`] for a malformed request (400), a validation
+    /// failure (422), or an unavailable knowledge store (503) — the
+    /// response's `status` field distinguishes these from the caller side.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    pub async fn ingest(
+        &self,
+        content: &str,
+        format: &str,
+        nous_id: &str,
+    ) -> Result<IngestResponse, Error> {
+        let body = IngestRequest {
+            content: content.to_owned(),
+            format: format.to_owned(),
+            nous_id: nous_id.to_owned(),
+        };
+        let resp = self
+            .client
+            .post(self.url(&routes::ingest()))
+            .json(&body)
+            .send()
+            .await
+            .context(RequestSnafu {
+                operation: "ingest",
+            })?;
+        let resp = Self::check_status(resp, "ingest").await?;
+        resp.json().await.context(DecodeSnafu)
+    }
+
     async fn check_status(resp: Response, operation: &str) -> Result<Response, Error> {
         let status = resp.status();
         if status.is_success() {
@@ -476,6 +515,78 @@ mod tests {
     fn route_session_replay_id_is_encoded() {
         let path = routes::session_replay("a/b c?d#e");
         assert_eq!(path, "/api/v1/sessions/a%2Fb%20c%3Fd%23e/replay");
+    }
+
+    #[test]
+    fn route_ingest_is_the_documented_path() {
+        assert_eq!(routes::ingest(), "/api/v1/knowledge/ingest");
+    }
+
+    /// PROOF(#5100): `GatewayClient::ingest()` sends a real POST through the
+    /// shared client (auth header, CSRF header, JSON body) and decodes the
+    /// typed `IngestResponse` — the same path `aletheia ingest` now uses
+    /// instead of a hand-rolled `reqwest::Client`.
+    #[tokio::test]
+    async fn ingest_round_trips_through_shared_client() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        organon::testing::install_crypto_provider();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("listener has a local addr");
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept connection");
+            let mut buf = [0_u8; 4096];
+            let n = socket.read(&mut buf).await.expect("read request");
+            let request = String::from_utf8_lossy(buf.get(..n).unwrap_or_default()).into_owned();
+            let body =
+                r#"{"inserted":2,"skipped":1,"errors":[{"index":0,"id":null,"message":"boom"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write response");
+            request
+        });
+
+        let client = GatewayClient::new(&format!("http://{addr}"), Some("tok".to_owned()))
+            .expect("valid client");
+        let result = client
+            .ingest("hello world", "text", "alice")
+            .await
+            .expect("ingest succeeds");
+
+        assert_eq!(result.inserted, 2);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.errors.len(), 1);
+        assert_eq!(
+            result.errors.first().expect("one recorded error").message,
+            "boom"
+        );
+
+        let request = server.await.expect("server task completes");
+        assert!(
+            request.starts_with("POST /api/v1/knowledge/ingest"),
+            "got: {request}"
+        );
+        assert!(
+            request.to_lowercase().contains("authorization: bearer tok"),
+            "missing shared-client auth header: {request}"
+        );
+        assert!(
+            request.contains("x-requested-with"),
+            "missing shared-client CSRF header: {request}"
+        );
+        assert!(
+            request.contains(r#""content":"hello world""#),
+            "request body missing ingest content: {request}"
+        );
     }
 
     #[test]

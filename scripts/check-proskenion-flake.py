@@ -12,6 +12,7 @@ from pathlib import Path
 
 LOGGER = logging.getLogger("check-proskenion-flake")
 MANIFEST = Path("crates/theatron/proskenion/Cargo.toml")
+ROOT_MANIFEST = Path("Cargo.toml")
 INSTALL_SCRIPT = Path("scripts/install-proskenion.sh")
 STALE_TOKENS = (
     ".#desktop",
@@ -88,6 +89,14 @@ def main() -> int:
     package = manifest["package"]
     package_name = package["name"]
     package_version = package["version"]
+    if isinstance(package_version, dict):
+        # WHY(aletheia#4726): proskenion inherits `version.workspace = true`
+        # now that it is a full root-workspace member — tomllib turns that
+        # into {"workspace": True}, not a string. The version this script
+        # (and flake.nix) must cross-check against lives in the root
+        # manifest's [workspace.package] table instead.
+        root_manifest = load_toml(repo_root / ROOT_MANIFEST)
+        package_version = root_manifest["workspace"]["package"]["version"]
 
     flake = (repo_root / "flake.nix").read_text(encoding="utf-8")
     envrc = (repo_root / ".envrc").read_text(encoding="utf-8")
@@ -107,7 +116,13 @@ def main() -> int:
     required_flake_fragments = (
         "./crates/theatron/proskenion/Cargo.toml",
         "proskenionName = proskenionPackage.name;",
-        "proskenionVersion = proskenionPackage.version;",
+        # WHY not a literal "proskenionVersion = proskenionPackage.version;"
+        # (aletheia#4726): proskenion's manifest now declares
+        # `version.workspace = true`, so `fromTOML` hands flake.nix an
+        # attrset there instead of a string — the version has to fall back
+        # to the root manifest's [workspace.package] table.
+        "if builtins.isAttrs proskenionPackage.version",
+        "then rootManifest.workspace.package.version",
         'proskenionCargoArgs = "--manifest-path crates/theatron/proskenion/Cargo.toml -p ${proskenionName}";',
         "pname = proskenionName;",
         "version = proskenionVersion;",

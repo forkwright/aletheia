@@ -7,11 +7,11 @@ A portable demo instance that runs with a local LLM server. No cloud account, no
 | Tool | Version | Install |
 |------|---------|---------|
 | `aletheia` | any | `cargo build --release && cp target/release/aletheia ~/.local/bin/` |
-| Ollama (or compatible) | any | [ollama.com](https://ollama.com) — or substitute any OpenAI-compatible server |
+| Ollama (or compatible) | any | [ollama.com](https://ollama.com) - or substitute any OpenAI-compatible server |
 | A pulled model | any | `ollama pull llama3.2` |
 | `curl`, `jq` | any | system package manager |
 
-The demo uses `auth = "none"` and `provider = "mock"` for embedding — no tokens needed.
+The demo uses `auth = "none"` and `provider = "mock"` for embedding - no tokens needed.
 
 ## Setup
 

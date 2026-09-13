@@ -575,7 +575,6 @@ async fn system_status_lists_every_subsystem_with_an_owner() {
         "memory_graph",
         "daemon_runtime",
         "tool_execution_history",
-        "training_qa_persistence",
         "metrics_exposure",
         "event_bus",
         "config_security_posture",
@@ -586,6 +585,15 @@ async fn system_status_lists_every_subsystem_with_an_owner() {
         assert!(ids.contains(&expected), "missing subsystem: {expected}");
     }
 
+    // WHY(#7292): training_qa_persistence was pinned to "unknown" forever
+    // with no pylon-reachable status signal from nous::training — dropped
+    // rather than left as a permanent stub. Regression: fails if the id
+    // reappears without a real reader behind it.
+    assert!(
+        !ids.contains(&"training_qa_persistence"),
+        "training_qa_persistence should be absent, not reporting a stub status"
+    );
+
     for subsystem in subsystems {
         assert!(
             subsystem["owner"].as_str().is_some_and(|o| !o.is_empty()),
@@ -594,7 +602,7 @@ async fn system_status_lists_every_subsystem_with_an_owner() {
         assert!(subsystem["last_checked"].is_string());
         let status = subsystem["status"].as_str().expect("status is a string");
         assert!(
-            ["healthy", "degraded", "failed", "unknown"].contains(&status),
+            ["healthy", "degraded", "failed", "timeout", "unknown"].contains(&status),
             "unexpected status vocabulary: {status}"
         );
     }
@@ -616,17 +624,16 @@ async fn system_status_reports_unknown_for_unwired_subsystems_without_failing_ag
     let body = body_json(resp).await;
     let subsystems = body["subsystems"].as_array().expect("subsystems array");
 
-    for id in ["daemon_runtime", "training_qa_persistence"] {
-        let subsystem = subsystems
-            .iter()
-            .find(|s| s["id"] == id)
-            .unwrap_or_else(|| panic!("missing subsystem: {id}"));
-        assert_eq!(subsystem["status"], "unknown");
-        assert!(
-            subsystem["failure_reason"].is_string(),
-            "unknown subsystem should explain why: {subsystem:?}"
-        );
-    }
+    let id = "daemon_runtime";
+    let subsystem = subsystems
+        .iter()
+        .find(|s| s["id"] == id)
+        .unwrap_or_else(|| panic!("missing subsystem: {id}"));
+    assert_eq!(subsystem["status"], "unknown");
+    assert!(
+        subsystem["failure_reason"].is_string(),
+        "unknown subsystem should explain why: {subsystem:?}"
+    );
 }
 
 #[tokio::test]

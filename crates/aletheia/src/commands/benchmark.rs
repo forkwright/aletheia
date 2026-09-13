@@ -42,8 +42,7 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub dataset: PathBuf,
     /// Server URL to benchmark against
-    #[arg(long, default_value = "http://127.0.0.1:18789")]
-    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    #[arg(long, default_value = crate::cli::DEFAULT_GATEWAY_URL)]
     pub url: String,
     /// Bearer token for authenticated endpoints
     #[arg(long, env = "ALETHEIA_EVAL_TOKEN")]
@@ -791,6 +790,23 @@ mod tests {
             judge_model: "gpt-4o".to_owned(),
             judge_api_key: None,
         }
+    }
+
+    #[test]
+    fn default_url_matches_the_shared_gateway_default() {
+        use clap::Parser as _;
+
+        #[derive(Debug, clap::Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            run: RunArgs,
+        }
+
+        // PROOF(#5100): `benchmark` no longer restates its own gateway-URL
+        // default — it resolves to the one constant every HTTP-backed
+        // command shares.
+        let wrapper = Wrapper::try_parse_from(["benchmark", "--dataset", "/tmp/x.json"]).unwrap();
+        assert_eq!(wrapper.run.url, crate::cli::DEFAULT_GATEWAY_URL);
     }
 
     #[test]

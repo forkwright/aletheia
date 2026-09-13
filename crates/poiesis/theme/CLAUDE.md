@@ -52,11 +52,10 @@ Source: planning entry `planning/poiesis-evolution/B-002` (forkwright/kanon#985)
 
 ## Theme integration boundary
 
-Theme integration is stable at the organon tool boundary. `organon`
-resolves a `ResolvedTheme` through this crate and dispatches to the
-sink-specific emitters in `src/sinks/` when a tool needs themed bytes.
-The core `Renderer` trait in `poiesis-core` remains format-only and is
-not the theme integration boundary.
+`organon` resolves a `ResolvedTheme` through this crate at a stable tool
+boundary and dispatches to the sink-specific emitters in `src/sinks/` when a
+tool needs themed bytes. The core `Renderer` trait in `poiesis-core` remains
+format-only and is not the theme integration boundary.
 
 ## Status (B-002 scope vs. what ships)
 

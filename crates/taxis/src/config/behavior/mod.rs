@@ -33,6 +33,6 @@ pub use provider::{
     ProviderAdmissionMode, ProviderBehaviorConfig, ProviderBudgetsConfig, ProviderKind,
 };
 pub use recall::{AcademicSourceConfig, RecallSourcesConfig};
-pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
+pub use timeouts::{CapacityConfig, RetrySettings, StageBudgetConfig, TimeoutsConfig};
 pub use tools::{ServerToolVersions, ServerToolsConfig, ToolLimitsConfig};
 pub use tuning::TuningConfig;

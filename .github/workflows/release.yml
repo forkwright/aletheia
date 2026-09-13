@@ -149,8 +149,6 @@ jobs:
           ref: ${{ inputs.release_sha || github.sha }}
       - name: Check desktop CI path filter covers proskenion path deps
         run: scripts/check-desktop-ci-paths.py
-      - name: Check proskenion theatron pins
-        run: scripts/check-proskenion-pins.py
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
         with:
@@ -158,17 +156,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
-      # WHY(#7063): this job's own two proskenion-aware steps above (path-filter and
-      # pin checks) still only name the root and proskenion lockfiles as a pair. The
-      # release path otherwise re-resolves the root workspace's Cargo.lock in the
-      # `Test` step below (a plain, unlocked `cargo test --workspace` silently repairs
-      # root drift) but never touches crates/theatron/proskenion -- it is
-      # workspace-excluded and no command here has a manifest-path into it. Reusing
-      # scripts/check-all-lockfiles-locked.py's derived enumeration (root, proskenion,
-      # fuzz -- every `[workspace]`-declaring manifest with a tracked Cargo.lock, not a
-      # hardcoded proskenion path) puts the same --locked resolve proof gate-attestation
-      # already runs directly on the release workflow itself, so a second standalone
-      # workspace needs no edit here to be covered.
+      # WHY(#7063, updated aletheia#4726): this job's own path-filter step above
+      # only names proskenion's *source* paths. The release path otherwise
+      # re-resolves the root workspace's Cargo.lock in the `Test` step below (a
+      # plain, unlocked `cargo test --workspace --exclude proskenion` silently
+      # repairs root drift) but that step excludes proskenion from compiling, so
+      # nothing here otherwise proves ITS entry in the root lock is current.
+      # Reusing scripts/check-all-lockfiles-locked.py's derived enumeration
+      # (root and fuzz -- every `[workspace]`-declaring manifest with a tracked
+      # Cargo.lock; proskenion no longer has one of its own, aletheia#4726 folded
+      # it into the root) puts the same --locked resolve proof gate-attestation
+      # already runs directly on the release workflow itself, so the root lock's
+      # proskenion entry is covered without a proskenion-specific step here.
       - name: Test check-all-lockfiles-locked.py
         run: scripts/test-check-all-lockfiles-locked.py
       - name: Check all committed lockfiles are locked

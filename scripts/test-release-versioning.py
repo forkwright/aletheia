@@ -47,6 +47,11 @@ resolver = "2"
 members = [
     "crates/app",
     "crates/lib",
+    "crates/theatron/proskenion",
+]
+default-members = [
+    "crates/app",
+    "crates/lib",
 ]
 
 [workspace.package]
@@ -88,42 +93,28 @@ name = "fixture-lib"
 version = "1.2.3"
 
 [[package]]
+name = "proskenion"
+version = "1.2.3"
+
+[[package]]
 name = "serde"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 """,
         encoding="utf-8",
     )
+    # WHY(aletheia#4726): proskenion is a full root-workspace member with no
+    # private [workspace] table of its own and no standalone lockfile --
+    # [package].version inherits via `version.workspace = true` exactly like
+    # fixture-app/fixture-lib above, and its lock entry (added to Cargo.lock
+    # above) is swept by the root lock's own source-free selector.
     (root / "crates" / "theatron" / "proskenion" / "Cargo.toml").write_text(
         """\
-[workspace]
-
-[workspace.package]
-version = "1.2.3"
-edition = "2024"
-
 [package]
 name = "proskenion"
-version = "1.2.3"
-edition = "2024"
-""",
-        encoding="utf-8",
-    )
-    (root / "crates" / "theatron" / "proskenion" / "Cargo.lock").write_text(
-        """\
-version = 4
-
-[[package]]
-name = "koina"
-version = "1.2.3"
-
-[[package]]
-name = "proskenion"
-version = "1.2.3"
-
-[[package]]
-name = "skene"
-version = "1.2.3"
+version.workspace = true
+edition.workspace = true
+publish = false
 """,
         encoding="utf-8",
     )
@@ -145,31 +136,6 @@ version = "1.2.3"
                                 "type": "toml",
                                 "path": "Cargo.lock",
                                 "jsonpath": "$.package[?(!@.source)].version",
-                            },
-                            {
-                                "type": "toml",
-                                "path": "crates/theatron/proskenion/Cargo.toml",
-                                "jsonpath": "$.workspace.package.version",
-                            },
-                            {
-                                "type": "toml",
-                                "path": "crates/theatron/proskenion/Cargo.toml",
-                                "jsonpath": "$.package.version",
-                            },
-                            {
-                                "type": "toml",
-                                "path": "crates/theatron/proskenion/Cargo.lock",
-                                "jsonpath": "$.package[?(@.name.value == 'koina')].version",
-                            },
-                            {
-                                "type": "toml",
-                                "path": "crates/theatron/proskenion/Cargo.lock",
-                                "jsonpath": "$.package[?(@.name.value == 'skene')].version",
-                            },
-                            {
-                                "type": "toml",
-                                "path": "crates/theatron/proskenion/Cargo.lock",
-                                "jsonpath": "$.package[?(@.name.value == 'proskenion')].version",
                             },
                         ]
                     }
@@ -204,13 +170,13 @@ def root_version(root: Path) -> str:
     return data["workspace"]["package"]["version"]
 
 
-def proskenion_cargo_versions(root: Path) -> tuple[str, str]:
+def proskenion_package_version(root: Path) -> object:
     data = tomllib.loads(
         (root / "crates" / "theatron" / "proskenion" / "Cargo.toml").read_text(
             encoding="utf-8"
         )
     )
-    return data["workspace"]["package"]["version"], data["package"]["version"]
+    return data["package"]["version"]
 
 
 def manifest_version(root: Path) -> str:
@@ -225,7 +191,7 @@ def lock_versions(root: Path, relative: str) -> dict[str, str]:
 def test_check_accepts_workspace_version_owner(root: Path) -> None:
     report = CHECKER.check_repo(root)
     expect(not report.errors, f"valid fixture should pass: {report.errors}")
-    expect(report.workspace_package_count == 2, "fixture should check two packages")
+    expect(report.workspace_package_count == 3, "fixture should check three packages")
 
 
 def test_check_rejects_hardcoded_member_version(root: Path) -> None:
@@ -375,33 +341,20 @@ def test_bump_updates_all_version_owners(root: Path) -> None:
         "bump should update every source-free root lock package",
     )
     expect(
+        root_lock["proskenion"] == "2.0.0",
+        "bump should update proskenion's root-workspace lock entry the same "
+        "way as any other source-free path member, since it is a full "
+        "workspace member and carries no standalone lockfile of its own "
+        "(aletheia#4726)",
+    )
+    expect(
         root_lock["serde"] == "1.0.0",
         "bump should not update registry packages",
     )
-    proskenion_lock = lock_versions(
-        root, "crates/theatron/proskenion/Cargo.lock"
-    )
     expect(
-        proskenion_lock["koina"] == proskenion_lock["skene"] == "2.0.0",
-        "bump should update proskenion's two workspace-version path packages",
-    )
-    expect(
-        proskenion_lock["proskenion"] == "2.0.0",
-        "bump should update proskenion's own lock entry to match the root "
-        "version, since proskenion cannot ship on an independent cadence "
-        "(it consumes koina/skene by path) and --locked requires the lock "
-        "entry to track [package].version",
-    )
-    proskenion_workspace_version, proskenion_package_version = (
-        proskenion_cargo_versions(root)
-    )
-    expect(
-        proskenion_workspace_version == "2.0.0",
-        "bump should update proskenion's [workspace.package].version",
-    )
-    expect(
-        proskenion_package_version == "2.0.0",
-        "bump should update proskenion's [package].version",
+        proskenion_package_version(root) == {"workspace": True},
+        "bump should leave proskenion inheriting the workspace version, not "
+        "hand-track its own literal (aletheia#4726)",
     )
     member = tomllib.loads(
         (root / "crates" / "lib" / "Cargo.toml").read_text(encoding="utf-8")
