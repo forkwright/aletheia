@@ -34,7 +34,7 @@
 # `<canonical-state-doc>/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]
-stages = ["cargo fmt", "cargo publish policy", "proskenion flake", "cargo check", "cargo clippy", "cargo nextest", "kanon lint writing", "kanon lint workflow", "dokimasia"]
+stages = ["cargo fmt", "cargo publish policy", "proskenion flake", "cargo check", "cargo clippy", "cargo nextest", "kanon lint writing", "kanon lint workflow"]
 
 [stages."cargo fmt"]
 cmd = "cargo fmt --all -- --check"
@@ -68,13 +68,41 @@ timeout_secs = 300
 cmd = "kanon lint --summary --workflow"
 timeout_secs = 300
 
-# Design-token enforcement: every var(--token) reference in CSS or Rust
-# source must resolve to a declaration in DESIGN-TOKENS.md.
+# Design-token enforcement (DISABLED, not in [pipeline].stages above):
+# every var(--token) reference in CSS or Rust source must resolve to a
+# declaration in DESIGN-TOKENS.md, checked by `dokimasia` (theatron).
 #
-# Binary lives at /usr/local/bin/dokimasia (installed from
-# forkwright/theatron). Updated via:
-#   cargo build --release -p dokimasia --manifest-path <theatron-repo>/Cargo.toml
-#   sudo install -m 755 <theatron-repo>/target/release/dokimasia /usr/local/bin/
-[stages."dokimasia"]
-cmd = "dokimasia --design-tokens ${DESIGN_TOKENS_PATH:?required} crates/"
-timeout_secs = 60
+# `archeion::ci_config::validate` rejects an orphaned `[stages.*]` table
+# (`ConfigError::UnscheduledStage`), so the stage block itself is held
+# out-of-tree here as a comment rather than left defined-but-unlisted:
+#
+#   [stages."dokimasia"]
+#   cmd = "sh -c 'dokimasia --design-tokens \"${DESIGN_TOKENS_PATH:?required}\" crates/'"
+#   timeout_secs = 60
+#
+# The binary is provisioned (theatron v1.6.2 at `~/.local/bin/dokimasia`
+# on menos per `boxes/menos/takeover/tools-provenance.md` in the ops
+# repo; the CI sandbox's `stage_program_search_paths` in
+# `crates/archeion/src/ci/runner_sandbox.rs` resolves `~/.local/bin`,
+# never `/usr/local/bin`) and the `cmd` above is shell-wrapped so
+# `${DESIGN_TOKENS_PATH:?required}` actually expands (`cmd` is split via
+# `shell_words` with no shell involved otherwise -- precedent for the
+# wrap: ardent-site, ardent-tools-site, gnomon, thumos `.kanon-ci.toml`).
+#
+# Re-enable only once BOTH:
+#   - aletheia#7362: `.kanon-ci.toml`'s stage schema gains a per-stage
+#     `env` field (a kanon-side `archeion::ci_config::StageConfig`
+#     change) AND a way for the sandbox to resolve kanon's canonical
+#     `DESIGN-TOKENS.md` (a declared mount in `runner_sandbox.rs`, or an
+#     aletheia-side vendored + synced copy) -- today's sandbox only
+#     binds this checkout, target_dir, /usr, an /etc allowlist, and
+#     $CARGO_HOME/$RUSTUP_HOME, so no value for `DESIGN_TOKENS_PATH`
+#     resolves to a real file inside the stage regardless of (2) below.
+#   - aletheia#7361: the 50 pre-existing undeclared-token findings in
+#     `crates/theatron/proskenion/` are paid down, or `dokimasia` grows
+#     a baseline/allowlist flag (`--help` has none today) so this stage
+#     can gate on new debt only instead of redlining on old debt with no
+#     ratchet path.
+#
+# Until then this would be a known-red stage with no path to green, so
+# it stays out of the pipeline rather than carried as permanent debt.
