@@ -14,7 +14,7 @@ test-full = "full test tier fixtures"
 path = "crates/aletheia"
 layer = "cli"
 purpose = "Aletheia cognitive agent runtime"
-depends_on = ["agora", "aletheia-routing", "dianoia", "diaporeia", "dokimion", "energeia", "episteme", "gnosis", "hermeneus", "koilon", "koina", "melete", "mneme", "nous", "oikonomos", "organon", "poiesis-inspect", "pylon", "symbolon", "taxis", "thesauros"]
+depends_on = ["agora", "aletheia-routing", "dianoia", "diaporeia", "dokimion", "energeia", "episteme", "gnosis", "hermeneus", "koilon", "koina", "melete", "mneme", "nous", "oikonomos", "organon", "poiesis-core", "poiesis-inspect", "pylon", "symbolon", "taxis", "thesauros"]
 used_by = []
 dev_depends_on = ["eidos"]
 
@@ -347,7 +347,7 @@ path = "crates/poiesis/core"
 layer = "types"
 purpose = "Format-agnostic document model and Renderer trait for poiesis"
 depends_on = []
-used_by = ["organon", "poiesis", "poiesis-charts", "poiesis-deck", "poiesis-doc", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-text", "poiesis-theme"]
+used_by = ["aletheia", "organon", "poiesis", "poiesis-charts", "poiesis-deck", "poiesis-doc", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-text", "poiesis-theme"]
 features = {}
 dev_depends_on = []
 
