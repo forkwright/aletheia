@@ -533,6 +533,7 @@ mod tests {
             session_type: None,
             updated_at: Some("2025-06-15T10:00:00Z".to_string()),
             display_name: None,
+            active_turn_id: None,
         }
     }
 

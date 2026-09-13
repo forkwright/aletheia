@@ -553,3 +553,220 @@ fn copy_path_rejects_internal_directory_symlink_4952() {
         "pre-walk rejection must not leave a partial destination"
     );
 }
+
+/// WHY(#7246): `.planning` is the one symlink name backup traversal excludes
+/// rather than refuses (an instance places it under its root, or under a
+/// workspace within it, pointing at the operator's private planning
+/// repository -- see `EXCLUDED_BACKUP_SYMLINK_NAME`). Before this fix, a
+/// `.planning` symlink anywhere under a backup source root aborted the
+/// *entire* backup with the same `BackupTraversalPolicy` error every other
+/// symlink triggers -- the exact field defect this regresses. The fix is
+/// exclusion, not following: `.planning`'s private-planning-repository
+/// target (a separate git repo whose own version control is its backup;
+/// see no-backup-copies canon) is never copied into the backup set, and
+/// never dereferenced at all.
+#[cfg(unix)]
+#[test]
+fn copy_path_excludes_dot_planning_symlink_7246() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let source_root = tmp.path().join("instance");
+    fs::create_dir_all(&source_root).unwrap();
+    write_text_file(&source_root.join("NOTE.md"), "safe").unwrap();
+
+    let planning_repo = tmp.path().join("private-planning-repo");
+    fs::create_dir_all(&planning_repo).unwrap();
+    write_text_file(&planning_repo.join("D-0001.md"), "plan content").unwrap();
+    std::os::unix::fs::symlink(&planning_repo, source_root.join(".planning")).unwrap();
+
+    let dst = tmp.path().join("backup-copy");
+    let (bytes, files, planning_excluded) =
+        copy_path(&source_root, &dst).expect("backup must not refuse .planning");
+    assert!(
+        bytes > 0 && files == 1,
+        "expected only NOTE.md to copy -- the planning repo must never be dereferenced"
+    );
+    assert_eq!(
+        planning_excluded, 1,
+        "the .planning symlink must be tallied as excluded"
+    );
+
+    assert!(
+        !dst.join(".planning").exists() && !dst.join(".planning").is_symlink(),
+        ".planning must not appear in the backup set at all -- neither as a directory nor a \
+         symlink"
+    );
+}
+
+/// WHY(#7246): the `.planning` exception is scoped to that exact name --
+/// nothing else gets a free pass just for sitting next to it.
+#[cfg(unix)]
+#[test]
+fn copy_path_still_rejects_other_symlinks_beside_dot_planning_7246() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let source_root = tmp.path().join("instance");
+    fs::create_dir_all(&source_root).unwrap();
+
+    let planning_repo = tmp.path().join("private-planning-repo");
+    fs::create_dir_all(&planning_repo).unwrap();
+    std::os::unix::fs::symlink(&planning_repo, source_root.join(".planning")).unwrap();
+    std::os::unix::fs::symlink(&planning_repo, source_root.join("not-planning")).unwrap();
+
+    let dst = tmp.path().join("backup-copy");
+    assert_backup_symlink_rejected(copy_path(&source_root, &dst), "not-planning", &source_root);
+}
+
+/// WHY(#7246): a `.planning -> .` self-loop would ELOOP if ever dereferenced
+/// (`instance/.planning/.planning/...` recursing until the kernel's 40-hop
+/// limit turns it into an I/O error with a partial destination left
+/// behind) -- exactly what following the symlink would have reopened
+/// #4952 for under this one name. Exclusion sidesteps the loop entirely:
+/// the target is never read.
+#[cfg(unix)]
+#[test]
+fn copy_path_excludes_dot_planning_symlink_loop_7246() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let source_root = tmp.path().join("instance");
+    fs::create_dir_all(&source_root).unwrap();
+    write_text_file(&source_root.join("NOTE.md"), "safe").unwrap();
+    std::os::unix::fs::symlink(".", source_root.join(".planning")).unwrap();
+
+    let dst = tmp.path().join("backup-copy");
+    let (_, files, planning_excluded) =
+        copy_path(&source_root, &dst).expect("a looping .planning target must not be followed");
+    assert_eq!(files, 1, "only NOTE.md should copy");
+    assert_eq!(planning_excluded, 1);
+    assert!(!dst.join(".planning").exists());
+}
+
+/// WHY(#7246): a `.planning -> <ancestor>` target would walk back over the
+/// instance root itself if ever dereferenced. Exclusion means the ancestor
+/// relationship is never inspected, let alone traversed.
+#[cfg(unix)]
+#[test]
+fn copy_path_excludes_dot_planning_symlink_to_ancestor_7246() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let source_root = tmp.path().join("instance");
+    fs::create_dir_all(&source_root).unwrap();
+    write_text_file(&source_root.join("NOTE.md"), "safe").unwrap();
+    std::os::unix::fs::symlink("..", source_root.join(".planning")).unwrap();
+
+    let dst = tmp.path().join("backup-copy");
+    let (_, files, planning_excluded) = copy_path(&source_root, &dst)
+        .expect("a .planning target outside the source root must not be followed");
+    assert_eq!(files, 1, "only NOTE.md should copy");
+    assert_eq!(planning_excluded, 1);
+    assert!(!dst.join(".planning").exists());
+}
+
+/// WHY(#7246): a `.planning` target that itself contains a symlink (a git
+/// worktree link, an editor link) must not defeat traversal just because
+/// it sits behind the excluded name. Exclusion never opens the target
+/// directory at all, so what is inside it -- including another symlink --
+/// cannot matter.
+#[cfg(unix)]
+#[test]
+fn copy_path_excludes_dot_planning_symlink_with_nested_symlink_inside_target_7246() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let source_root = tmp.path().join("instance");
+    fs::create_dir_all(&source_root).unwrap();
+    write_text_file(&source_root.join("NOTE.md"), "safe").unwrap();
+
+    let planning_repo = tmp.path().join("private-planning-repo");
+    fs::create_dir_all(&planning_repo).unwrap();
+    std::os::unix::fs::symlink("/nonexistent", planning_repo.join("worktree-link")).unwrap();
+    std::os::unix::fs::symlink(&planning_repo, source_root.join(".planning")).unwrap();
+
+    let dst = tmp.path().join("backup-copy");
+    let (_, files, planning_excluded) = copy_path(&source_root, &dst).expect(
+        "a symlink nested inside .planning's target must not be reached, let alone refused",
+    );
+    assert_eq!(files, 1, "only NOTE.md should copy");
+    assert_eq!(planning_excluded, 1);
+    assert!(!dst.join(".planning").exists());
+}
+
+/// WHY(#7246): full `create_backup()` coverage for the exclusion outcome,
+/// not just the lower-level `copy_path` unit tests above -- a `.planning`
+/// symlink under a real instance's `nous` workspace must back up
+/// successfully, leave no trace of `.planning` in the published backup
+/// set, and have the exclusion show up as manifest evidence so a restore
+/// operator can see it was deliberate, not silently dropped. Whether
+/// another, non-`.planning` symlink beside it is still refused is covered
+/// by `copy_path_still_rejects_other_symlinks_beside_dot_planning_7246`
+/// above.
+#[cfg(unix)]
+#[test]
+fn create_backup_excludes_dot_planning_and_records_manifest_exclusion_7246() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance_root = tmp.path().join("instance");
+    fs::create_dir_all(instance_root.join("data")).unwrap();
+    fs::create_dir_all(instance_root.join("nous").join("syn")).unwrap();
+    write_text_file(
+        &instance_root.join("nous").join("syn").join("SOUL.md"),
+        "soul",
+    )
+    .unwrap();
+
+    let planning_repo = tmp.path().join("private-planning-repo");
+    fs::create_dir_all(&planning_repo).unwrap();
+    write_text_file(&planning_repo.join("D-0001.md"), "plan content").unwrap();
+    std::os::unix::fs::symlink(&planning_repo, instance_root.join("nous").join(".planning"))
+        .unwrap();
+
+    make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+    make_fjall_store(&instance_root.join("data").join("sessions.db"));
+
+    let backup_dir = tmp.path().join("backups");
+    let config = InstanceBackupConfig {
+        enabled: true,
+        instance_root,
+        backup_dir: backup_dir.clone(),
+        interval_hours: 24,
+        retention_count: 7,
+        additional_workspaces: Vec::new(),
+    };
+
+    let manager = InstanceBackup::new(config);
+    let report = manager
+        .create_backup()
+        .expect("a .planning symlink under a workspace must not abort the backup");
+    let backup_path = report.backup_path.expect("backup path set");
+
+    assert!(
+        !backup_path
+            .join("workspace")
+            .join("nous")
+            .join(".planning")
+            .exists(),
+        ".planning must not appear anywhere in the published backup set"
+    );
+    assert!(
+        backup_path
+            .join("workspace")
+            .join("nous")
+            .join("syn")
+            .join("SOUL.md")
+            .is_file(),
+        "the rest of the nous workspace must still be backed up"
+    );
+
+    let manifest_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        manifest_json
+            .get(MANIFEST_PLANNING_SYMLINKS_EXCLUDED_FIELD)
+            .and_then(serde_json::Value::as_u64),
+        Some(1),
+        "manifest must record the .planning symlink as a deliberate exclusion, not silence it"
+    );
+
+    // WHY(#4950): excluded entries are intentional policy omissions, not
+    // verification failures, so the published backup set must verify cleanly.
+    let verify = InstanceBackup::verify_backup(&backup_path).unwrap();
+    assert!(
+        verify.first_error.is_none(),
+        "the .planning exclusion should not fail verification: {:?}",
+        verify.first_error
+    );
+}

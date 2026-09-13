@@ -981,10 +981,15 @@ impl<'a> BootstrapAssembler<'a> {
                 truncated_names.push(truncated.name.clone());
                 included.push(truncated);
             } else {
+                // WHY(#7300): name the configured cap alongside the section so an
+                // operator sees which knob to raise (`bootstrapMaxTokens`) rather
+                // than only "remaining", which is near-zero at the drop point
+                // regardless of how far over budget the persona actually is.
                 warn!(
                     section = section.name,
                     tokens = section.tokens,
                     remaining = budget.remaining(),
+                    system_budget = budget.system_budget(),
                     "section dropped — budget exhausted"
                 );
                 dropped_names.push(section.name);

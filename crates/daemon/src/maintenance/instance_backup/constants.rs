@@ -9,6 +9,27 @@ pub(crate) const SNAPSHOT_PROTOCOL_VERSION: &str = "aletheia-instance-backup-v1-
 /// Policy used for all backup source traversal.
 pub(crate) const SYMLINK_POLICY: &str = "reject";
 
+/// Symlink name backup traversal excludes -- skipped and counted, never
+/// dereferenced -- instead of refused like every other symlink, under any
+/// backup source root. (#7246)
+///
+/// WHY: `.planning` is the ecosystem-wide convention for a symlink an
+/// instance places under its own root (or under a workspace within it)
+/// pointing at the operator's private planning repository. That repository
+/// is a separate git repo whose backup is its own version control
+/// (no-backup-copies canon); following the symlink and copying the tree it
+/// names would duplicate a foreign repository -- `.git` included -- inside
+/// every instance backup, and make the whole backup's success depend on
+/// that foreign tree's contents. It would also reopen exactly the escape
+/// `reject_symlinks_in_backup_source`'s traversal-escape guard exists to
+/// stop: a `.planning` pointed at an ancestor or at itself would recurse
+/// forever, and a `.planning` containing its own symlink would smuggle
+/// unexpected content in. So the name is excluded outright: resolved only
+/// via its own `symlink_metadata`, never dereferenced, so nothing about
+/// its target -- including where it points or what it contains -- can
+/// affect the backup. Any other symlink is still refused unconditionally.
+pub(crate) const EXCLUDED_BACKUP_SYMLINK_NAME: &str = ".planning";
+
 pub(crate) const STATUS_OK: &str = "ok";
 pub(crate) const STATUS_EXCLUDED: &str = "excluded";
 
@@ -29,6 +50,10 @@ pub(crate) const MANIFEST_OBSERVED_SKEW_SECONDS_FIELD: &str = "observed_snapshot
 /// `BackupManifest` struct field), same reasoning as
 /// `MANIFEST_QUIESCE_MECHANISM_FIELD` above.
 pub(crate) const MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD: &str = "credential_keys_excluded";
+/// WHY(#7246): count of `.planning` symlinks excluded from this backup set,
+/// never dereferenced. Injected as raw manifest evidence, same reasoning as
+/// `MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD` above.
+pub(crate) const MANIFEST_PLANNING_SYMLINKS_EXCLUDED_FIELD: &str = "planning_symlinks_excluded";
 
 /// Prefix for hidden staging directories inside `backup_dir`.
 ///

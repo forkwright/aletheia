@@ -95,10 +95,6 @@ async fn send_cancellation_abort(tx: &mpsc::Sender<StreamEvent>) {
     clippy::needless_pass_by_value,
     reason = "Client is Arc-based; moved into the spawned task"
 )]
-#[expect(
-    clippy::too_many_lines,
-    reason = "the read loop is one cohesive select over cancel, timeout, and event arms; splitting obscures the terminal-event flow"
-)]
 pub fn stream_message(
     // kanon:ignore RUST/pub-visibility
     client: Client,
@@ -159,82 +155,191 @@ pub fn stream_message(
             return;
         }
 
-        // WHY: the turn stream emits `: heartbeat` comment keepalives
-        // between real events. Comment lines never surface as parsed
-        // events, so a parsed-event timeout would kill healthy slow
-        // turns (e.g. a saturated local provider queuing an LLM call
-        // for minutes). Byte-level liveness keeps the stream alive
-        // through event gaps while still detecting a dead link.
-        let activity = super::sse::ByteActivity::new();
-        let mut es = SseStream::new(activity.watch(resp.bytes_stream()));
-
-        loop {
-            let maybe_event = tokio::select! {
-                biased;
-                () = cancel.cancelled() => {
-                    tracing::info!("stream cancelled by user");
-                    send_cancellation_abort(&tx).await;
-                    return;
-                }
-                event = tokio::time::timeout(STREAM_READ_TIMEOUT, es.next()) => event,
-            };
-            let event = match maybe_event {
-                Ok(Some(Ok(event))) => event,
-                Ok(Some(Err(e))) => {
-                    // WHY: keryx v1.4.0 yields Result<SseEvent, SseError> so a
-                    // mid-stream transport failure is observable. Surface it
-                    // as a stream error instead of letting the truncated feed
-                    // pass for a clean end-of-stream.
-                    tracing::warn!(error = %e, "stream read failed");
-                    if tx.send(StreamEvent::Error(e.to_string())).await.is_err() {
-                        tracing::debug!("stream receiver dropped before transport error");
-                    }
-                    break;
-                }
-                Ok(None) => break,
-                Err(_elapsed) => {
-                    if !activity.idle_longer_than(STREAM_READ_TIMEOUT) {
-                        // NOTE: keepalive comments arrived within the window
-                        // without producing a parsed event; the link is alive
-                        // — keep waiting for the turn to finish.
-                        continue;
-                    }
-                    // WHY: No bytes received within STREAM_READ_TIMEOUT — not
-                    // even a keepalive comment. Silence here indicates a hung
-                    // or dropped connection.
-                    tracing::warn!(
-                        timeout_secs = STREAM_READ_TIMEOUT.as_secs(),
-                        "stream read timeout — treating as error"
-                    );
-                    if tx
-                        .send(StreamEvent::Error("stream timeout".to_string()))
-                        .await
-                        .is_err()
-                    {
-                        tracing::debug!("stream receiver dropped before timeout error");
-                    }
-                    break;
-                }
-            };
-
-            if let Some(envelope) = parse_stream_event_envelope(&event.event, &event.data, event.id)
-            {
-                let is_terminal = matches!(
-                    &envelope.payload,
-                    StreamEvent::TurnComplete { .. } | StreamEvent::TurnAbort { .. }
-                );
-                if tx.send(envelope.payload).await.is_err() {
-                    break;
-                }
-                if is_terminal {
-                    break;
-                }
-            }
-        }
+        drive_turn_stream(resp, tx, cancel).await;
     };
     tokio::spawn(task.instrument(span));
 
     rx
+}
+
+/// Reattach to an in-flight (or recently completed) turn's SSE event
+/// stream via `GET /api/v1/sessions/{session_id}/turns/{turn_id}/events`.
+///
+/// WHY: mid-turn re-entry (an app reload, or the desktop chat resolving
+/// the canonical session on mount and finding `active_turn_id` set) needs
+/// to regain live turn state without having submitted the turn itself.
+/// Pylon buffers every event for a turn (`turn_buffer_registry`) precisely
+/// so a client that was never the original submitter can join and replay
+/// it. No `Last-Event-ID` is sent, so the server replays the turn's full
+/// buffered history before switching to live delivery -- the caller's
+/// `ChatStateManager` reconstructs in-progress text/tool state from that
+/// replay exactly as it would from a live stream.
+///
+/// Reuses [`drive_turn_stream`], the same event loop [`stream_message`]
+/// drives: liveness, timeout, and terminal-event handling are identical
+/// once the response is a stream of the same wire events.
+///
+/// # Cancellation
+///
+/// `cancel` is checked before connecting and before each event read. On
+/// cancellation the background task drops the SSE connection and emits a
+/// single [`StreamEvent::TurnAbort`] before closing the channel. NOTE:
+/// unlike cancelling [`stream_message`]'s own connection, this does not
+/// abort the turn server-side -- pylon only treats a disconnect from the
+/// *original submitting* connection as an abort signal (see
+/// `reconnect_turn`'s doc comment); dropping a reattached connection just
+/// stops listening.
+#[tracing::instrument(skip_all)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Client is Arc-based; moved into the spawned task"
+)]
+pub fn reattach_turn_stream(
+    // kanon:ignore RUST/pub-visibility
+    client: Client,
+    base_url: &str,
+    session_id: &str,
+    turn_id: &str,
+    cancel: CancellationToken,
+) -> mpsc::Receiver<StreamEvent> {
+    let (tx, rx) = mpsc::channel(256);
+    let url = keryx::url::join_base_path(
+        base_url,
+        &super::routes::sessions::session_turn_events_path(session_id, turn_id),
+    );
+
+    let builder = client.get(&url).header("Accept", CONTENT_TYPE_EVENT_STREAM);
+
+    let span = tracing::info_span!(
+        "reattach_turn_stream",
+        session.id = session_id,
+        turn.id = turn_id
+    );
+    let task = async move {
+        let resp = match tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                tracing::info!("reattach cancelled before connect");
+                send_cancellation_abort(&tx).await;
+                return;
+            }
+            result = builder.send() => result,
+        } {
+            Ok(resp) => resp,
+            Err(e) => {
+                if tx
+                    .send(StreamEvent::Error(format!("failed to connect: {e}")))
+                    .await
+                    .is_err()
+                {
+                    tracing::debug!("stream receiver dropped before connect error");
+                }
+                return;
+            }
+        };
+
+        if !resp.status().is_success() {
+            send_http_error(resp, &tx).await;
+            return;
+        }
+
+        drive_turn_stream(resp, tx, cancel).await;
+    };
+    tokio::spawn(task.instrument(span));
+
+    rx
+}
+
+/// Drive one turn's already-connected SSE response to completion,
+/// forwarding parsed events to `tx`.
+///
+/// Shared by [`stream_message`] (a freshly submitted turn) and
+/// [`reattach_turn_stream`] (reconnecting to one already in flight): both
+/// read the same wire format from a response whose status has already
+/// been checked, apply the same byte-level liveness policy, and stop on
+/// the same terminal events.
+///
+/// # Cancellation
+///
+/// `cancel` is checked before each event read. On cancellation the
+/// connection is dropped and a single [`StreamEvent::TurnAbort`] is sent
+/// before the channel closes.
+async fn drive_turn_stream(
+    resp: reqwest::Response,
+    tx: mpsc::Sender<StreamEvent>,
+    cancel: CancellationToken,
+) {
+    // WHY: the turn stream emits `: heartbeat` comment keepalives
+    // between real events. Comment lines never surface as parsed
+    // events, so a parsed-event timeout would kill healthy slow
+    // turns (e.g. a saturated local provider queuing an LLM call
+    // for minutes). Byte-level liveness keeps the stream alive
+    // through event gaps while still detecting a dead link.
+    let activity = super::sse::ByteActivity::new();
+    let mut es = SseStream::new(activity.watch(resp.bytes_stream()));
+
+    loop {
+        let maybe_event = tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                tracing::info!("stream cancelled by user");
+                send_cancellation_abort(&tx).await;
+                return;
+            }
+            event = tokio::time::timeout(STREAM_READ_TIMEOUT, es.next()) => event,
+        };
+        let event = match maybe_event {
+            Ok(Some(Ok(event))) => event,
+            Ok(Some(Err(e))) => {
+                // WHY: keryx v1.4.0 yields Result<SseEvent, SseError> so a
+                // mid-stream transport failure is observable. Surface it
+                // as a stream error instead of letting the truncated feed
+                // pass for a clean end-of-stream.
+                tracing::warn!(error = %e, "stream read failed");
+                if tx.send(StreamEvent::Error(e.to_string())).await.is_err() {
+                    tracing::debug!("stream receiver dropped before transport error");
+                }
+                break;
+            }
+            Ok(None) => break,
+            Err(_elapsed) => {
+                if !activity.idle_longer_than(STREAM_READ_TIMEOUT) {
+                    // NOTE: keepalive comments arrived within the window
+                    // without producing a parsed event; the link is alive
+                    // — keep waiting for the turn to finish.
+                    continue;
+                }
+                // WHY: No bytes received within STREAM_READ_TIMEOUT — not
+                // even a keepalive comment. Silence here indicates a hung
+                // or dropped connection.
+                tracing::warn!(
+                    timeout_secs = STREAM_READ_TIMEOUT.as_secs(),
+                    "stream read timeout — treating as error"
+                );
+                if tx
+                    .send(StreamEvent::Error("stream timeout".to_string()))
+                    .await
+                    .is_err()
+                {
+                    tracing::debug!("stream receiver dropped before timeout error");
+                }
+                break;
+            }
+        };
+
+        if let Some(envelope) = parse_stream_event_envelope(&event.event, &event.data, event.id) {
+            let is_terminal = matches!(
+                &envelope.payload,
+                StreamEvent::TurnComplete { .. } | StreamEvent::TurnAbort { .. }
+            );
+            if tx.send(envelope.payload).await.is_err() {
+                break;
+            }
+            if is_terminal {
+                break;
+            }
+        }
+    }
 }
 
 fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
@@ -965,6 +1070,131 @@ mod tests {
             "syn",
             "main",
             "hello",
+            "turn-cancel",
+            cancel.clone(),
+        );
+
+        server.wait_ready().await;
+        cancel.cancel();
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("cancellation should arrive promptly")
+            .expect("cancellation should be delivered as a stream event");
+
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+        server.finish();
+    }
+
+    // ── reattach_turn_stream (#7297) ───────────────────────────────────────
+    //
+    // Mirrors the `stream_message` cases above: `reattach_turn_stream` shares
+    // `drive_turn_stream` and the same pre-connect cancellation check, so it
+    // should behave identically at the wire level -- these tests exist
+    // because that sharing was previously only exercised by `stream_message`
+    // itself, leaving the reattach entry point with zero direct coverage.
+
+    #[tokio::test]
+    async fn reattach_turn_stream_connect_failure_surfaces_as_stream_event_error() {
+        crate::install_test_crypto_provider();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        // WHY: an address nothing listens on -- a real (uncancelled) connect
+        // failure, distinct from the pre-cancellation case below.
+        let mut rx = reattach_turn_stream(
+            client,
+            "http://127.0.0.1:1",
+            "session-1",
+            "turn-1",
+            CancellationToken::new(),
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("connect failure should surface promptly")
+            .expect("connect failure should deliver a stream event");
+
+        let StreamEvent::Error(message) = event else {
+            panic!("expected connect-failure Error event, got {event:?}");
+        };
+        assert!(message.contains("failed to connect"));
+    }
+
+    #[tokio::test]
+    async fn reattach_turn_stream_http_error_preserves_pylon_envelope() {
+        crate::install_test_crypto_provider();
+        let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
+        let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let mut rx = reattach_turn_stream(
+            client,
+            &base_url,
+            "session-1",
+            "turn-2",
+            CancellationToken::new(),
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("stream HTTP error should arrive promptly")
+            .expect("stream HTTP error event should be delivered");
+        server.join().expect("test server thread should finish");
+
+        let StreamEvent::Error(message) = event else {
+            panic!("expected stream HTTP error event");
+        };
+        assert!(message.contains("invalid stream request"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-http"));
+        assert!(message.contains(r#""field":"message""#));
+    }
+
+    #[tokio::test]
+    async fn reattach_turn_stream_cancellation_before_connect_emits_abort() {
+        crate::install_test_crypto_provider();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let mut rx = reattach_turn_stream(
+            client,
+            "http://127.0.0.1:1",
+            "session-1",
+            "turn-precancel",
+            cancel,
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("pre-cancelled reattach should abort promptly")
+            .expect("pre-cancelled reattach should deliver TurnAbort");
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn reattach_turn_stream_cancellation_mid_stream_emits_abort_and_closes() {
+        crate::install_test_crypto_provider();
+        let mut server = serve_hanging_sse_once();
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let cancel = CancellationToken::new();
+        let mut rx = reattach_turn_stream(
+            client,
+            &server.base_url,
+            "session-1",
             "turn-cancel",
             cancel.clone(),
         );

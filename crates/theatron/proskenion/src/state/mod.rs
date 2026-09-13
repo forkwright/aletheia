@@ -13,6 +13,8 @@ pub(crate) mod chat;
 pub(crate) mod checkpoints;
 pub mod collections;
 pub mod commands;
+/// Outbound message queue for messages composed while a turn is streaming.
+pub(crate) mod composer_queue;
 pub mod connection;
 /// Credential management state for the ops view.
 pub(crate) mod credentials;

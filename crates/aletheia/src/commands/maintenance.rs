@@ -713,7 +713,7 @@ pub(crate) fn build_config(
 ) -> MaintenanceConfig {
     MaintenanceConfig {
         after_action_store: Some(Arc::new(aletheia_routing::AfterActionStore::new(
-            oikos.logs().join("after-actions"),
+            oikos.after_action_log_dir(),
         ))),
         trace_rotation: TraceRotationConfig {
             enabled: settings.trace_rotation.enabled,

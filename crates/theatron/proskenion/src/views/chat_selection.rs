@@ -1,7 +1,7 @@
 //! Shared chat activation helpers for cross-view navigation.
 
 use skene::api::types::HistoryMessage;
-use skene::id::ApiNousId;
+use skene::id::{ApiNousId, ApiSessionId, TurnId};
 
 use crate::components::chat::ChatState;
 use crate::components::chat::{ChatMessage as LegacyChatMessage, MessageRole};
@@ -37,6 +37,39 @@ pub(crate) fn canonical_agent_selection(agent_id: &ApiNousId, title: String) -> 
         resolve_chat_session_key(agent_id, None),
         title,
     )
+}
+
+/// Stamp local streaming state to reattach to a session's already
+/// in-progress turn, so the abort control renders immediately on entry
+/// instead of waiting for the first reattached event to arrive.
+///
+/// Returns the turn to reattach to, or `None` when the session is idle
+/// (nothing to reattach to, and `chat_state` is left untouched).
+///
+/// WHY(#7297): mid-turn re-entry -- reloading the app while a turn is
+/// running -- must regain abort control. Since PR #7267, `POST
+/// /api/v1/sessions/resolve` reports `active_turn_id` on the session; the
+/// desktop chat treats that as "streaming" up front so `InputBar`'s abort
+/// control (driven purely by `streaming.is_streaming`) shows up without
+/// waiting on the network. The caller reattaches to the turn's event
+/// stream (`skene::api::streaming::reattach_turn_stream`) to keep it live.
+///
+/// Also stamps `streaming.reattached`, which `InputBar` uses to render a
+/// distinct "Stop watching" control in place of "Abort": cancelling a
+/// reattached turn's connection does not abort it server-side (only the
+/// original submitting connection can), so the control -- and the label --
+/// must not claim otherwise.
+pub(crate) fn apply_active_turn_reattachment(
+    chat_state: &mut ChatState,
+    session_id: ApiSessionId,
+    active_turn_id: Option<TurnId>,
+) -> Option<TurnId> {
+    let turn_id = active_turn_id?;
+    chat_state.streaming.is_streaming = true;
+    chat_state.streaming.turn_id = Some(turn_id.clone());
+    chat_state.streaming.session_id = Some(session_id);
+    chat_state.streaming.reattached = true;
+    Some(turn_id)
 }
 
 pub(crate) fn activate_chat_selection(
@@ -99,31 +132,124 @@ pub(crate) fn activate_chat_selection(
     ChatActivation { session_changed }
 }
 
+/// Convert one page of history into render-ready messages, collapsing each
+/// turn's raw per-call tool-result messages into one summary row per tool
+/// type.
+///
+/// WHY(#7298): history replay previously rendered one bubble per raw
+/// `role: "tool"` message -- a turn with a dozen `Read` calls filled the
+/// pane with a dozen near-identical rows carrying the raw tool payload.
+/// Turns are delimited by user messages (history carries no per-message
+/// turn id, #4911); within a turn, every tool-result message sharing a
+/// tool name collapses into a single row at the position of that tool's
+/// first call, carrying the total call count. A turn that spans a page
+/// boundary (>100 tool calls) is summarized per page, not across pages --
+/// a rare case given `HISTORY_PAGE_SIZE_QUERY`.
 pub(crate) fn history_messages_to_legacy(messages: &[HistoryMessage]) -> Vec<LegacyChatMessage> {
-    messages
-        .iter()
-        .filter_map(history_message_to_legacy)
-        .collect()
+    let mut out = Vec::with_capacity(messages.len());
+    for turn in split_into_turns(messages) {
+        collapse_turn_tool_calls(turn, &mut out);
+    }
+    out
 }
 
 pub(crate) fn oldest_history_seq(messages: &[HistoryMessage]) -> Option<i64> {
     messages.iter().filter_map(|msg| msg.seq).min()
 }
 
+/// Split a chronological page of history into turns, each starting at a
+/// `user`-role message (the only turn boundary history carries).
+/// Messages preceding the first user message, if any, form their own
+/// leading turn.
+fn split_into_turns(messages: &[HistoryMessage]) -> Vec<&[HistoryMessage]> {
+    let mut turns = Vec::new();
+    let mut start = 0;
+    for (i, message) in messages.iter().enumerate() {
+        if i > start && message.role == "user" {
+            turns.push(&messages[start..i]);
+            start = i;
+        }
+    }
+    if start < messages.len() {
+        turns.push(&messages[start..]);
+    }
+    turns
+}
+
+/// Append one turn's messages to `out`, collapsing tool-result messages
+/// that share a tool name into a single summary row per name.
+fn collapse_turn_tool_calls(turn: &[HistoryMessage], out: &mut Vec<LegacyChatMessage>) {
+    let mut tool_counts: Vec<(String, u32)> = Vec::new();
+    for message in turn {
+        if message.role != "tool" {
+            continue;
+        }
+        let name = tool_display_name(message);
+        match tool_counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, count)) => *count += 1,
+            None => tool_counts.push((name, 1)),
+        }
+    }
+
+    let mut summarized: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for message in turn {
+        if message.role == "tool" {
+            let name = tool_display_name(message);
+            if summarized.insert(name.clone()) {
+                let count = tool_counts
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .map_or(1, |(_, count)| *count);
+                out.push(tool_summary_message(&name, count));
+            }
+            continue;
+        }
+        if let Some(legacy) = history_message_to_legacy(message) {
+            out.push(legacy);
+        }
+    }
+}
+
+fn tool_display_name(message: &HistoryMessage) -> String {
+    message
+        .tool_name
+        .clone()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "tool".to_string())
+}
+
+/// Build the single summary row standing in for `count` raw calls to the
+/// same tool within one turn.
+fn tool_summary_message(tool_name: &str, count: u32) -> LegacyChatMessage {
+    let content = if count == 1 {
+        tool_name.to_string()
+    } else {
+        format!("{tool_name} \u{d7}{count}")
+    };
+    LegacyChatMessage {
+        role: MessageRole::Assistant,
+        content,
+        model: None,
+        tool_calls: count,
+        input_tokens: 0,
+        output_tokens: 0,
+        thinking: None,
+        tool_call_details: Vec::new(),
+        plans: Vec::new(),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
+    }
+}
+
 fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessage> {
     let role = match message.role.as_str() {
         "user" => MessageRole::User,
-        "assistant" | "system" | "tool" => MessageRole::Assistant,
+        "assistant" | "system" => MessageRole::Assistant,
         other => {
             tracing::debug!(role = other, "skipping unsupported history message role");
             return None;
         }
-    };
-
-    let tool_calls = if message.role == "tool" || message.tool_name.is_some() {
-        1
-    } else {
-        0
     };
 
     Some(LegacyChatMessage {
@@ -136,7 +262,7 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
         // conversion has no session in scope, so it leaves the field empty
         // rather than reintroducing a phantom per-message source.
         model: None,
-        tool_calls,
+        tool_calls: 0,
         input_tokens: 0,
         output_tokens: 0,
         thinking: None,
@@ -391,6 +517,91 @@ mod tests {
         );
     }
 
+    // WHY(#7298): history replay must collapse raw per-call tool messages
+    // into one summary row per tool type per turn instead of rendering one
+    // bubble per call.
+    #[test]
+    fn history_messages_collapse_repeated_tool_calls_into_one_row_per_tool_type() {
+        let json = r#"{
+            "messages": [
+                {"seq": 1, "role": "user", "content": "grep the logs"},
+                {"seq": 2, "role": "tool", "tool_name": "Read", "content": "log line 1"},
+                {"seq": 3, "role": "tool", "tool_name": "Read", "content": "log line 2"},
+                {"seq": 4, "role": "tool", "tool_name": "Read", "content": "log line 3"},
+                {"seq": 5, "role": "tool", "tool_name": "Bash", "content": "exit 0"},
+                {"seq": 6, "role": "assistant", "content": "Found it."}
+            ]
+        }"#;
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
+
+        let legacy = history_messages_to_legacy(&messages);
+
+        // 4 rows, not 6: user, one Read summary, one Bash summary, assistant.
+        assert_eq!(
+            legacy.len(),
+            4,
+            "expected raw per-call tool rows collapsed to one per tool type, got {legacy:?}"
+        );
+        assert_eq!(legacy[0].role, MessageRole::User);
+        assert_eq!(legacy[1].content, "Read \u{d7}3");
+        assert_eq!(legacy[1].tool_calls, 3);
+        assert_eq!(legacy[2].content, "Bash");
+        assert_eq!(legacy[2].tool_calls, 1);
+        assert_eq!(legacy[3].role, MessageRole::Assistant);
+        assert_eq!(legacy[3].content, "Found it.");
+    }
+
+    #[test]
+    fn history_messages_keep_tool_summaries_scoped_to_their_own_turn() {
+        let json = r#"{
+            "messages": [
+                {"seq": 1, "role": "user", "content": "first"},
+                {"seq": 2, "role": "tool", "tool_name": "Read", "content": "a"},
+                {"seq": 3, "role": "tool", "tool_name": "Read", "content": "b"},
+                {"seq": 4, "role": "assistant", "content": "done one"},
+                {"seq": 5, "role": "user", "content": "second"},
+                {"seq": 6, "role": "tool", "tool_name": "Read", "content": "c"},
+                {"seq": 7, "role": "assistant", "content": "done two"}
+            ]
+        }"#;
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
+
+        let legacy = history_messages_to_legacy(&messages);
+
+        let read_summaries: Vec<&str> = legacy
+            .iter()
+            .filter(|m| m.content.starts_with("Read"))
+            .map(|m| m.content.as_str())
+            .collect();
+        assert_eq!(
+            read_summaries,
+            vec!["Read \u{d7}2", "Read"],
+            "each turn's tool calls must summarize independently, not merge across turns"
+        );
+    }
+
+    #[test]
+    fn history_messages_fall_back_to_generic_tool_label_when_name_missing() {
+        let json = r#"{
+            "messages": [
+                {"seq": 1, "role": "user", "content": "run something"},
+                {"seq": 2, "role": "tool", "content": "raw result"}
+            ]
+        }"#;
+        let messages = serde_json::from_str::<HistoryResponse>(json)
+            .unwrap()
+            .messages;
+
+        let legacy = history_messages_to_legacy(&messages);
+
+        assert_eq!(legacy.len(), 2);
+        assert_eq!(legacy[1].content, "tool");
+    }
+
     #[test]
     fn activating_existing_session_preserves_live_stream_state() {
         let mut chat_state = ChatState::default();
@@ -434,5 +645,86 @@ mod tests {
         assert!(chat_state.messages.is_empty());
         assert!(chat_state.streaming.is_streaming);
         assert_eq!(chat_state.streaming.text, "partial answer");
+    }
+
+    // WHY(#7297): mid-turn re-entry -- a session with `active_turn_id` set
+    // must render the abort control immediately (driven by
+    // `streaming.is_streaming`) rather than only after a reattached event
+    // arrives over the network.
+    #[test]
+    fn session_with_active_turn_id_renders_abort_control() {
+        let mut chat_state = ChatState::default();
+        assert!(
+            !chat_state.streaming.is_streaming,
+            "a fresh chat state must start idle"
+        );
+
+        let reattach_turn_id = apply_active_turn_reattachment(
+            &mut chat_state,
+            ApiSessionId::from("session-id"),
+            Some(TurnId::from("turn-1")),
+        );
+
+        assert_eq!(reattach_turn_id, Some(TurnId::from("turn-1")));
+        assert!(
+            chat_state.streaming.is_streaming,
+            "InputBar's abort control renders only when streaming.is_streaming is true"
+        );
+        assert_eq!(chat_state.streaming.turn_id, Some(TurnId::from("turn-1")));
+        assert_eq!(
+            chat_state.streaming.session_id,
+            Some(ApiSessionId::from("session-id"))
+        );
+        assert!(
+            chat_state.streaming.reattached,
+            "InputBar reads this to render 'Stop watching' instead of 'Abort'"
+        );
+    }
+
+    #[test]
+    fn idle_session_does_not_stamp_streaming_state() {
+        let mut chat_state = ChatState::default();
+
+        let reattach_turn_id =
+            apply_active_turn_reattachment(&mut chat_state, ApiSessionId::from("session-id"), None);
+
+        assert_eq!(reattach_turn_id, None);
+        assert!(!chat_state.streaming.is_streaming);
+        assert_eq!(chat_state.streaming.turn_id, None);
+        assert!(!chat_state.streaming.reattached);
+    }
+
+    // WHY: a genuine `TurnAbort` (the server's own replay of how the turn
+    // really ended) still commits an aborted message and ends `is_streaming`
+    // for either kind of turn -- this covers `ChatStateManager`'s handling of
+    // that event in general. It does NOT cover what happens when the
+    // *operator* clicks Abort/Stop watching on a reattached turn: that no
+    // longer goes through `TurnAbort` at all (see
+    // `views/chat.rs::stop_watching_reattached_turn` and the
+    // `reattach_turn_stream` tests in `skene::api::streaming`), because
+    // cancelling a reattached connection does not abort the turn
+    // server-side and must not claim otherwise.
+    #[test]
+    fn turn_abort_event_ends_a_self_submitted_turn() {
+        use crate::components::chat::ChatStateManager;
+        use skene::events::StreamEvent;
+
+        let mut chat_state = ChatState::default();
+        chat_state.streaming.is_streaming = true;
+        chat_state.streaming.turn_id = Some(TurnId::from("turn-1"));
+
+        let mut manager = ChatStateManager::new();
+        let applied = manager.apply(
+            StreamEvent::TurnAbort {
+                reason: "cancelled by user".to_string(),
+            },
+            &mut chat_state,
+        );
+
+        assert!(applied);
+        assert!(
+            !chat_state.streaming.is_streaming,
+            "abort must end the turn: the abort control must disappear"
+        );
     }
 }

@@ -81,6 +81,12 @@ mod skills;
 /// so callers can snapshot before ever touching `KnowledgeStore`.
 #[cfg(feature = "storage-fjall")]
 pub mod snapshot;
+/// Pre-open schema-version guard (aletheia#6838 correction 2): refuses a
+/// version-mismatched fjall store before `fjall::Keyspace::open()` ever
+/// runs against it, instead of only after via the in-band schema_version
+/// check. See the module's own docs for why the timing matters.
+#[cfg(feature = "storage-fjall")]
+mod version_guard;
 
 #[cfg(feature = "mneme-engine")]
 pub use derived_rules::DerivedFreshness;
@@ -831,6 +837,17 @@ impl KnowledgeStore {
     ) -> crate::error::Result<std::sync::Arc<Self>> {
         let path = path.as_ref();
         Self::migrate_to_cohort_layout(path)?;
+        // WHY (aletheia#6838 correction 2): refuse a version-mismatched
+        // store before any fjall API touches the directory.
+        // `protect_pre_migration` below already opens the raw keyspace once
+        // for its probe, and `fjall::Keyspace::open()`'s own auto-recovery
+        // runs at open time, not at query time -- checking the in-band
+        // `schema_version` relation (as `init_schema` already does) happens
+        // too late to prevent it. `migrate_to_cohort_layout` above is a
+        // plain filesystem operation and never opens fjall, so this is the
+        // earliest point that can run the check. See `version_guard`'s
+        // module docs.
+        version_guard::check_before_open(path, Self::SCHEMA_VERSION)?;
         // WHY (aletheia#5779 F4): every production entry point that can run
         // a destructive schema migration goes through this function — this
         // is its first statement specifically so no caller can bypass it.
@@ -904,6 +921,12 @@ impl KnowledgeStore {
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;
+        // WHY (aletheia#6838 correction 2): only stamp the pre-open manifest
+        // once `init_schema` has confirmed the store is actually at
+        // `SCHEMA_VERSION` -- never speculatively -- so a future open's
+        // pre-fjall check (`version_guard::check_before_open`) is always
+        // checking a version this code has itself verified.
+        version_guard::stamp_after_open(path, Self::SCHEMA_VERSION)?;
         Ok(std::sync::Arc::new(store))
     }
 

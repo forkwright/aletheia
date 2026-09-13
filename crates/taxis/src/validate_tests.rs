@@ -819,7 +819,7 @@ fn provider_admission_rejects_bad_mode_and_zero_running() {
 #[test]
 fn provider_budgets_table_validates() {
     // WHY(#7152): pins the exact launch-contract local-provider budgets
-    // (32768 / 4096 / 8192) as a valid `[providers.budgets]` table.
+    // (32768 / 4096 / 16384) as a valid `[providers.budgets]` table.
     let section = serde_json::json!([
         {
             "name": "menos-agent",
@@ -830,7 +830,7 @@ fn provider_budgets_table_validates() {
             "budgets": {
                 "contextTokens": 32768,
                 "maxOutputTokens": 4096,
-                "bootstrapMaxTokens": 8192
+                "bootstrapMaxTokens": 16384
             }
         }
     ]);

@@ -256,6 +256,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
         handle_open(&mut app);
@@ -306,6 +307,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: Some("Debug Session".to_string()),
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
 
@@ -328,6 +330,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
 
