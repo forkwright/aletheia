@@ -66,10 +66,10 @@ fn read_file_bounded(file: &mut File, max_bytes: u64) -> std::io::Result<Vec<u8>
             "file exceeds configured byte limit",
         ));
     }
-    let max = usize::try_from(max_bytes).map_err(|_| {
+    let max = usize::try_from(max_bytes).map_err(|source| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "configured byte limit is unsupported",
+            format!("configured byte limit is unsupported: {source}"),
         )
     })?;
     let mut bytes = Vec::with_capacity(max.min(64 * 1024));
@@ -139,9 +139,8 @@ fn open_validated_file(path: &Path, ctx: &ToolContext) -> std::io::Result<File> 
             continue;
         };
         saw_candidate_root = true;
-        let root_fd = match open_allowed_root(root) {
-            Ok(fd) => fd,
-            Err(_) => continue,
+        let Ok(root_fd) = open_allowed_root(root) else {
+            continue;
         };
         let relative = if relative.as_os_str().is_empty() {
             Path::new(".")
@@ -239,10 +238,6 @@ impl ToolExecutor for ViewFileExecutor {
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "single cohesive function handling three media kinds; splitting would fragment the config plumbing"
-)]
 fn execute_by_kind(
     kind: &MediaKind,
     file: &mut File,

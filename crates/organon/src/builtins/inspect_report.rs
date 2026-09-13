@@ -66,10 +66,6 @@ impl ToolExecutor for InspectReportExecutor {
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one no-side-effect dispatcher keeps all supported report formats auditable"
-)]
 fn inspect_document(
     format: &str,
     document_bytes: &[u8],
