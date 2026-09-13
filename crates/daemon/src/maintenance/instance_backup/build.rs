@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use crate::error;
 
 use super::{
-    BackupBuild, EntryManifestMetadata, ExclusionCounts, OptionalStoreRecord, STATUS_EXCLUDED,
-    STATUS_OK, StoreEntry, copy_path, copy_path_excluding, ensure_relative_manifest_path,
-    hash_path, is_excluded_backup_symlink_name,
+    BackupBuild, BackupSourceEntry, EntryManifestMetadata, ExclusionCounts, OptionalStoreRecord,
+    STATUS_EXCLUDED, STATUS_OK, StoreEntry, copy_path, copy_path_excluding,
+    ensure_relative_manifest_path, hash_path, resolve_backup_source_entry,
 };
 
 impl BackupBuild {
@@ -146,13 +146,23 @@ impl BackupBuild {
         agent_id: String,
         workspace_source_class: String,
     ) -> error::Result<()> {
-        // WHY(#7246): an operator-configured workspace path is the one
-        // caller here where `src` itself (not merely something nested
+        // WHY(#7246, #7320): an operator-configured workspace path is the
+        // one caller here where `src` itself (not merely something nested
         // under it) could be named `.planning` -- guard the same as a
         // nested one so it is excluded and recorded, not routed into
         // `copy_path` (which would report an empty copy) or `hash_path`
         // (which would error: nothing was ever written to `dst`).
-        if is_excluded_backup_symlink_name(&src) {
+        //
+        // WHY(#7320): the guard must key off `resolve_backup_source_entry`
+        // (symlink-ness, like the other five call sites fixed by #7246 /
+        // PR #7309), not `is_excluded_backup_symlink_name` alone -- that
+        // checks only the file name, so a real directory happening to be
+        // named `.planning` was excluded and reported as a symlink
+        // exclusion when it should be copied like any other workspace.
+        if matches!(
+            resolve_backup_source_entry(&src, &src)?,
+            BackupSourceEntry::ExcludedPlanning
+        ) {
             self.exclusions.planning_symlinks += 1;
             self.record_optional_entry(OptionalStoreRecord {
                 name: String::from(name),
