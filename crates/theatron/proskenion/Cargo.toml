@@ -1,64 +1,9 @@
-# kanon:ignore WORKFLOW/llm-corpus-required -- standalone workspace (#3988); kanon:ignore CI/no-ci-workflows -- parent repository CI owns this excluded desktop workspace (#3988); kanon:ignore CI/public-repo-missing-security-yml -- security workflow is owned by the parent repository (#3988); kanon:ignore RELEASES/no-release-please-config -- release metadata is owned by the parent repository (#3988); kanon:ignore RELEASES/no-release-workflow -- release workflow is owned by the parent repository (#3988)
-# WHY: Explicit [workspace] prevents cargo from walking up to the root
-# workspace and failing with "not in workspace" when building standalone.
-[workspace]
-
-[workspace.package]
-# WHY: proskenion consumes skene and koina by `path` across the workspace
-# boundary (see [dependencies] below), so it is same-tree by construction and
-# cannot ship on an independent version/cadence. This literal cannot use
-# `version.workspace = true` across the standalone-workspace boundary, so it
-# must be kept equal to the root Cargo.toml [workspace.package].version by
-# hand; scripts/check-proskenion-pins.py enforces the equality.
-version = "0.45.0"
-edition = "2024"
-license = "AGPL-3.0-or-later"
-rust-version = "1.94"
-
-# WHY: theatron deps declared here (single source of truth within this
-# standalone workspace) so the 4 consumers below inherit via
-# `<dep> = { workspace = true }`. forkwright/aletheia#3870. Pin must be kept
-# in sync with the aletheia root workspace's [workspace.dependencies] block;
-# cargo cannot inherit across the workspace boundary.
-[workspace.dependencies]
-
-[workspace.dependencies.themelion]
-git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.2"
-version = "1.6.2"
-
-[workspace.dependencies.skeue]
-git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.2"
-version = "1.6.2"
-
-[workspace.dependencies.gramma]
-git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.2"
-version = "1.6.2"
-
-[workspace.dependencies.bathron]
-git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.2"
-version = "1.6.2"
-features = ["logging", "atomic-write"]
-
-[workspace.dependencies.keryx]
-git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.2"
-version = "1.6.2"
-
 [package]
 name = "proskenion"
-# WHY: explicit values instead of workspace inheritance because this crate
-# is excluded from the root workspace; dedicated desktop CI compiles and lints
-# it through this standalone manifest. `version` must equal the root
-# Cargo.toml [workspace.package].version (see [workspace.package] above);
-# scripts/check-proskenion-pins.py enforces the equality.
-version = "0.45.0"
-edition = "2024"
-license = "AGPL-3.0-or-later"
-rust-version = "1.94"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "Dioxus desktop UI for the Aletheia distributed cognition system"
 publish = false
 
@@ -149,9 +94,16 @@ notify-rust = "4"
 [dev-dependencies]
 tempfile = "3"
 
-# WHY: proskenion is excluded from the root workspace (GTK3/webkit2gtk system
-# library requirement). Inline lints replace workspace inheritance while
-# dedicated desktop CI compiles and lints this standalone manifest.
+# WHY: kept as an explicit inline table rather than `[lints] workspace = true`
+# (forkwright/aletheia#4726 scoped this crate INTO the root workspace, but not
+# onto the root's full pedantic/safety lint set — `pedantic`, `unwrap_used`,
+# `expect_used`, `cast_possible_truncation`, `as_conversions`, and
+# `indexing_slicing` are workspace-level lints this crate's source was never
+# written against; inheriting them wholesale is a large, separate cleanup, not
+# a manifest-wiring change). Deny-level entries must stay in sync with
+# [workspace.lints.clippy] by hand.
+# TODO(#7335): migrate to `[lints] workspace = true` and fix the ~585
+# clippy findings that surfaces.
 [lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }

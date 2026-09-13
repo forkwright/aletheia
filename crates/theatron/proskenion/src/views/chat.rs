@@ -169,7 +169,10 @@ impl ChatHistoryState {
     }
 
     fn has_older_server_history(&self) -> bool {
-        self.oldest_seq.is_some() && self.total_count.is_some_and(|total| total > self.raw_fetched)
+        self.oldest_seq.is_some()
+            && self
+                .total_count
+                .is_some_and(|total| total > self.raw_fetched)
     }
 }
 
@@ -436,7 +439,11 @@ fn fetch_chat_history_page(
                     }
                 }
 
-                history_state.set(ChatHistoryState::loaded(total_count, oldest_seq, raw_fetched));
+                history_state.set(ChatHistoryState::loaded(
+                    total_count,
+                    oldest_seq,
+                    raw_fetched,
+                ));
             }
             Err(message) => {
                 history_state.set(ChatHistoryState::failed(
@@ -450,6 +457,23 @@ fn fetch_chat_history_page(
     });
 }
 
+/// Signal handles for a turn a view has reattached to (or may reattach to):
+/// the shared cancellation token, the composer's queued-message buffer, and
+/// the pending-dispatch slot that fires the next queued message once the
+/// turn ends.
+///
+/// WHY a bundle: [`resolve_and_fetch_history`] and [`reattach_active_turn`]
+/// both thread these three signals through unchanged (neither reads nor
+/// writes them independently of the others), so naming the group keeps
+/// each function under the workspace's `clippy::too_many_arguments` limit
+/// without splitting state that was always handled as one unit.
+#[derive(Clone, Copy)]
+struct TurnWatchSignals {
+    cancel_token: Signal<CancellationToken>,
+    queued_messages: Signal<ComposerQueue>,
+    pending_dispatch: Signal<Option<String>>,
+}
+
 /// Resolve the durable session for a keyless selection server-side, then load
 /// its history.
 ///
@@ -459,15 +483,20 @@ fn fetch_chat_history_page(
 /// server (`POST /api/v1/sessions/resolve`), so the client resolves rather
 /// than guessing — this is also what keeps a remounted Chat view pointed at
 /// the same conversation instead of an empty pane.
+///
+/// WHY `turn_watch` is a bundle, not three positional signals: the root
+/// workspace's `clippy::too_many_arguments` (inherited here as of
+/// forkwright/aletheia#4726) caps this at 7; `cancel_token`,
+/// `queued_messages`, and `pending_dispatch` already traveled together
+/// unchanged into [`reattach_active_turn`] below, so grouping them is not a
+/// behavior change, only a naming of the group they already formed.
 fn resolve_and_fetch_history(
     cfg: ConnectionConfig,
     selection: ChatSelection,
     mut legacy_state: Signal<ChatState>,
     mut history_state: Signal<ChatHistoryState>,
     mut tab_bar: Signal<TabBar>,
-    cancel_token: Signal<CancellationToken>,
-    queued_messages: Signal<ComposerQueue>,
-    pending_dispatch: Signal<Option<String>>,
+    turn_watch: TurnWatchSignals,
 ) {
     debug_assert!(selection.session_id.is_none());
     history_state.set(ChatHistoryState::loading_initial(None));
@@ -522,15 +551,7 @@ fn resolve_and_fetch_history(
                     history_state,
                 );
                 if let Some(turn_id) = reattach_turn_id {
-                    reattach_active_turn(
-                        cfg,
-                        session.id,
-                        turn_id,
-                        legacy_state,
-                        cancel_token,
-                        queued_messages,
-                        pending_dispatch,
-                    );
+                    reattach_active_turn(cfg, session.id, turn_id, legacy_state, turn_watch);
                 }
             }
             Err(err) => {
@@ -585,10 +606,13 @@ fn reattach_active_turn(
     session_id: skene::id::ApiSessionId,
     turn_id: skene::id::TurnId,
     mut legacy_state: Signal<ChatState>,
-    mut cancel_token: Signal<CancellationToken>,
-    mut queued_messages: Signal<ComposerQueue>,
-    mut pending_dispatch: Signal<Option<String>>,
+    turn_watch: TurnWatchSignals,
 ) {
+    let TurnWatchSignals {
+        mut cancel_token,
+        mut queued_messages,
+        mut pending_dispatch,
+    } = turn_watch;
     cancel_token.read().cancel();
     let new_token = CancellationToken::new();
     cancel_token.set(new_token.clone());
@@ -769,9 +793,11 @@ pub(crate) fn Chat() -> Element {
                     legacy_state,
                     history_state,
                     tab_bar,
-                    cancel_token,
-                    queued_messages,
-                    pending_dispatch,
+                    TurnWatchSignals {
+                        cancel_token,
+                        queued_messages,
+                        pending_dispatch,
+                    },
                 );
             }
         }

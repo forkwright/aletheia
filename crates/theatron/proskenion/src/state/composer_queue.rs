@@ -59,7 +59,11 @@ impl ComposerQueue {
 /// Returns `true` when the message was queued (the caller must not dispatch
 /// it now); `false` when the message was left untouched and the caller
 /// should dispatch it immediately.
-pub(crate) fn enqueue_if_streaming(queue: &mut ComposerQueue, is_streaming: bool, text: String) -> bool {
+pub(crate) fn enqueue_if_streaming(
+    queue: &mut ComposerQueue,
+    is_streaming: bool,
+    text: String,
+) -> bool {
     if is_streaming {
         queue.push(text);
         true
@@ -78,7 +82,10 @@ pub(crate) fn enqueue_if_streaming(queue: &mut ComposerQueue, is_streaming: bool
 /// ended [`TurnEndKind::Errored`] -- dispatching then would immediately
 /// clear `streaming.error` (via `send_message`'s own start-of-call reset)
 /// before the operator ever sees the resulting retry banner.
-pub(crate) fn dequeue_after_turn_end(kind: TurnEndKind, queue: &mut ComposerQueue) -> Option<String> {
+pub(crate) fn dequeue_after_turn_end(
+    kind: TurnEndKind,
+    queue: &mut ComposerQueue,
+) -> Option<String> {
     if kind == TurnEndKind::Errored {
         return None;
     }
@@ -170,13 +177,20 @@ mod tests {
         let dispatched = dequeue_after_turn_end(TurnEndKind::Errored, &mut queue);
 
         assert_eq!(dispatched, None);
-        assert_eq!(queue.len(), 1, "the queued entry must survive an errored turn");
+        assert_eq!(
+            queue.len(),
+            1,
+            "the queued entry must survive an errored turn"
+        );
     }
 
     #[test]
     fn dequeue_after_turn_end_is_none_when_queue_is_empty() {
         let mut queue = ComposerQueue::default();
 
-        assert_eq!(dequeue_after_turn_end(TurnEndKind::Completed, &mut queue), None);
+        assert_eq!(
+            dequeue_after_turn_end(TurnEndKind::Completed, &mut queue),
+            None
+        );
     }
 }

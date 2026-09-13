@@ -24,27 +24,18 @@ ROOT_CARGO_JSONPATH = "$.workspace.package.version"
 ROOT_LOCK_PATH = "Cargo.lock"
 ROOT_LOCK_JSONPATH = "$.package[?(!@.source)].version"
 CHANGELOG_PATH = "CHANGELOG.md"
+# WHY(aletheia#4726): proskenion moved from its own private [workspace] into
+# the root cargo workspace and now declares `version.workspace = true` (no
+# hand-maintained literal, no separate lockfile) -- it has nothing left for a
+# release bump to touch directly. A release version bump changes only the
+# root manifest/lockfile; proskenion inherits automatically. This path is
+# kept only for check_proskenion_inherits_workspace_version's drift guard,
+# not for RELEASE_VERSION_PATHS.
 PROSKENION_CARGO_PATH = "crates/theatron/proskenion/Cargo.toml"
-# WHY: proskenion's [package].version is a plain top-level literal (it cannot
-# use `version.workspace = true` for [package] without also restructuring the
-# manifest away from its current explicit-values style; see the WHY comment
-# on that field), so it needs its own jsonpath distinct from
-# ROOT_CARGO_JSONPATH, which proskenion's [workspace.package].version reuses
-# verbatim (same shape, different file).
-PROSKENION_PACKAGE_JSONPATH = "$.package.version"
-PROSKENION_LOCK_PATH = "crates/theatron/proskenion/Cargo.lock"
-# WHY "proskenion" is in this tuple too, not just its two path-deps: proskenion
-# is its own standalone Cargo workspace, so `cargo ... --locked` (desktop.yml)
-# requires this lockfile's own "proskenion" package entry to match
-# [package].version in the same breath every release bumps it -- see
-# check_proskenion_cargo_version below.
-PROSKENION_LOCK_PACKAGES = ("koina", "skene", "proskenion")
 RELEASE_VERSION_PATHS = (
     ".release-please-manifest.json",
     ROOT_LOCK_PATH,
     ROOT_CARGO_PATH,
-    PROSKENION_CARGO_PATH,
-    PROSKENION_LOCK_PATH,
 )
 RELEASE_TRANSITION_PATHS = tuple(
     sorted((*RELEASE_VERSION_PATHS, CHANGELOG_PATH))
@@ -248,18 +239,15 @@ def check_release_please_config(repo_root: Path) -> list[str]:
         )
         return errors
 
+    # WHY no proskenion entries here (aletheia#4726): proskenion inherits
+    # [workspace.package].version from ROOT_CARGO_PATH and no longer carries
+    # a private [workspace.package] or [package] version literal of its own,
+    # and its standalone Cargo.lock is gone -- release-please's root
+    # ROOT_LOCK_JSONPATH entry already sweeps proskenion's root-workspace
+    # lock entry via its `!@.source` (path-member) selector.
     required_updates = (
         (ROOT_CARGO_PATH, ROOT_CARGO_JSONPATH),
-        (PROSKENION_CARGO_PATH, ROOT_CARGO_JSONPATH),
-        (PROSKENION_CARGO_PATH, PROSKENION_PACKAGE_JSONPATH),
         (ROOT_LOCK_PATH, ROOT_LOCK_JSONPATH),
-        *(
-            (
-                PROSKENION_LOCK_PATH,
-                f"$.package[?(@.name.value == '{package}')].version",
-            )
-            for package in PROSKENION_LOCK_PACKAGES
-        ),
     )
     for path, jsonpath in required_updates:
         has_required_update = any(
@@ -310,63 +298,42 @@ def check_release_please_manifest(repo_root: Path, expected_version: str) -> lis
 
 def check_release_lock_versions(repo_root: Path, expected_version: str) -> list[str]:
     errors: list[str] = []
-    for relative, selected_names in (
-        (ROOT_LOCK_PATH, None),
-        (PROSKENION_LOCK_PATH, set(PROSKENION_LOCK_PACKAGES)),
-    ):
-        path = repo_root / relative
-        try:
-            lock = load_toml(path)
-        except OSError as exc:
-            errors.append(f"{relative}: failed to read: {exc}")
-            continue
-        except tomllib.TOMLDecodeError as exc:
-            errors.append(f"{relative}: invalid TOML: {exc}")
-            continue
-        packages = lock.get("package")
-        if not isinstance(packages, list):
-            errors.append(f"{relative}: package inventory must be an array")
-            continue
-        selected = [
-            package
-            for package in packages
-            if isinstance(package, dict)
-            and (
-                "source" not in package
-                if selected_names is None
-                else package.get("name") in selected_names
+    path = repo_root / ROOT_LOCK_PATH
+    try:
+        lock = load_toml(path)
+    except OSError as exc:
+        return [f"{ROOT_LOCK_PATH}: failed to read: {exc}"]
+    except tomllib.TOMLDecodeError as exc:
+        return [f"{ROOT_LOCK_PATH}: invalid TOML: {exc}"]
+    packages = lock.get("package")
+    if not isinstance(packages, list):
+        return [f"{ROOT_LOCK_PATH}: package inventory must be an array"]
+    selected = [
+        package
+        for package in packages
+        if isinstance(package, dict) and "source" not in package
+    ]
+    if not selected:
+        return [f"{ROOT_LOCK_PATH}: release-owned lock packages are missing"]
+    for package in selected:
+        if package.get("version") != expected_version:
+            errors.append(
+                f"{ROOT_LOCK_PATH}: package {package.get('name')!r} version "
+                f"{package.get('version')!r} does not match workspace "
+                f"version {expected_version!r}"
             )
-        ]
-        if not selected:
-            errors.append(f"{relative}: release-owned lock packages are missing")
-            continue
-        if selected_names is not None:
-            observed_names = [package.get("name") for package in selected]
-            if sorted(observed_names) != sorted(selected_names):
-                errors.append(
-                    f"{relative}: expected one lock package for each of "
-                    f"{sorted(selected_names)!r}, found {observed_names!r}"
-                )
-        for package in selected:
-            if package.get("version") != expected_version:
-                errors.append(
-                    f"{relative}: package {package.get('name')!r} version "
-                    f"{package.get('version')!r} does not match workspace "
-                    f"version {expected_version!r}"
-                )
     return errors
 
 
-def check_proskenion_cargo_version(repo_root: Path, expected_version: str) -> list[str]:
-    """Check proskenion's own two hand-maintained Cargo.toml version literals.
+def check_proskenion_inherits_workspace_version(repo_root: Path) -> list[str]:
+    """Guard against proskenion's manifest regaining its own version pin.
 
-    WHY hand-maintained, not `version.workspace = true`: proskenion is a
-    standalone workspace excluded from the root [workspace] (GTK3/webkit2gtk
-    system-package requirement; see Cargo.toml [workspace].exclude), so it
-    cannot inherit [workspace.package].version across that boundary. Both its
-    own [workspace.package].version and [package].version must track the
-    root version by hand -- scripts/check-proskenion-pins.py enforces the
-    same equality as a second, independent, faster-running gate.
+    WHY(aletheia#4726): proskenion moved from a private [workspace] into the
+    root cargo workspace specifically to stop hand-tracking a duplicate
+    version (and edition/license/rust-version) pin against the root. This
+    checks the shape, not a value: [package].version must stay
+    `{ workspace = true }`, never a literal string, so a future edit cannot
+    silently reintroduce the drift class #4726 removed.
     """
     path = repo_root / PROSKENION_CARGO_PATH
     try:
@@ -376,25 +343,14 @@ def check_proskenion_cargo_version(repo_root: Path, expected_version: str) -> li
     except tomllib.TOMLDecodeError as exc:
         return [f"{PROSKENION_CARGO_PATH}: invalid TOML: {exc}"]
 
-    errors: list[str] = []
-    workspace_package_version = cargo.get("workspace", {}).get("package", {}).get(
-        "version"
-    )
-    if workspace_package_version != expected_version:
-        errors.append(
-            f"{PROSKENION_CARGO_PATH}: [workspace.package].version "
-            f"{workspace_package_version!r} does not match root workspace "
-            f"version {expected_version!r}"
-        )
-
     package_version = cargo.get("package", {}).get("version")
-    if package_version != expected_version:
-        errors.append(
-            f"{PROSKENION_CARGO_PATH}: [package].version {package_version!r} "
-            f"does not match root workspace version {expected_version!r}"
-        )
-
-    return errors
+    if package_version != {"workspace": True}:
+        return [
+            f"{PROSKENION_CARGO_PATH}: [package].version must stay "
+            f"`{{ workspace = true }}` (found {package_version!r}) -- proskenion "
+            "inherits the root workspace version, it does not hand-track it"
+        ]
+    return []
 
 
 def validate_static_release_metadata(
@@ -405,9 +361,9 @@ def validate_static_release_metadata(
     version, _workspace, version_errors = workspace_version(repo_root)
     errors.extend(version_errors)
     errors.extend(check_release_please_config(repo_root))
+    errors.extend(check_proskenion_inherits_workspace_version(repo_root))
     if version is not None:
         errors.extend(check_release_lock_versions(repo_root, version))
-        errors.extend(check_proskenion_cargo_version(repo_root, version))
     if require_manifest_alignment and version is not None:
         errors.extend(check_release_please_manifest(repo_root, version))
 
@@ -420,7 +376,6 @@ def copy_release_metadata(src_root: Path, dst_root: Path) -> list[str]:
         ROOT_CARGO_PATH,
         ROOT_LOCK_PATH,
         PROSKENION_CARGO_PATH,
-        PROSKENION_LOCK_PATH,
         "release-please-config.json",
         ".release-please-manifest.json",
         "scripts/bump-version.sh",
@@ -686,12 +641,6 @@ def replace_workspace_version_line(cargo_path: Path, version: str) -> None:
     )
 
 
-def replace_package_version_line(cargo_path: Path, version: str) -> None:
-    replace_toml_section_version_line(
-        cargo_path, "package", PROSKENION_PACKAGE_JSONPATH, version
-    )
-
-
 def update_release_please_manifest(repo_root: Path, version: str) -> None:
     path = repo_root / ".release-please-manifest.json"
     try:
@@ -887,22 +836,16 @@ def bump_version(repo_root: Path, version: str) -> None:
     if report.errors:
         raise ReleaseVersioningError("; ".join(report.errors))
 
+    # WHY no proskenion lock/manifest rendering here (aletheia#4726):
+    # proskenion has no version literal of its own left to bump and no
+    # standalone lockfile left to render -- it inherits the root bump via
+    # `version.workspace = true` and the root workspace's Cargo.lock entry.
     root_lock = render_lock_versions(repo_root / ROOT_LOCK_PATH, version, None)
-    proskenion_lock = render_lock_versions(
-        repo_root / PROSKENION_LOCK_PATH,
-        version,
-        set(PROSKENION_LOCK_PACKAGES),
-    )
 
     replace_workspace_version_line(repo_root / ROOT_CARGO_PATH, version)
-    replace_workspace_version_line(repo_root / PROSKENION_CARGO_PATH, version)
-    replace_package_version_line(repo_root / PROSKENION_CARGO_PATH, version)
     update_release_please_manifest(repo_root, version)
     try:
         (repo_root / ROOT_LOCK_PATH).write_text(root_lock, encoding="utf-8")
-        (repo_root / PROSKENION_LOCK_PATH).write_text(
-            proskenion_lock, encoding="utf-8"
-        )
     except OSError as exc:
         raise ReleaseVersioningError(f"failed to write release lockfiles: {exc}") from exc
 

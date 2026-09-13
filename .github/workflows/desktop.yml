@@ -1,4 +1,8 @@
-# WHY: proskenion is workspace-excluded; this job compiles, lints, and tests it when desktop paths change.
+# WHY: proskenion is a full but non-default root-workspace member (default-members
+# excludes it so a bare `cargo build`/`cargo check` stays GTK-free; see Cargo.toml
+# and docs/DESKTOP.md). This job compiles, lints, and tests it -- scoped with `-p
+# proskenion` against the ONE root Cargo.lock -- as a fast, path-filtered gate so a
+# desktop-only change doesn't wait on the full-workspace gate-attestation run.
 name: Desktop
 
 on:
@@ -8,9 +12,10 @@ on:
       - "crates/theatron/proskenion/**"
       - "crates/theatron/skene/**"
       # WHY: koina is a path dependency of both proskenion and skene, but is a
-      # root-workspace member. Root CI compiles koina without ever building
-      # proskenion (workspace-excluded), so a breaking koina API change is
-      # invisible until the tag-triggered release job compiles the desktop app.
+      # default-member of the root workspace. Root CI's default (non--workspace)
+      # commands compile koina without ever building proskenion, so a breaking
+      # koina API change is invisible until a `-p proskenion`/`--workspace` build
+      # runs -- this job, or the tag-triggered release job.
       - "crates/koina/**"
       - "scripts/*proskenion*"
       - ".github/workflows/desktop.yml"
@@ -55,10 +60,13 @@ jobs:
         with:
           packages: libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev
 
+      # WHY workspaces: "." (aletheia#4726): proskenion's own Cargo.lock is gone
+      # -- it resolves against the ONE root Cargo.lock now, same as every other
+      # workspace member.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: proskenion-${{ hashFiles('crates/theatron/proskenion/Cargo.toml') }}
-          workspaces: "crates/theatron/proskenion"
+          workspaces: "."
 
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
@@ -73,28 +81,26 @@ jobs:
       - name: Check desktop CI path filter covers proskenion path deps
         run: scripts/check-desktop-ci-paths.py
 
-      - name: Check proskenion theatron pins
-        run: scripts/check-proskenion-pins.py
-
       - name: Check proskenion flake wiring
         run: scripts/check-proskenion-flake.py
 
-      # WHY: the pin check compares the versions the lockfile records, which
-      # cannot see a dependency-set change. Editing a root-workspace manifest
-      # rewrites what proskenion's lockfile must record, and every cargo step
-      # below resolves without --locked, so a stale lock is silently updated
-      # here and fails only in the tag-triggered release build.
-      - name: Check proskenion lockfile resolves
-        run: cargo metadata --manifest-path crates/theatron/proskenion/Cargo.toml --format-version 1 --locked > /dev/null
+      # WHY --locked, folded into the plain check rather than a separate
+      # `cargo metadata --locked` step (aletheia#4726 removed the standalone
+      # proskenion workspace/lockfile this used to guard): a root-manifest
+      # edit that changes proskenion's resolved dependency set now shows up
+      # as a Cargo.lock diff review can see, and --locked here fails loudly
+      # the moment this job's build would otherwise silently rewrite it.
+      - name: cargo check
+        run: cargo check -p proskenion --all-targets --locked
 
       - name: cargo fmt --check
-        run: cargo fmt --manifest-path crates/theatron/proskenion/Cargo.toml --all -- --check
+        run: cargo fmt -p proskenion -- --check
 
       - name: cargo clippy
-        run: cargo clippy --manifest-path crates/theatron/proskenion/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy -p proskenion --all-targets -- -D warnings
 
       - name: cargo nextest run
-        run: cargo nextest run --profile ci --manifest-path crates/theatron/proskenion/Cargo.toml --no-tests=pass
+        run: cargo nextest run --profile ci -p proskenion --no-tests=pass
 
       - name: Upload nextest failure artifacts
         if: ${{ failure() }}
@@ -103,7 +109,5 @@ jobs:
           name: nextest-proskenion
           path: |
             target/nextest/ci/junit.xml
-            crates/theatron/proskenion/target/nextest/ci/junit.xml
             target/nextest/**/*.log
-            crates/theatron/proskenion/target/nextest/**/*.log
           if-no-files-found: warn

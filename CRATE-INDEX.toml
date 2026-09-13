@@ -221,7 +221,7 @@ path = "crates/koina"
 layer = "types"
 purpose = "Core types, errors, and tracing for Aletheia"
 depends_on = []
-used_by = ["agora", "aletheia", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "pylon", "skene", "symbolon", "taxis", "thesauros", "xenodocheion"]
+used_by = ["agora", "aletheia", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "proskenion", "pylon", "skene", "symbolon", "taxis", "thesauros", "xenodocheion"]
 dev_depends_on = []
 
 [crates.koina.features]
@@ -514,12 +514,20 @@ test-core = "test tier with knowledge-store"
 test-full = "full test tier fixtures"
 tls = "TLS support via axum-server"
 
+[crates.proskenion]
+path = "crates/theatron/proskenion"
+layer = "desktop"
+purpose = "Dioxus desktop UI for the Aletheia distributed cognition system"
+depends_on = ["koina", "skene"]
+used_by = []
+dev_depends_on = []
+
 [crates.skene]
 path = "crates/theatron/skene"
 layer = "desktop"
 purpose = "Shared API client, types, SSE, and streaming infrastructure for Aletheia UIs"
 depends_on = ["koina"]
-used_by = ["koilon"]
+used_by = ["koilon", "proskenion"]
 dev_depends_on = []
 
 [crates.skene.features]

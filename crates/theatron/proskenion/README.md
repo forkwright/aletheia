@@ -2,13 +2,15 @@
 
 Dioxus desktop UI for the Aletheia distributed cognition system.
 
-Excluded from the main workspace due to GTK/webkit2gtk system dependencies.
-See [docs/DESKTOP.md](../../../docs/DESKTOP.md) for build instructions.
+A full root-workspace member, but not a *default* one - it needs GTK3/
+webkit2gtk system libraries the rest of the workspace does not, so a bare
+`cargo build`/`cargo check` skips it via the root `default-members` list.
+Opt in explicitly with `-p proskenion` or `--workspace`. See
+[docs/DESKTOP.md](../../../docs/DESKTOP.md) for build instructions.
 
-## Pin Discipline
+## Dependency pins
 
-This crate is its own standalone Cargo workspace, so the theatron dependencies
-in its `[workspace.dependencies]` block must mirror the root Aletheia
-`[workspace.dependencies]` pins. Run `scripts/check-proskenion-pins.py` from
-the repository root before changing those pins; the installer and release
-workflow run the same check.
+The theatron dependencies (`themelion`, `skeue`, `gramma`, `bathron`, `keryx`)
+are declared once, in the root `[workspace.dependencies]`, and this crate
+inherits them via `{ workspace = true }` like any other workspace member.
+No separate manifest or pin needs to stay in sync.
