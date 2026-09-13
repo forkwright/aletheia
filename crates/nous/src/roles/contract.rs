@@ -7,10 +7,12 @@
 //!
 //! Contracts are loaded from `roles.toml` in the oikos cascade
 //! (nous/{id}/ -> shared/ -> theke/). Hardcoded defaults are used when
-//! no file is found. `SpawnServiceImpl::resolve_contract` (spawn_svc.rs) is
-//! the production caller (#4775) — behaviors/constraints append to the
-//! spawned agent's system prompt, `tool_groups` refines the coarse
-//! tool-group gate, `episteme_cohort`/`private`/`domains` replace the
+//! no file is found; an existing file that cannot be read or parsed is a
+//! hard error, not a fallback to those defaults (#7169) — see
+//! [`ContractRegistry::load_from_file`]. `SpawnServiceImpl::resolve_contract`
+//! (spawn_svc.rs) is the production caller (#4775) — behaviors/constraints
+//! append to the spawned agent's system prompt, `tool_groups` refines the
+//! coarse tool-group gate, `episteme_cohort`/`private`/`domains` replace the
 //! hardcoded constants a spawned agent previously always got, and `model`
 //! (wave 3.3) overrides the compiled `RoleTemplate` model a spawned agent
 //! would otherwise resolve to.
@@ -19,7 +21,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use organon::types::{ToolGroupId, ToolGroupPolicy};
 
@@ -182,10 +184,19 @@ impl ContractRegistry {
     /// Load contracts from a TOML file, falling back to defaults for
     /// any role not present in the file.
     ///
+    /// A missing file is not an error: it means "no override configured"
+    /// and returns [`Self::defaults()`]. Any other read failure (permission
+    /// denied, not a regular file, ...) or a parse failure is fail-closed:
+    /// it returns an error rather than silently substituting the
+    /// hardcoded defaults, because those defaults are the most permissive
+    /// point in the range and a read/parse error carries no evidence about
+    /// what the operator actually configured (#7169).
+    ///
     /// # Errors
     ///
     /// Returns [`error::Error::RoleContract`] if the file exists but
-    /// cannot be parsed as valid TOML.
+    /// cannot be read (any [`std::io::Error`] other than
+    /// [`std::io::ErrorKind::NotFound`]) or cannot be parsed as valid TOML.
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
@@ -194,8 +205,10 @@ impl ContractRegistry {
                 return Ok(Self::defaults());
             }
             Err(e) => {
-                warn!(?path, error = %e, "failed to read roles.toml, using defaults");
-                return Ok(Self::defaults());
+                return error::RoleContractSnafu {
+                    message: format!("failed to read {}: {e}", path.display()),
+                }
+                .fail();
             }
         };
 

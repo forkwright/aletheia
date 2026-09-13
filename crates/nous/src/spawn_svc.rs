@@ -238,30 +238,43 @@ impl SpawnServiceImpl {
     /// `ContractRegistry::defaults()` always populates every built-in role
     /// (`default_registry_has_all_roles`), and `load_from_file` merges file
     /// contracts on top of that same default set — so a known `Role` always
-    /// resolves here. A `roles.toml` that fails to parse degrades to those
-    /// defaults with a visible warning rather than silently losing the
-    /// override (#4775's "missing or invalid role contracts fail visibly").
+    /// resolves here when no `roles.toml` is found at all.
+    ///
+    /// WHY(#7169): a `roles.toml` that exists but fails to read or parse is
+    /// refused rather than degraded to `ContractRegistry::defaults()`.
+    /// Those defaults are the liberal end of the contract range (broadest
+    /// tool groups, `private: false`, no domain scoping), so silently
+    /// substituting them for a file an operator may have written precisely
+    /// to *restrict* a role is a privilege-restoration bug, not a harmless
+    /// degrade — and the cascade resolves the nearest tier that merely
+    /// exists, so a corrupt `nous/{id}/roles.toml` would otherwise mask a
+    /// valid, more restrictive `shared/roles.toml` beneath it. `NotFound`
+    /// is unchanged: it means "no override configured" and still resolves
+    /// to defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the resolved `roles.toml` exists but cannot be read
+    /// or parsed. The caller must abort the spawn rather than fall back.
     fn resolve_contract(
         &self,
         parent_nous_id: &str,
         role: Role,
-    ) -> Option<crate::roles::contract::RoleContract> {
+    ) -> Result<Option<crate::roles::contract::RoleContract>, String> {
         use crate::roles::contract::ContractRegistry;
 
-        let registry = taxis::cascade::resolve(&self.oikos, parent_nous_id, "roles.toml", None)
-            .map_or_else(ContractRegistry::defaults, |path| {
-                ContractRegistry::load_from_file(&path).unwrap_or_else(|e| {
-                    warn!(
-                        role = %role,
-                        path = %path.display(),
-                        error = %e,
-                        "failed to parse roles.toml; falling back to hardcoded role contract defaults"
-                    );
-                    ContractRegistry::defaults()
-                })
-            });
+        let registry =
+            match taxis::cascade::resolve(&self.oikos, parent_nous_id, "roles.toml", None) {
+                None => ContractRegistry::defaults(),
+                Some(path) => ContractRegistry::load_from_file(&path).map_err(|e| {
+                    format!(
+                        "role={role} path={} roles.toml failed to load, refusing spawn: {e}",
+                        path.display()
+                    )
+                })?,
+            };
 
-        registry.get(role.as_str()).cloned()
+        Ok(registry.get(role.as_str()).cloned())
     }
 
     /// Build a [`NousConfig`] for an ephemeral sub-agent.
@@ -269,12 +282,37 @@ impl SpawnServiceImpl {
     /// WHY(#5555): keep config construction deterministic and testable so the
     /// spawned `allowed_roots` can be asserted independently of the actor
     /// lifecycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the role's `roles.toml` (resolved via the oikos
+    /// cascade) exists but fails to read or parse (#7169) — the caller
+    /// must abort the spawn rather than proceed on a guessed contract.
+    // NOTE: sequential field-by-field config derivation (model, tool policy,
+    // spawn policy, workspace, generation limits) -- already extracted the
+    // largest cohesive slice into `ResolvedGeneration`; what remains is each
+    // `NousConfig`/`NousLimits` field's own independent derivation rule, and
+    // splitting further would fragment one config into scattered pieces.
+    // The #7169 fail-closed `resolve_contract` threading pushed this a few
+    // lines past clippy's default 100-line ceiling.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "sequential config-field derivation, now including fallible #7169 contract resolution"
+    )]
     fn build_spawn_config(
         &self,
         request: &SpawnRequest,
         parent_nous_id: &str,
         parent_generation: Option<organon::types::SpawnGenerationHint>,
-    ) -> (String, NousConfig, String) {
+    ) -> Result<
+        (
+            String,
+            NousConfig,
+            String,
+            Option<crate::roles::contract::RoleContract>,
+        ),
+        String,
+    > {
         let spawn_id = format!(
             "spawn-{}-{}",
             parent_nous_id,
@@ -282,7 +320,16 @@ impl SpawnServiceImpl {
         );
         let role = resolve_role(&request.role);
         let template = role.map(Role::template);
-        let contract = role.and_then(|r| self.resolve_contract(parent_nous_id, r));
+        // WHY(#7169): resolved once here and threaded through to
+        // `spawn_and_run` via the returned tuple so a spawn reads and
+        // resolves `roles.toml` exactly once, not twice — a second,
+        // independent `resolve_contract` call at the `spawn_and_run` call
+        // site would re-read the file and could itself diverge (e.g. a
+        // concurrent edit) from the contract this config was built with.
+        let contract = match role {
+            Some(r) => self.resolve_contract(parent_nous_id, r)?,
+            None => None,
+        };
 
         // WHY(wave 3.3): `resolve_model` is the one definition of this
         // precedence (`request.model -> contract.model -> template.model ->
@@ -432,7 +479,7 @@ impl SpawnServiceImpl {
             behavior: taxis::config::AgentBehaviorDefaults::default(),
         };
 
-        (spawn_id, config, session_key)
+        Ok((spawn_id, config, session_key, contract))
     }
 }
 
@@ -447,14 +494,21 @@ impl SpawnService for SpawnServiceImpl {
     ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
         let parent_nous_id = context.parent_nous_id.clone();
         let parent_cancel = context.parent_cancel.clone();
-        let (spawn_id, config, session_key) =
-            self.build_spawn_config(&request, &parent_nous_id, context.parent_generation);
+        // WHY(#7169): a resolved-but-unreadable-or-malformed `roles.toml`
+        // must abort the spawn, not fall back to the permissive hardcoded
+        // defaults — so this is the one place per spawn that resolves it
+        // (threaded through as `contract`, reused below for the SOUL
+        // prompt instead of re-resolving).
+        let (spawn_id, config, session_key, contract) =
+            match self.build_spawn_config(&request, &parent_nous_id, context.parent_generation) {
+                Ok(built) => built,
+                Err(e) => return Box::pin(async move { Err(e) }),
+            };
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
         let workspace = config.workspace.clone();
         let role = resolve_role(&request.role);
         let template = role.map(Role::template);
-        let contract = role.and_then(|r| self.resolve_contract(&parent_nous_id, r));
 
         // WHY(wave 3.3): `resolve_model` (shared with `build_spawn_config`)
         // labels which source actually won, so an operator pinning a model
@@ -463,11 +517,14 @@ impl SpawnService for SpawnServiceImpl {
         // provider instance silently reaching for a compiled Anthropic
         // model id) is exactly the case this must make visible. Calling it
         // again here (rather than threading the label out of
-        // `build_spawn_config`) is not a re-parse: `role`/`template`/
-        // `contract` are already re-resolved on this line for
-        // `compose_soul_content` below (pre-dating this field), so
-        // `resolve_model` runs a second time only over values already in
-        // hand -- a cheap pure match, not an oikos/roles.toml re-read.
+        // `build_spawn_config`) is not a re-parse: `role`/`template` are
+        // re-resolved on this line for `compose_soul_content` below
+        // (pre-dating this field), but `contract` is not -- WHY(#7169)
+        // above threads the single `roles.toml` resolution
+        // `build_spawn_config` already performed through its returned
+        // tuple, so `resolve_model` runs a second time only over values
+        // already in hand -- a cheap pure match, never a second
+        // oikos/roles.toml read.
         let (_, model_source) = resolve_model(&request, contract.as_ref(), template.as_ref());
 
         // WHY: ephemeral sub-agents do not capture training data or propose
@@ -748,17 +805,19 @@ mod tests {
         let (_dir, oikos) = make_oikos();
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "coder".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert!(
             config.workspace.starts_with(oikos.root()),
@@ -796,17 +855,19 @@ mod tests {
             max_tool_result_bytes: 22_222,
         };
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "coder".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            Some(hint),
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                Some(hint),
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(config.generation.context_window, 999_000);
         assert_eq!(config.generation.max_output_tokens, 12_345);
@@ -826,17 +887,19 @@ mod tests {
         let (_dir, oikos) = make_oikos();
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "coder".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(config.generation.context_window, CONTEXT_TOKENS);
         assert_eq!(config.generation.max_output_tokens, MAX_OUTPUT_TOKENS);
@@ -860,17 +923,19 @@ mod tests {
         let (_dir, oikos) = make_oikos();
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, mut config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "coder".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, mut config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
         assert!(
             config.spawn_depth > 0,
             "an ephemeral sub-agent config must carry a non-zero cross-agent depth"
@@ -921,17 +986,19 @@ tool_groups = ["read"]
         .expect("write roles.toml");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "coder".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(
             config.tool_groups,
@@ -960,17 +1027,19 @@ domains = ["medical"]
         .expect("write roles.toml");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "reviewer".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "reviewer".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(&*config.episteme_cohort, "isolated");
         assert!(config.private);
@@ -994,17 +1063,19 @@ model = "test-role-model-override"
         .expect("write roles.toml");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "reviewer".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "reviewer".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(
             config.generation.model, "test-role-model-override",
@@ -1035,17 +1106,19 @@ model = "test-role-model-override"
         .expect("write roles.toml");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "reviewer".to_owned(),
-                task: "Test task".to_owned(),
-                model: Some("claude-haiku-explicit".to_owned()),
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "reviewer".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: Some("claude-haiku-explicit".to_owned()),
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(
             config.generation.model, "claude-haiku-explicit",
@@ -1076,17 +1149,19 @@ model = "test-role-model-override"
         .expect("write roles.toml");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "analyst".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "analyst".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(
             config.generation.model, SONNET_MODEL,
@@ -1197,17 +1272,19 @@ model = "test-role-model-override"
         let (_dir, oikos) = make_oikos();
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "coder".to_owned(),
-                task: "Test task".to_owned(),
-                model: None,
-                allowed_tools: None,
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         assert_eq!(
             config.tool_groups,
@@ -1225,12 +1302,15 @@ model = "test-role-model-override"
         );
     }
 
-    // WHY(#4775 "missing or invalid role contracts fail visibly"): a
-    // malformed roles.toml must degrade to hardcoded defaults rather than
-    // taking spawning down, but the degrade must be a fallback, not a
-    // silent swallow — `resolve_contract` logs a `warn!` on this path.
+    // WHY(#7169): a malformed roles.toml must refuse the spawn, not degrade
+    // to `ContractRegistry::defaults()`. Supersedes
+    // `spawn_config_malformed_roles_toml_falls_back_to_defaults`, which
+    // asserted the exact fallback behavior this issue reports as the bug
+    // (hardcoded defaults are the liberal end of the contract range, so a
+    // read/parse error resolving to them can only ever raise privilege,
+    // never lower it).
     #[test]
-    fn spawn_config_malformed_roles_toml_falls_back_to_defaults() {
+    fn spawn_config_malformed_roles_toml_refuses_spawn() {
         let (_dir, oikos) = make_oikos();
         std::fs::write(
             oikos.shared().join("roles.toml"),
@@ -1239,7 +1319,7 @@ model = "test-role-model-override"
         .expect("write malformed roles.toml");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
+        let result = svc.build_spawn_config(
             &SpawnRequest {
                 role: "coder".to_owned(),
                 task: "Test task".to_owned(),
@@ -1251,27 +1331,96 @@ model = "test-role-model-override"
             None,
         );
 
-        assert_eq!(
-            config.tool_groups,
-            Role::Coder.template().tool_groups,
-            "malformed roles.toml must fall back to hardcoded defaults, not fail the spawn"
+        let err = result.expect_err(
+            "malformed roles.toml must refuse the spawn, not fall back to hardcoded defaults",
         );
-        assert_eq!(
-            config.generation.model,
-            Role::Coder.template().model,
-            "malformed roles.toml must not leak a partially-parsed model override"
+        assert!(
+            err.contains("roles.toml"),
+            "refusal must name roles.toml so an operator can find the bad file: {err}"
         );
     }
 
-    // WHY(wave 3.3, #4775): the whole-file-garbage case above never touches
-    // `model` at all, so it cannot prove the degrade-to-defaults path holds
+    // WHY(#7169): the cascade (`taxis::cascade::resolve_with`) picks the
+    // first tier where a `roles.toml` merely *exists*, most-specific first,
+    // and never parses it to decide. So a corrupted `nous/{id}/roles.toml`
+    // sits in front of a valid, more restrictive `shared/roles.toml` and
+    // the old behavior (fall back to `ContractRegistry::defaults()` on
+    // parse failure) would silently swap a role that was operator-scoped to
+    // `episteme_cohort = "isolated"`, `private = true`,
+    // `domains = ["medical", "legal"]`, `tool_groups = [read]` for the
+    // liberal built-in default (`shared` cohort, public, unrestricted
+    // domains, the full coder/reviewer tool-group set) -- privilege
+    // *increasing* on a read error. Refusing the spawn is the only
+    // response that cannot mask the restrictive tier: nothing runs under
+    // either contract. Combines the restrictive fixture from
+    // `spawn_config_cohort_privacy_domains_follow_roles_toml_override` with
+    // the corrupted-file case from
+    // `spawn_config_malformed_roles_toml_refuses_spawn` so the
+    // privilege-increase direction is asserted directly, per the issue's
+    // acceptance bar.
+    #[test]
+    fn spawn_config_corrupted_nous_tier_does_not_mask_restrictive_shared_tier() {
+        let (_dir, oikos) = make_oikos();
+
+        // Well-formed and restrictive -- the tier a masking bug would
+        // silently discard in favor of the liberal hardcoded defaults.
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[reviewer]
+version = 2
+episteme_cohort = "isolated"
+private = true
+domains = ["medical", "legal"]
+tool_groups = ["read"]
+"#,
+        )
+        .expect("write restrictive shared/roles.toml");
+
+        // Corrupted and more specific -- what the cascade actually resolves
+        // to, since `resolve_with` never parses to check validity.
+        let nous_dir = oikos.nous_dir("test-parent");
+        std::fs::create_dir_all(&nous_dir).expect("create nous/{id} dir");
+        std::fs::write(nous_dir.join("roles.toml"), "this is not { valid toml")
+            .expect("write corrupted nous/{id}/roles.toml");
+
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let result = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "reviewer".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        let err = result.expect_err(
+            "a corrupted nous/{id}/roles.toml must refuse the spawn rather than fall through \
+             to hardcoded defaults that are more permissive than the well-formed, more \
+             restrictive shared/roles.toml it is masking (privilege must not increase)",
+        );
+        assert!(
+            err.contains("roles.toml"),
+            "refusal must name roles.toml so an operator can find the corrupted file: {err}"
+        );
+    }
+
+    // WHY(#7169, wave 3.3, #4775): the whole-file-garbage case above never
+    // touches `model` at all, so it cannot prove the fail-closed path holds
     // for a malformed `model` field specifically. A non-string `model`
     // (`from_toml_rejects_non_string_model` proves `RoleContractToml`
-    // itself rejects this at parse time) must still surface here as the
-    // same warn-and-degrade fallback, not a spawn-time panic or a silently
-    // coerced value.
+    // itself rejects this at parse time) is a parse error like any other,
+    // and #7169 requires every parse error to refuse the spawn -- there is
+    // no "the rest of the file was fine" partial-fallback path. Supersedes
+    // `spawn_config_malformed_model_field_falls_back_to_template_default`,
+    // which asserted the pre-#7169 degrade-to-defaults behavior for this
+    // specific field.
     #[test]
-    fn spawn_config_malformed_model_field_falls_back_to_template_default() {
+    fn spawn_config_malformed_model_field_refuses_spawn() {
         let (_dir, oikos) = make_oikos();
         std::fs::write(
             oikos.shared().join("roles.toml"),
@@ -1280,7 +1429,7 @@ model = "test-role-model-override"
         .expect("write roles.toml with non-string model");
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
+        let result = svc.build_spawn_config(
             &SpawnRequest {
                 role: "coder".to_owned(),
                 task: "Test task".to_owned(),
@@ -1292,10 +1441,13 @@ model = "test-role-model-override"
             None,
         );
 
-        assert_eq!(
-            config.generation.model,
-            Role::Coder.template().model,
-            "a non-string model field must degrade to the template default, not panic or coerce"
+        let err = result.expect_err(
+            "a non-string model field is a parse error and must refuse the spawn, not degrade \
+             to the template default",
+        );
+        assert!(
+            err.contains("roles.toml"),
+            "refusal must name roles.toml so an operator can find the bad file: {err}"
         );
     }
 
@@ -1691,17 +1843,19 @@ model = "test-role-model-override"
         let (_dir, oikos) = make_oikos();
         let svc = make_spawn_service(Arc::clone(&oikos));
 
-        let (_, config, _) = svc.build_spawn_config(
-            &SpawnRequest {
-                role: "analyst".to_owned(), // unrecognized — no Role template
-                task: "Read the workspace".to_owned(),
-                model: None,
-                allowed_tools: None, // no explicit allowlist — triggers conservative path
-                timeout_secs: 30,
-            },
-            "test-parent",
-            None,
-        );
+        let (_, config, _, _) = svc
+            .build_spawn_config(
+                &SpawnRequest {
+                    role: "analyst".to_owned(), // unrecognized — no Role template
+                    task: "Read the workspace".to_owned(),
+                    model: None,
+                    allowed_tools: None, // no explicit allowlist — triggers conservative path
+                    timeout_secs: 30,
+                },
+                "test-parent",
+                None,
+            )
+            .expect("build_spawn_config succeeds");
 
         // Group policy must be Read-only, not DenyAll.
         assert_eq!(
