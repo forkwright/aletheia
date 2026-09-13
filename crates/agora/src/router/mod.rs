@@ -129,10 +129,20 @@ impl MessageRouter {
     /// [`MatchReason::GroupBinding`] route, per the per-group participant
     /// allowlist ([`GroupParticipantPolicy`], forkwright/aletheia#5194).
     ///
-    /// Returns `true` (no denial) when `msg` has no `group_id`, when no
-    /// binding matches `(channel, group_id)` for it, or when that group
-    /// has no allowlist entry -- there is nothing to gate in those cases
-    /// and [`Self::resolve`]'s normal tier order still applies.
+    /// Returns `true` (no denial) when `msg` has no `group_id`, or when
+    /// `(channel, group_id)` has no allowlist entry -- there is nothing to
+    /// gate in those cases and [`Self::resolve`]'s normal tier order still
+    /// applies.
+    ///
+    /// Deliberately does NOT require an exact [`MatchReason::GroupBinding`]
+    /// to exist for `(channel, group_id)` first: an operator names a group
+    /// in `groupParticipants.allowlist` to restrict *that group*, not to
+    /// restrict only the specific tier that happens to route it today. A
+    /// message whose group has an allowlist entry but no exact binding
+    /// would otherwise still resolve -- silently unrestricted -- through a
+    /// channel wildcard or the global default nous, which is the entry
+    /// having no effect at all rather than the restriction the operator
+    /// configured (forkwright/aletheia#5194 follow-up).
     ///
     /// WHY a separate, mandatory pre-check rather than folding into
     /// [`Self::resolve`]'s fall-through (mirrors [`Self::allows_sender`]'s
@@ -148,15 +158,6 @@ impl MessageRouter {
         let Some(group_id) = &msg.group_id else {
             return true;
         };
-        let receiving_account = msg.receiving_account_id.as_deref();
-        let has_matching_group_binding = self.bindings.iter().any(|b| {
-            b.channel == msg.channel
-                && b.source == *group_id
-                && account_matches(b.receiving_account_id.as_deref(), receiving_account)
-        });
-        if !has_matching_group_binding {
-            return true;
-        }
         self.group_participants
             .allows(&msg.channel, group_id, &msg.sender)
     }

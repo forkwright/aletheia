@@ -2034,6 +2034,84 @@ fn accepts_valid_messaging() {
     );
 }
 
+// --- messaging.groupParticipants.allowlist (#5194 follow-up) ---
+
+#[test]
+fn accepts_valid_group_participants_allowlist() {
+    let section = json!({
+        "groupParticipants": {
+            "allowlist": {
+                "signal": {
+                    "group-xyz": ["+15550100", "+15550101"]
+                }
+            }
+        }
+    });
+    assert!(
+        validate_section("messaging", &section).is_ok(),
+        "a well-formed groupParticipants allowlist should be accepted"
+    );
+}
+
+#[test]
+fn accepts_wildcard_group_participants_pattern() {
+    let section = json!({
+        "groupParticipants": { "allowlist": { "signal": { "group-xyz": ["*"] } } }
+    });
+    assert!(
+        validate_section("messaging", &section).is_ok(),
+        "a '*' pattern is a valid sender pattern"
+    );
+}
+
+#[test]
+fn rejects_group_participants_unknown_channel() {
+    let section = json!({
+        "groupParticipants": { "allowlist": { "not-a-channel": { "group-xyz": ["*"] } } }
+    });
+    let result = validate_section("messaging", &section);
+    assert!(
+        result.is_err(),
+        "an unknown channel type in groupParticipants must be rejected"
+    );
+}
+
+#[test]
+fn rejects_group_participants_empty_pattern_list() {
+    let section = json!({
+        "groupParticipants": { "allowlist": { "signal": { "group-xyz": [] } } }
+    });
+    let result = validate_section("messaging", &section);
+    assert!(
+        result.is_err(),
+        "an empty pattern list matches no sender and must be rejected as having no effect"
+    );
+}
+
+#[test]
+fn rejects_group_participants_empty_pattern_string() {
+    let section = json!({
+        "groupParticipants": { "allowlist": { "signal": { "group-xyz": [""] } } }
+    });
+    let result = validate_section("messaging", &section);
+    assert!(
+        result.is_err(),
+        "an empty sender pattern string can never match a real sender"
+    );
+}
+
+#[test]
+fn rejects_group_participants_empty_group_key() {
+    let section = json!({
+        "groupParticipants": { "allowlist": { "signal": { "": ["*"] } } }
+    });
+    let result = validate_section("messaging", &section);
+    assert!(
+        result.is_err(),
+        "an empty group id key can never match a real group_id"
+    );
+}
+
 // --- validate_startup instance subdirectory checks (#3338) ---
 
 #[test]
