@@ -79,6 +79,7 @@ LOCAL_PACKAGE_LINE = re.compile(
 )
 MEMBERS_SECTION = re.compile(r"(?ms)^members = \[\n.*?^\]")
 EXCLUDE_SECTION = re.compile(r"(?ms)^exclude = \[\n.*?^\]")
+DEFAULT_MEMBERS_SECTION = re.compile(r"(?ms)^default-members = \[\n.*?^\]\n?")
 
 
 class ScopeCheckError(Exception):
@@ -730,9 +731,33 @@ def probe_root_manifest(build: ValidatedBuild, manifest_dirs: set[Path]) -> str:
         if directory != REPO_ROOT / "crates" / build.package
     ]
     exclude = "exclude = [\n" + "".join(f'    "{path}",\n' for path in sorted(excluded)) + "]"
-    return replace_manifest_section(
-        EXCLUDE_SECTION, exclude, f"cannot isolate the workspace exclusions in {MANIFEST_NAME}", rewritten
-    )
+    if not EXCLUDE_SECTION.search(rewritten):
+        # WHY(aletheia#4726): the root manifest no longer carries an `exclude
+        # = [...]` table of its own -- proskenion (previously the only
+        # excluded member) is now a full workspace member gated by
+        # default-members instead, so there is nothing left to require an
+        # `exclude` table for. The probe workspace still needs every sibling
+        # crate excluded so the single-package `members` table above resolves
+        # in isolation; with no existing table to substitute in place,
+        # insert a fresh one directly after the members table this function
+        # just wrote instead of failing closed on an assumption that no
+        # longer holds.
+        insertion_point = rewritten.index(members) + len(members)
+        rewritten = rewritten[:insertion_point] + "\n" + exclude + rewritten[insertion_point:]
+    else:
+        rewritten = replace_manifest_section(
+            EXCLUDE_SECTION, exclude, f"cannot isolate the workspace exclusions in {MANIFEST_NAME}", rewritten
+        )
+    # WHY(aletheia#4726): the root manifest's new `default-members = [...]`
+    # table (added so a bare `cargo build` skips proskenion) names every
+    # non-probed sibling crate. Cargo rejects a workspace whose
+    # default-members lists a package absent from members ("is not a
+    # member"), and the single-package `members` table above is exactly
+    # that for every build but the probed one -- so the probe workspace
+    # must drop default-members rather than inherit a list it can no
+    # longer satisfy. A single member with no default-members table
+    # defaults to that member, which is what every probe wants anyway.
+    return DEFAULT_MEMBERS_SECTION.sub("", rewritten, count=1)
 
 
 def has_nested_manifest(entry: Path, manifest_dirs: set[Path]) -> bool:
