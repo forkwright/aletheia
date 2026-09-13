@@ -760,3 +760,162 @@ async fn loop_warning_still_pairs_every_tool_use_with_a_result() {
          by the provider on the next request"
     );
 }
+
+// ── preparation-failure surfacing ────────────────────────────────────────────
+//
+// WHY: dispatch used to collapse every `prepare_input` failure to the fixed
+// string "Tool error: input preparation failed", so an agent whose `ls`/`find`
+// call carried an out-of-scope absolute path could not tell a bad argument
+// apart from a broken tool. The typed reason must reach the model — with
+// vault-resolved secrets scrubbed first, since preparation runs on the
+// post-substitution arguments.
+
+struct PathEchoExecutor;
+
+impl ToolExecutor for PathEchoExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
+    fn execute<'a>(
+        &'a self,
+        _input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async { Ok(ToolResult::text("ok")) })
+    }
+}
+
+fn make_path_def(name: &str) -> ToolDef {
+    let mut def = make_tool_def(name);
+    def.input_schema.properties.insert(
+        "path".to_owned(),
+        organon::types::PropertyDef {
+            property_type: organon::types::PropertyType::String,
+            ..organon::types::PropertyDef::default()
+        },
+    );
+    def
+}
+
+fn tool_result_text(result: &crate::execute::dispatch::DispatchResult) -> String {
+    result
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::ToolResult { content, .. } => Some(content.text_summary()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[tokio::test]
+async fn preparation_failure_surfaces_typed_reason_to_the_model() {
+    use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
+    use crate::pipeline::LoopDetector;
+
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(make_path_def("ls_like"), Box::new(PathEchoExecutor))
+        .expect("register");
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&registry);
+
+    // `/etc` is outside the test context's allowed roots (`/tmp`), so
+    // registry-owned path preparation rejects it.
+    let tool_uses = vec![(
+        "call-1".to_owned(),
+        "ls_like".to_owned(),
+        serde_json::json!({"path": "/etc"}),
+    )];
+    let mut loop_detector = LoopDetector::new(10);
+    let mut all_calls = Vec::new();
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &registry,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        None,
+        None,
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    let text = tool_result_text(&result);
+    assert!(
+        text.contains("input preparation failed"),
+        "the failure class prefix must survive: {text}"
+    );
+    assert!(
+        text.contains("outside allowed roots"),
+        "the typed reason must reach the model so it can self-correct: {text}"
+    );
+}
+
+#[tokio::test]
+async fn preparation_failure_scrubs_vault_resolved_secrets_from_the_reason() {
+    use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
+    use crate::pipeline::LoopDetector;
+
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(make_path_def("ls_like"), Box::new(PathEchoExecutor))
+        .expect("register");
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&registry);
+
+    // The placeholder resolves to an out-of-scope absolute path, so the
+    // validator's reason would quote the resolved secret verbatim if dispatch
+    // did not scrub it.
+    let services = organon::types::ToolServices::default();
+    services
+        .secret_vault
+        .store("token", "/etc/resolved-secret-path");
+    let mut ctx = test_tool_ctx();
+    ctx.services = Some(Arc::new(services));
+
+    let tool_uses = vec![(
+        "call-1".to_owned(),
+        "ls_like".to_owned(),
+        serde_json::json!({"path": "{{secret:token}}"}),
+    )];
+    let mut loop_detector = LoopDetector::new(10);
+    let mut all_calls = Vec::new();
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &registry,
+        &ctx,
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        None,
+        None,
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    let text = tool_result_text(&result);
+    assert!(
+        text.contains("input preparation failed"),
+        "the failure class prefix must survive: {text}"
+    );
+    assert!(
+        !text.contains("resolved-secret-path"),
+        "the resolved secret must not reach the model: {text}"
+    );
+    assert!(
+        text.contains("[REDACTED]"),
+        "the scrubbed marker should appear where the secret was: {text}"
+    );
+}

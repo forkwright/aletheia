@@ -4,9 +4,7 @@ use dioxus::prelude::*;
 
 use gramma::{HighlightedSpan, highlight_code};
 
-use crate::api::client::{
-    SaveOutcome, authenticated_client, open_workspace_file, save_workspace_file,
-};
+use crate::api::client::{SaveOutcome, open_workspace_file, save_workspace_file};
 use crate::components::markdown::Markdown;
 use crate::state::connection::ConnectionConfig;
 use crate::state::files::{is_binary_content, is_markdown_path};
@@ -380,44 +378,34 @@ fn load_file(
 
     let cfg = config.read().clone();
     spawn(async move {
-        let client = match authenticated_client(&cfg) {
-            Ok(client) => client,
+        let client =
+            match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                Ok(client) => client,
+                Err(err) => {
+                    state.set(ViewerState::Error(err.to_string()));
+                    return;
+                }
+            };
+
+        match client.workspace_file_content(&path).await {
+            Ok(bytes) => {
+                if is_binary_content(&bytes) {
+                    state.set(ViewerState::Binary { path });
+                } else {
+                    let content = String::from_utf8_lossy(&bytes).into_owned();
+                    let line_count = content.lines().count();
+                    let byte_size = bytes.len();
+                    draft.set(content.clone());
+                    state.set(ViewerState::Loaded {
+                        path,
+                        content,
+                        line_count,
+                        byte_size,
+                    });
+                }
+            }
             Err(err) => {
                 state.set(ViewerState::Error(err.to_string()));
-                return;
-            }
-        };
-        let base = cfg.server_url.trim_end_matches('/');
-        let encoded: String = keryx::url::encode_path_segment(&path);
-        let url = format!("{base}/api/v1/workspace/files/content?path={encoded}");
-
-        match client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                Ok(bytes) => {
-                    if is_binary_content(&bytes) {
-                        state.set(ViewerState::Binary { path });
-                    } else {
-                        let content = String::from_utf8_lossy(&bytes).into_owned();
-                        let line_count = content.lines().count();
-                        let byte_size = bytes.len();
-                        draft.set(content.clone());
-                        state.set(ViewerState::Loaded {
-                            path,
-                            content,
-                            line_count,
-                            byte_size,
-                        });
-                    }
-                }
-                Err(e) => {
-                    state.set(ViewerState::Error(format!("read: {e}")));
-                }
-            },
-            Ok(resp) => {
-                state.set(ViewerState::Error(format!("status: {}", resp.status())));
-            }
-            Err(e) => {
-                state.set(ViewerState::Error(format!("connection: {e}")));
             }
         }
     });

@@ -65,6 +65,9 @@ DEFAULT_ALLOWLIST=(
     '^docs/RUNBOOK\.md$'
     '^docs/CUTOVER_CHECKLIST\.md$'
     '^\.gitleaks\.toml$'
+    # WHY: git author identity map; the addresses it remaps are already
+    # public in the repo's own commit history (see .mailmap's own WHY).
+    '^\.mailmap$'
     # WHY: intentionally holds fake credentials used by redaction tests.
     'crates/[^/]+/src/redact\.rs$'
     # WHY: PII-redaction implementation contains literal fixtures whose
@@ -180,7 +183,7 @@ for pattern in "${PATTERNS[@]}"; do
     # other exit is a scanner failure, not a clean pattern (#5439) — it must
     # not be swallowed the way the pre-fix `2>/dev/null || true` did.
     if rg --pcre2 --no-heading --line-number --column \
-        --color=never --with-filename \
+        --color=never --with-filename --hidden \
         --glob '!.git' --glob '!target' --glob '!node_modules' \
         -e "${pattern}" . >"${rg_out}" 2>"${rg_err}"; then
         rg_exit=0

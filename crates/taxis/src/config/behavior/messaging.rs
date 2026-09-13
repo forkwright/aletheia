@@ -58,6 +58,12 @@ pub struct MessagingConfig {
     /// before an inbound message is routed at all -- see
     /// [`InboundMessagePolicy`].
     pub inbound: InboundMessagePolicy,
+    /// Per-`(channel, group_id)` participant allowlist narrowing an
+    /// already-matched group route, enforced by
+    /// `agora::router::MessageRouter::group_participant_allows` before a
+    /// group-bound message reaches its nous -- see
+    /// [`GroupParticipantPolicy`].
+    pub group_participants: GroupParticipantPolicy,
     /// Opt-in, bounded raw provider-payload retention on
     /// `InboundMessage::raw` (Signal envelopes, Matrix events).
     pub raw_payload: RawPayloadPolicy,
@@ -77,6 +83,7 @@ impl Default for MessagingConfig {
             max_concurrent_handlers: 64,
             outbound: OutboundMessagePolicy::default(),
             inbound: InboundMessagePolicy::default(),
+            group_participants: GroupParticipantPolicy::default(),
             raw_payload: RawPayloadPolicy::default(),
         }
     }
@@ -115,6 +122,23 @@ impl Default for RawPayloadPolicy {
             max_bytes: DEFAULT_RAW_PAYLOAD_MAX_BYTES,
         }
     }
+}
+
+/// Whether `sender` matches any of `patterns`, under the shared
+/// exact-or-wildcard matching rule used by every sender/recipient
+/// allowlist in this module ([`OutboundMessagePolicy`],
+/// [`InboundMessagePolicy`], [`GroupParticipantPolicy`]).
+///
+/// A pattern of exactly `"*"` matches any sender; any other pattern must
+/// match `sender` exactly.
+///
+/// WHY one function, not three copies (STANDARDS.md: define once,
+/// reference everywhere): all three policies independently reimplemented
+/// `p == "*" || p == sender` until forkwright/aletheia#5194 -- diverging
+/// that logic in only one of the three later would go unnoticed.
+#[must_use]
+pub fn sender_pattern_matches(patterns: &[String], sender: &str) -> bool {
+    patterns.iter().any(|p| p == "*" || p == sender)
 }
 
 /// Per-agent outbound-recipient allowlist and default-deny posture for
@@ -166,7 +190,7 @@ impl OutboundMessagePolicy {
             return false;
         };
         match self.allowlist.get(sender) {
-            Some(patterns) => patterns.iter().any(|p| p == "*" || p == recipient),
+            Some(patterns) => sender_pattern_matches(patterns, recipient),
             None => !self.default_deny,
         }
     }
@@ -240,8 +264,61 @@ impl InboundMessagePolicy {
     #[must_use]
     pub fn allows(&self, channel: &str, sender: &str) -> bool {
         match self.allowlist.get(channel) {
-            Some(patterns) => patterns.iter().any(|p| p == "*" || p == sender),
+            Some(patterns) => sender_pattern_matches(patterns, sender),
             None => !self.default_deny,
+        }
+    }
+}
+
+/// Per-group participant allowlist, narrowing which senders may match an
+/// already-configured [`ChannelBinding`] group route
+/// (`agora::router::MatchReason::GroupBinding`), checked by
+/// `agora::router::MessageRouter::group_participant_allows`
+/// (forkwright/aletheia#5194).
+///
+/// WHY a policy distinct from [`InboundMessagePolicy`]: that policy
+/// answers "may this sender reach the fleet at all" -- independent of
+/// whether a binding exists. This one answers a narrower question that
+/// only arises once a group binding has already matched: "of the senders
+/// [`InboundMessagePolicy`] lets through, which of them may drive *this*
+/// group's bound nous and command tier". Before this policy existed, any
+/// participant in a configured group carried that tier regardless of
+/// who sent the message (the exact gap #5194 reported).
+///
+/// WHY no `default_deny` (unlike [`InboundMessagePolicy`] and
+/// [`OutboundMessagePolicy`]): this policy only narrows a group that the
+/// operator explicitly restricts by naming it here. A `(channel,
+/// group_id)` pair absent from `allowlist` is unrestricted -- matches any
+/// sender that already cleared [`InboundMessagePolicy`] -- so adding this
+/// section to a config with existing group bindings is additive and
+/// changes no deployment's behavior until an entry names a specific
+/// group.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct GroupParticipantPolicy {
+    /// Allowed sender patterns per channel, per group id: channel id
+    /// (e.g. `"signal"`) -> group id -> sender patterns. A pattern of
+    /// exactly `"*"` allows any sender in that group; any other pattern
+    /// must match the sender exactly. A `(channel, group_id)` pair absent
+    /// from this map is unrestricted.
+    pub allowlist: HashMap<String, HashMap<String, Vec<String>>>,
+}
+
+impl GroupParticipantPolicy {
+    /// Whether `sender` may match a group route for `group_id` on
+    /// `channel` under this policy. Unrestricted (`true`) when no
+    /// allowlist entry exists for this `(channel, group_id)` pair.
+    #[must_use]
+    pub fn allows(&self, channel: &str, group_id: &str, sender: &str) -> bool {
+        match self
+            .allowlist
+            .get(channel)
+            .and_then(|groups| groups.get(group_id))
+        {
+            Some(patterns) => sender_pattern_matches(patterns, sender),
+            None => true,
         }
     }
 }
@@ -276,8 +353,9 @@ const _: () =
 // appearing textually after a #[cfg(test)] mod -- so the test module must
 // be the final item in the file.
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod outbound_policy_tests {
-    use super::{InboundMessagePolicy, OutboundMessagePolicy};
+    use super::{GroupParticipantPolicy, InboundMessagePolicy, OutboundMessagePolicy};
 
     #[test]
     fn default_denies_unconfigured_sender() {
@@ -377,5 +455,84 @@ mod outbound_policy_tests {
     #[test]
     fn messaging_config_defaults_to_inbound_default_deny() {
         assert!(super::MessagingConfig::default().inbound.default_deny);
+    }
+
+    // ── group participant allowlist (PROOF, #5194) ──
+
+    #[test]
+    fn group_participants_unrestricted_by_default() {
+        let policy = GroupParticipantPolicy::default();
+        assert!(policy.allows("signal", "group-xyz", "+15550100"));
+        assert!(policy.allows("signal", "group-xyz", "+15559999"));
+    }
+
+    #[test]
+    fn group_participants_rejects_a_sender_not_in_the_list() {
+        let mut policy = GroupParticipantPolicy::default();
+        policy
+            .allowlist
+            .entry("signal".to_owned())
+            .or_default()
+            .insert("group-xyz".to_owned(), vec!["+15550100".to_owned()]);
+        assert!(policy.allows("signal", "group-xyz", "+15550100"));
+        assert!(!policy.allows("signal", "group-xyz", "+15559999"));
+    }
+
+    #[test]
+    fn group_participants_wildcard_pattern_allows_any_sender() {
+        let mut policy = GroupParticipantPolicy::default();
+        policy
+            .allowlist
+            .entry("signal".to_owned())
+            .or_default()
+            .insert("group-xyz".to_owned(), vec!["*".to_owned()]);
+        assert!(policy.allows("signal", "group-xyz", "+15559999"));
+    }
+
+    #[test]
+    fn group_participants_restriction_does_not_leak_to_a_different_group_or_channel() {
+        let mut policy = GroupParticipantPolicy::default();
+        policy
+            .allowlist
+            .entry("signal".to_owned())
+            .or_default()
+            .insert("group-xyz".to_owned(), vec!["+15550100".to_owned()]);
+        // A different group on the same channel has no entry -- unrestricted.
+        assert!(policy.allows("signal", "group-other", "+15559999"));
+        // The same group id on a different channel has no entry either.
+        assert!(policy.allows("matrix", "group-xyz", "+15559999"));
+    }
+
+    #[test]
+    fn messaging_config_defaults_to_unrestricted_group_participants() {
+        let config = super::MessagingConfig::default();
+        assert!(
+            config
+                .group_participants
+                .allows("signal", "any-group", "+15550100")
+        );
+    }
+
+    #[test]
+    fn group_participants_parse_from_config_toml() {
+        // PROOF: the config-parse path (not just the in-memory struct) --
+        // an operator's `[groupParticipants]` TOML section under
+        // `[messaging]` parses into the expected allowlist.
+        let toml_str = r#"
+[groupParticipants.allowlist.signal]
+group-xyz = ["+15550100"]
+"#;
+        let config: super::MessagingConfig =
+            toml::from_str(toml_str).expect("parse messaging config with groupParticipants");
+        assert!(
+            config
+                .group_participants
+                .allows("signal", "group-xyz", "+15550100")
+        );
+        assert!(
+            !config
+                .group_participants
+                .allows("signal", "group-xyz", "+15559999")
+        );
     }
 }

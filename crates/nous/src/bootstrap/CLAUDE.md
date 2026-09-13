@@ -31,7 +31,7 @@ When assembled, sections sort by slot first, then by priority within the same sl
 7. `Tools` - registered tool surface (`TOOLS.md`)
 8. `Checklist` - work procedures / checklist (`CHECKLIST.md`)
 9. `Memory` - operational memory, accumulated over time (`MEMORY.md`)
-10. `Context` - runtime config / auto-generated context (`CONTEXT.md`, `_llm/`, packs, `output-style`)
+10. `Context` - runtime config / auto-generated context (`CONTEXT.md`, `_llm/`, packs, `output-style`, `workspace-files-absent`)
 
 ### Identity-related slot semantics
 
@@ -46,7 +46,7 @@ External design prior: HKUDS/DeepTutor `BOOTSTRAP_FILES` order (`AGENTS.md` - `S
 ## Priority levels
 
 - `Required` - must be included; missing = error.
-- `Important` - should be included if present; missing = skip silently.
+- `Important` - should be included if present; missing = skipped from the prompt and named on the synthesized `workspace-files-absent` section so the model knows not to `read` it.
 - `Flexible` - can be truncated (oldest content removed first).
 - `Optional` - dropped first under budget pressure.
 

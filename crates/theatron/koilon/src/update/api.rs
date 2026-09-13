@@ -307,6 +307,7 @@ fn sanitize_sessions(sessions: Vec<Session>) -> Vec<Session> {
             display_name: s
                 .display_name
                 .map(|n| sanitize_for_display(&n).into_owned()),
+            active_turn_id: s.active_turn_id,
         })
         .collect()
 }
@@ -439,6 +440,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
@@ -567,6 +569,8 @@ mod tests {
             model: Some("claude-opus-4-6".to_string()),
             emoji: Some("\u{1F9E0}".to_string()),
             status: Some("degraded".to_string()),
+            tools: Vec::new(),
+            enabled: None,
         }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.dashboard.agents.len(), 1);
@@ -595,6 +599,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         }];
         handle_sessions_loaded(&mut app, "syn".into(), sessions);
         assert_eq!(app.dashboard.agents[0].sessions.len(), 1);
@@ -614,6 +619,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         }];
         handle_sessions_loaded(&mut app, "unknown".into(), sessions);
         // No agents, should not panic
@@ -756,6 +762,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
         let messages = vec![HistoryMessage {

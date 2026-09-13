@@ -12,6 +12,11 @@
 //! - **Dry-run mode:** Log proposed consolidations without executing
 //! - **Batch limit:** Max 50 facts per LLM call
 //! - **Rate limit:** Max 1 consolidation cycle per hour per nous
+//! - **Atomic commit:** Fact, side-index, supersession, and audit rows for one
+//!   consolidation land in a single `krites::MultiTransaction` or not at all,
+//!   and every minted ID is derived deterministically from the source fact set
+//!   and consolidation config, so a retry after any failure converges to the
+//!   same rows instead of compounding fresh ULIDs (#5311).
 
 use std::sync::Arc;
 
@@ -176,9 +181,9 @@ impl ConsolidationTrigger {
 /// A source fact as read from the knowledge store for consolidation.
 ///
 /// Carries the policy metadata (`scope`, `project_id`, `sensitivity`,
-/// `visibility`, `source_session_id`) that the conservative merge in
-/// [`KnowledgeStore::persist_consolidated_facts`](crate::knowledge_store::KnowledgeStore)
-/// needs so a consolidated fact does not silently become public/global.
+/// `visibility`, `source_session_id`) that the conservative merge in the
+/// write-plan builder (`consolidation::engine`) needs so a consolidated fact
+/// does not silently become public/global.
 #[derive(Debug, Clone)]
 #[cfg_attr(
     not(feature = "mneme-engine"),
@@ -334,6 +339,54 @@ pub struct ConsolidationAuditRecord {
     pub consolidated_fact_ids: String,
     /// When consolidation was performed.
     pub consolidated_at: String,
+}
+
+/// One provenance side-index row staged for the atomic consolidation commit
+/// (#5311): the pre-serialized source fact/session IDs for one consolidated
+/// fact.
+///
+/// Serialization happens at plan time — before the transaction opens — so a
+/// JSON failure rejects the whole consolidation rather than aborting it
+/// mid-transaction.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone)]
+pub(crate) struct ConsolidationProvenanceRow {
+    /// The consolidated fact this row describes.
+    pub(crate) fact_id: FactId,
+    /// JSON array of the source fact IDs that were merged into it.
+    pub(crate) source_fact_ids_json: String,
+    /// JSON array of the distinct source session IDs.
+    pub(crate) source_session_ids_json: String,
+}
+
+/// A fully validated, all-or-nothing write plan for one consolidation
+/// (#5311).
+///
+/// The consolidation engine builds this plan from the LLM result — every
+/// fallible step that does not need the store (policy-metadata merge, ID
+/// derivation, JSON serialization, batch index validation) runs here, before
+/// any write — and [`KnowledgeStore::commit_consolidation`](crate::knowledge_store::KnowledgeStore)
+/// commits it as a single transaction. One timestamp (`now`) is shared by
+/// every row in the plan so the commit is internally consistent.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug)]
+pub(crate) struct ConsolidationWritePlan {
+    /// Consolidated facts to insert, carrying deterministic content-derived
+    /// IDs (`cons-…`) rather than fresh ULIDs.
+    pub(crate) facts: Vec<crate::knowledge::Fact>,
+    /// Multiplicity side-index rows, one per consolidated fact (#3634).
+    pub(crate) multiplicities: Vec<FactMultiplicity>,
+    /// Provenance side-index rows, one per consolidated fact (#4660).
+    pub(crate) provenance: Vec<ConsolidationProvenanceRow>,
+    /// Supersession updates as `(original fact id, consolidated fact id)`.
+    pub(crate) supersessions: Vec<(FactId, FactId)>,
+    /// The audit row recording this consolidation. Its ID is the
+    /// consolidation run's idempotency key (`cons-audit-…`), so the committed
+    /// row doubles as the "this run completed" record a retry checks first.
+    pub(crate) audit: ConsolidationAuditRecord,
+    /// ISO 8601 timestamp shared by every row in the plan (supersession
+    /// `valid_to`, multiplicity `recorded_at`, audit `consolidated_at`).
+    pub(crate) now: String,
 }
 
 /// Minimal LLM interface for fact consolidation.

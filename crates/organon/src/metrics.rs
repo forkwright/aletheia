@@ -288,8 +288,9 @@ pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, status: Inv
 /// tool call.
 ///
 /// `decision` is the same outcome vocabulary already carried on
-/// `ToolCall::approval` (`auto_approved`, `advisory_auto`, `no_gate_denied`,
-/// or the gate's own `approved`/`denied`) -- reused here rather than a
+/// `ToolCall::approval` (`auto_approved`, `advisory_auto`,
+/// `policy_auto_approved`, `no_gate_denied`, or the gate's own
+/// `approved`/`denied`) -- reused here rather than a
 /// narrower invented enum so the metric never drifts from what the caller
 /// already logs.
 pub fn record_approval_decision(tool_name: &str, decision: &str) {

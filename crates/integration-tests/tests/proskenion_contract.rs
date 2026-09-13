@@ -2190,6 +2190,104 @@ async fn proskenion_contract_session_create_list_history_matches_desktop() {
     );
 }
 
+/// `POST /api/v1/sessions/resolve` is the get-or-create the desktop chat calls
+/// when entering a nous's canonical conversation: first call creates, repeat
+/// calls return the same session, and an archived session is reactivated.
+#[tokio::test]
+async fn proskenion_contract_session_resolve_is_get_or_create() {
+    let harness = TestHarness::build().await;
+    let router = harness.router();
+
+    let resolve_req = || {
+        harness.authed_request(
+            "POST",
+            "/api/v1/sessions/resolve",
+            Some(serde_json::json!({
+                "nous_id": TEST_NOUS_ID,
+                "session_key": "proskenion-resolve-contract"
+            })),
+        )
+    };
+
+    let resp = router
+        .clone()
+        .oneshot(resolve_req())
+        .await
+        .expect("POST /api/v1/sessions/resolve");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "proskenion contract mismatch: session resolve must return 200"
+    );
+    let first = body_json(resp).await;
+    let session_id = string_field(&first, "id", "session resolve");
+    assert_eq!(
+        string_field(&first, "nous_id", "session resolve"),
+        TEST_NOUS_ID,
+        "proskenion contract mismatch: resolve should keep requested nous_id; body={first}"
+    );
+    assert_eq!(
+        string_field(&first, "session_key", "session resolve"),
+        "proskenion-resolve-contract",
+        "proskenion contract mismatch: resolve should keep requested session_key; body={first}"
+    );
+    assert_eq!(
+        string_field(&first, "status", "session resolve"),
+        "active",
+        "proskenion contract mismatch: resolved session should be active; body={first}"
+    );
+
+    let resp = router
+        .clone()
+        .oneshot(resolve_req())
+        .await
+        .expect("POST /api/v1/sessions/resolve (second)");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "proskenion contract mismatch: repeat resolve must return 200"
+    );
+    let second = body_json(resp).await;
+    assert_eq!(
+        string_field(&second, "id", "session resolve repeat"),
+        session_id,
+        "proskenion contract mismatch: repeat resolve must return the same session id; body={second}"
+    );
+
+    let req = harness.authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{session_id}/archive"),
+        None,
+    );
+    let resp = router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("POST /api/v1/sessions/{id}/archive");
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = router
+        .oneshot(resolve_req())
+        .await
+        .expect("POST /api/v1/sessions/resolve (after archive)");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "proskenion contract mismatch: resolve of an archived session must return 200, not 409"
+    );
+    let reactivated = body_json(resp).await;
+    assert_eq!(
+        string_field(&reactivated, "id", "session resolve after archive"),
+        session_id,
+        "proskenion contract mismatch: resolve after archive must keep the same session id; body={reactivated}"
+    );
+    assert_eq!(
+        string_field(&reactivated, "status", "session resolve after archive"),
+        "active",
+        "proskenion contract mismatch: resolve after archive must reactivate the session; body={reactivated}"
+    );
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "contract test keeps SSE protocol assertions in one scenario"

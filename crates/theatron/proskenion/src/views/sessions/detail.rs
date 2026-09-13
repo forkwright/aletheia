@@ -208,9 +208,7 @@ pub(crate) fn SessionDetail(
                     "Loading session details..."
                 }
             },
-            SessionLoadState::TransportError(failure)
-            | SessionLoadState::HttpError(failure)
-            | SessionLoadState::ContractError(failure) => rsx! {
+            SessionLoadState::TransportError(failure) | SessionLoadState::HttpError(failure) => rsx! {
                 div {
                     style: "{EMPTY_DETAIL_STYLE} color: var(--status-error);",
                     div { style: "font-size: var(--text-md);", "Session detail failed" }

@@ -192,8 +192,14 @@ pub const LOCAL_BUDGET_CONTEXT_TOKENS: u32 = 32_768;
 pub const LOCAL_BUDGET_MAX_OUTPUT_TOKENS: u32 = 4_096;
 
 /// Launch-contract token budget for the local provider path (#7152):
-/// 8,192 bootstrap tokens.
-pub const LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS: u32 = 8_192;
+/// 16,384 bootstrap tokens.
+///
+/// WHY 16,384 and not a smaller fraction of [`LOCAL_BUDGET_CONTEXT_TOKENS`]:
+/// operator-validated in production against the reference qwen3.8-27b local
+/// deployment (aletheia#7300) — a smaller bootstrap cap silently dropped
+/// persona sections (CONTEXT.md, the injected output-style directives) with
+/// no way to correlate the drop back to this constant.
+pub const LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS: u32 = 16_384;
 
 /// Per-provider token-budget clamp (#7152).
 ///
@@ -208,7 +214,7 @@ pub const LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS: u32 = 8_192;
 /// Unlike [`ProviderAdmissionConfig`], budgets have no deployment-target-derived
 /// default: an operator wiring the launch-contract local path sets
 /// `[providers.budgets]` explicitly with `contextTokens = 32768`,
-/// `maxOutputTokens = 4096`, `bootstrapMaxTokens = 8192` (the
+/// `maxOutputTokens = 4096`, `bootstrapMaxTokens = 16384` (the
 /// [`LOCAL_BUDGET_CONTEXT_TOKENS`] / [`LOCAL_BUDGET_MAX_OUTPUT_TOKENS`] /
 /// [`LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS`] constants); omitting the table
 /// entirely leaves every agent limit unclamped for that provider.
@@ -322,8 +328,7 @@ pub struct LlmProviderConfig {
     #[serde(default)]
     pub models: Vec<String>,
     /// Optional per-provider admission bound (#7152). When omitted,
-    /// [`Self::effective_admission`] derives the default from
-    /// [`deployment_target`](Self::deployment_target).
+    /// `effective_admission` derives the default from `deployment_target`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admission: Option<ProviderAdmissionConfig>,
     /// Optional per-provider token-budget clamp (#7152). When omitted, this

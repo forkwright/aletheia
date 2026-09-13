@@ -74,15 +74,6 @@ pub(crate) struct Checkpoint {
     pub(crate) decision: Option<CheckpointDecision>,
 }
 
-/// Request body for `POST /api/v1/planning/projects/{id}/checkpoints/{id}/action`.
-#[derive(Debug, Serialize)]
-pub(crate) struct CheckpointActionRequest {
-    pub(crate) action: CheckpointAction,
-    /// Required for Skip and Override actions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) notes: Option<String>,
-}
-
 /// Store for checkpoints associated with the active project.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct CheckpointStore {

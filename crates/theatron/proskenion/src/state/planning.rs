@@ -1,4 +1,4 @@
-//! Planning state: projects, requirements, roadmap phases, and category proposals.
+//! Planning state: projects, requirements, and roadmap phases.
 
 use serde::{Deserialize, Serialize};
 
@@ -155,34 +155,6 @@ pub(crate) struct Requirement {
     pub(crate) assigned_agent: Option<String>,
 }
 
-/// Status of an agent's category-change proposal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub(crate) enum ProposalStatus {
-    /// Awaiting review.
-    Pending,
-    /// Category change accepted.
-    Accepted,
-    /// Category change rejected.
-    Rejected,
-}
-
-/// Agent-proposed change to a requirement's category.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub(crate) struct CategoryProposal {
-    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
-    pub(crate) id: String,
-    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
-    pub(crate) requirement_id: String,
-    pub(crate) requirement_title: String,
-    pub(crate) current_category: RequirementCategory,
-    pub(crate) proposed_category: RequirementCategory,
-    pub(crate) agent_name: String,
-    pub(crate) rationale: String,
-    pub(crate) status: ProposalStatus,
-}
-
 /// Phase lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -230,31 +202,6 @@ pub(crate) struct Roadmap {
     pub(crate) dependencies: Vec<PhaseDependency>,
 }
 
-/// Request body for accepting or rejecting a category proposal.
-#[derive(Debug, Serialize)]
-pub(crate) struct ProposalActionRequest {
-    pub(crate) action: ProposalAction,
-}
-
-/// Action to take on a category proposal.
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ProposalAction {
-    Accept,
-    Reject,
-}
-
-/// Request body for updating a requirement field.
-#[derive(Debug, Serialize)]
-pub(crate) struct RequirementUpdateRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) category: Option<RequirementCategory>,
-}
-
 // --- Stores ---
 
 /// Store for the project list.
@@ -279,11 +226,10 @@ impl ProjectStore {
     }
 }
 
-/// Store for requirements and proposals of the active project.
+/// Store for requirements of the active project.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RequirementStore {
     pub(crate) requirements: Vec<Requirement>,
-    pub(crate) proposals: Vec<CategoryProposal>,
 }
 
 impl RequirementStore {
@@ -293,15 +239,6 @@ impl RequirementStore {
         self.requirements
             .iter()
             .filter(|r| r.category == category)
-            .collect()
-    }
-
-    /// Pending category-change proposals.
-    #[must_use]
-    pub(crate) fn pending_proposals(&self) -> Vec<&CategoryProposal> {
-        self.proposals
-            .iter()
-            .filter(|p| p.status == ProposalStatus::Pending)
             .collect()
     }
 
@@ -540,7 +477,6 @@ mod tests {
                     RequirementPriority::P1,
                 ),
             ],
-            proposals: vec![],
         };
         assert_eq!(
             store.by_category(RequirementCategory::V1).len(),
@@ -560,36 +496,6 @@ mod tests {
     }
 
     #[test]
-    fn pending_proposals_filters_only_pending() {
-        let store = RequirementStore {
-            requirements: vec![],
-            proposals: vec![
-                CategoryProposal {
-                    id: "p1".into(),
-                    requirement_id: "r1".into(),
-                    requirement_title: "Req 1".into(),
-                    current_category: RequirementCategory::V2,
-                    proposed_category: RequirementCategory::V1,
-                    agent_name: "agent-1".into(),
-                    rationale: "critical for launch".into(),
-                    status: ProposalStatus::Pending,
-                },
-                CategoryProposal {
-                    id: "p2".into(),
-                    requirement_id: "r2".into(),
-                    requirement_title: "Req 2".into(),
-                    current_category: RequirementCategory::V1,
-                    proposed_category: RequirementCategory::OutOfScope,
-                    agent_name: "agent-2".into(),
-                    rationale: "not feasible".into(),
-                    status: ProposalStatus::Rejected,
-                },
-            ],
-        };
-        assert_eq!(store.pending_proposals().len(), 1, "only pending proposals");
-    }
-
-    #[test]
     fn search_matches_title_and_description() {
         let store = RequirementStore {
             requirements: vec![
@@ -606,7 +512,6 @@ mod tests {
                     RequirementPriority::P1,
                 ),
             ],
-            proposals: vec![],
         };
         assert_eq!(store.search("r1").len(), 1, "matches title containing 'r1'");
         assert_eq!(

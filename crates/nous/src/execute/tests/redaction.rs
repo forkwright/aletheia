@@ -739,6 +739,13 @@ async fn saturated_live_stream_defaults_to_deny_without_pre_timeout_blocking() {
             decision: "filler".to_owned(),
         })
         .expect("fill stream channel");
+    // WHY(#7252): the saturated-transport fail-closed path is only reachable
+    // with a gate wired — a no-gate turn now takes the typed `no_gate_denied`
+    // refusal before any emission is attempted. The gate's decision channel
+    // is held open with no decision so only the emission failure can resolve
+    // the call, which is exactly the blocking this test proves absent.
+    let (_decision_tx, decision_rx) = mpsc::channel::<ApprovalDecision>(4);
+    let gate = ApprovalGate::new(decision_rx, Duration::from_mins(1));
 
     let tool_uses = vec![(
         "tool-1".to_owned(),
@@ -757,7 +764,7 @@ async fn saturated_live_stream_defaults_to_deny_without_pre_timeout_blocking() {
         &mut all_calls,
         1,
         Some(&event_tx),
-        None,
+        Some(&gate),
         &policy,
         0,
         None,

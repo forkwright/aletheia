@@ -23,6 +23,16 @@ fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
     absolute.canonicalize().unwrap_or(absolute)
 }
 
+/// Resolve the on-disk workspace directory for a configured agent, matching
+/// the resolution [`build_nous_runtime_config`] uses for the actor.
+pub(super) fn resolve_workspace_dir(
+    oikos: &Oikos,
+    config: &AletheiaConfig,
+    agent_id: &str,
+) -> PathBuf {
+    resolve_config_path(oikos, &resolve_nous(config, agent_id).workspace)
+}
+
 fn resolve_allowed_roots(
     oikos: &Oikos,
     workspace: &str,
@@ -428,6 +438,7 @@ mod tests {
             hooks_scope_enforcement_enabled: false,
             hooks_correction_hooks_enabled: false,
             hooks_audit_logging_enabled: false,
+            tool_approval_mandatory_policy: taxis::config::ApprovalPosture::AutoApprove,
             ..AgentBehaviorDefaults::default()
         };
         config.agents.list.push(NousDefinition {
@@ -463,6 +474,19 @@ mod tests {
         assert_eq!(
             nous_config.behavior.safety_loop_detection_threshold,
             behavior.safety_loop_detection_threshold
+        );
+        // WHY: the approval posture is read by `run_execute_loop` off
+        // `NousConfig::behavior` — this asserts the taxis cascade actually
+        // carries the operator's relaxation to the dispatch boundary.
+        assert_eq!(
+            nous_config.behavior.tool_approval_mandatory_policy,
+            taxis::config::ApprovalPosture::AutoApprove,
+            "the per-agent approval posture must reach NousConfig.behavior"
+        );
+        assert_eq!(
+            nous_config.behavior.tool_approval_required_policy,
+            taxis::config::ApprovalPosture::Gate,
+            "an unset tier must keep the fail-closed default"
         );
     }
 

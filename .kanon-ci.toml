@@ -8,15 +8,18 @@
 # feature flag (test-core) and longer timeouts for the larger workspace.
 #
 # Per-stage build concurrency is pinned below the host CPU count. Without this
-# cap cargo defaults to num_cpus (64 on this Threadripper) and parallel rustc
-# processes peak well over 100GB RSS, enough to OOM menos when any other fleet
-# work is running.
+# cap, cargo defaults to num_cpus and parallel rustc processes can peak well
+# past the runner's available RAM -- enough to OOM the machine when other
+# build or CI work runs alongside this one.
 #
 # Check/clippy keep the 8-job cap. Nextest is pinned tighter
 # (`--build-jobs 4 --test-threads 4`) because it can compile and run test
 # binaries inside the same scope cgroup. The lower cap is meant to keep red
 # main runs attributable to real compile/test failures instead of sccache
-# disconnects or stage-level timeouts under fleet load.
+# disconnects or stage-level timeouts under shared-host load.
+#
+# NOTE(aletheia#5328): no literal fleet hostnames/capacity numbers in this file;
+# see check_ci_config_hygiene() in scripts/check-public-doc-contracts.py.
 #
 # Keep in sync with:
 # - crates/archeion/src/ci_config.rs::default_rust_gate (upstream default)

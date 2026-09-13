@@ -30,6 +30,35 @@ pub(crate) const DEFAULT_TOOL_MAX_PDF_BYTES: u64 = 33_554_432;
 /// `ApprovalGate` with no `NousConfig` in scope (aletheia#5011).
 pub(crate) const DEFAULT_TOOL_APPROVAL_TIMEOUT_SECS: f64 = 120.0;
 
+/// Operator-declared posture for an approval-required tool tier.
+///
+/// Controls what shared dispatch (`nous::execute::dispatch`) does with a
+/// tool call whose resolved [`organon::types::ApprovalRequirement`] is
+/// `Required` or `Mandatory` — the tiers that otherwise need a live operator
+/// approval gate. `None`/`Advisory` calls never gate, so they have no
+/// posture to configure.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ApprovalPosture {
+    /// Require an operator decision through a wired approval gate. When no
+    /// gate is attached to the turn (daemon/prosoche turns, non-streaming
+    /// REST turns), the call is denied with the typed `no_gate_denied`
+    /// refusal. This is the default and preserves the ADR-005 behavior.
+    #[default]
+    Gate,
+    /// Execute without an operator gate. The call still emits its full
+    /// audit trail — receipt V2 attestation, persisted `ToolCall` with
+    /// `approval = "policy_auto_approved"`, the `approval_decisions_total`
+    /// metric, and the `ToolApprovalResolved` stream event — so the
+    /// relaxation is observable rather than silent.
+    ///
+    /// Intended for trusted single-operator deployments (loopback-only,
+    /// `auth.mode = "none"`) where no interactive approval surface exists
+    /// on most turns.
+    AutoApprove,
+}
+
 /// Agent configuration: shared defaults and per-agent definitions.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -757,6 +786,16 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields �
     /// Seconds to wait for an operator decision on a Required/Mandatory
     /// tool-approval request before it default-denies. Default: 120.0.
     pub tool_approval_timeout_secs: f64,
+    /// Posture for `Required` (high-risk) tool calls. `gate` (default)
+    /// requires a wired operator approval gate and default-denies without
+    /// one; `auto_approve` executes without a gate and records a
+    /// `policy_auto_approved` audit outcome.
+    pub tool_approval_required_policy: ApprovalPosture,
+    /// Posture for `Mandatory` (critical-risk) tool calls such as `exec`.
+    /// Same semantics as `tool_approval_required_policy`; kept as a separate
+    /// knob so a deployment can relax high-risk writes while still gating
+    /// irreversible execution. Default: `gate`.
+    pub tool_approval_mandatory_policy: ApprovalPosture,
 
     // --- Bootstrap ---
     /// Minimum token budget remaining before attempting section truncation.
@@ -875,6 +914,11 @@ impl Default for AgentBehaviorDefaults {
             tool_max_image_bytes: DEFAULT_TOOL_MAX_IMAGE_BYTES,
             tool_max_pdf_bytes: DEFAULT_TOOL_MAX_PDF_BYTES,
             tool_approval_timeout_secs: DEFAULT_TOOL_APPROVAL_TIMEOUT_SECS,
+            // WHY: both posture knobs default to `gate` — an omitted config
+            // must reproduce the ADR-005 fail-closed behavior exactly; the
+            // relaxed posture is an explicit operator opt-in.
+            tool_approval_required_policy: ApprovalPosture::Gate,
+            tool_approval_mandatory_policy: ApprovalPosture::Gate,
             // Bootstrap
             bootstrap_min_truncation_budget: 200,
             // Corrections

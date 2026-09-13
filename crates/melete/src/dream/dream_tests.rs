@@ -1,5 +1,7 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 
 use hermeneus::types::Role;
@@ -91,6 +93,42 @@ impl ConsolidationTarget for MockConsolidationTarget {
         let count = log.contradictions.len();
         self.stale_count.fetch_add(count, Ordering::Relaxed);
         Ok(count)
+    }
+}
+
+/// LLM provider whose every `complete` call refuses with a typed front-door
+/// "not ready" error (#7152: [`hermeneus::error::Error::ProviderNotReady`]),
+/// for #7261 regression coverage — a Sleeping/Loading/Failed refusal must be
+/// distinguishable FROM a genuine distillation failure.
+struct ProviderNotReadyProvider;
+
+impl LlmProvider for ProviderNotReadyProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = hermeneus::error::Result<hermeneus::types::CompletionResponse>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(hermeneus::error::ProviderNotReadySnafu {
+                provider: "mock".to_owned(),
+                state: hermeneus::front_door::FrontDoorState::Loading,
+                retry_after_ms: 500_u64,
+            }
+            .build())
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["mock-model"]
+    }
+
+    fn name(&self) -> &'static str {
+        "provider-not-ready-mock"
     }
 }
 
@@ -591,6 +629,74 @@ async fn consolidation_rollback_on_empty_transcripts() {
         .unwrap_or_default();
 
     assert_eq!(report.facts_added, 0, "no facts FROM empty transcripts");
+}
+
+/// Regression test for #7261 (sibling of #7260's front-door latch fix).
+///
+/// WHY: before the fix, a distill error was always treated the same way —
+/// log-and-skip the session, then unconditionally `mark_complete()` at the
+/// end of the batch, which bumps the lock's mtime watermark to "now". A
+/// provider-not-ready refusal (front-door Sleeping/Loading/Failed, #7152)
+/// is deployment lifecycle state, not a genuine distillation failure, so
+/// treating it the same way permanently excludes the skipped session FROM
+/// every later cycle's `load_transcripts_since(since)` — it is never
+/// revisited even though the provider recovers. This asserts the lock mtime
+/// stays at the prior checkpoint instead of advancing, which is what keeps
+/// the session eligible next cycle.
+#[tokio::test]
+async fn consolidation_leaves_lock_unadvanced_on_provider_not_ready_skip() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    // NOTE: seed a prior consolidation, back-dated well clear of "now" so an
+    // erroneous mark_complete() (which bumps mtime to now) is unambiguously
+    // distinguishable FROM the correct un-advanced outcome by mtime age alone.
+    write_test_file(&lock_path, b"");
+    let backdated = std::time::SystemTime::now() - std::time::Duration::from_hours(1);
+    {
+        let file = std::fs::File::options()
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(backdated))
+            .unwrap();
+    }
+
+    let config = make_config(lock_path.clone());
+    let engine = Arc::new(DreamEngine::new(config));
+
+    let transcripts = vec![sample_transcript("session-not-ready", "alice")];
+    let source: Arc<dyn TranscriptSource> =
+        Arc::new(MockTranscriptSource::with_transcripts(transcripts));
+    let target: Arc<dyn ConsolidationTarget> = Arc::new(MockConsolidationTarget::new());
+
+    let provider: Arc<dyn LlmProvider> = Arc::new(ProviderNotReadyProvider);
+
+    let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
+        .unwrap()
+        .unwrap();
+
+    let report = engine
+        .run_consolidation(acquired, &source, &target, provider.as_ref())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        report.facts_added, 0,
+        "a provider-not-ready session must not contribute facts"
+    );
+
+    let mtime_after = std::fs::metadata(&lock_path).unwrap().modified().unwrap();
+    let age = std::time::SystemTime::now()
+        .duration_since(mtime_after)
+        .unwrap_or_default();
+    assert!(
+        age > std::time::Duration::from_mins(50),
+        "lock mtime must stay at the prior (back-dated) checkpoint, not \
+         advance to \"now\", so the provider-not-ready session remains \
+         inside next cycle's load_transcripts_since(since) window instead \
+         of being skipped forever"
+    );
 }
 
 #[tokio::test]

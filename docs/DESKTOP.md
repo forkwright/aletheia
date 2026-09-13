@@ -70,7 +70,7 @@ bash -n scripts/smoke-proskenion.sh
 scripts/smoke-proskenion.sh --proskenion-binary ~/.cargo/bin/proskenion
 ```
 
-The `proskenion_contract` integration test exercises the protocol surface the app consumes: agent list/status/tool envelopes, knowledge browse endpoints, metrics/cost/token envelopes, session create/list/history, and `POST /api/v1/sessions/stream` SSE event names, terminal events, and JSON field shape. If it fails, file the failure as a server/client runtime-contract mismatch and include the assertion text, full response body printed by the test, endpoint, and expected proskenion field or event name.
+The `proskenion_contract` integration test exercises the protocol surface the app consumes: agent list/status/tool envelopes, knowledge browse endpoints, metrics/cost/token envelopes, session create/resolve/list/history, and `POST /api/v1/sessions/stream` SSE event names, terminal events, and JSON field shape. If it fails, file the failure as a server/client runtime-contract mismatch and include the assertion text, full response body printed by the test, endpoint, and expected proskenion field or event name.
 
 The smoke script starts a local server when no `--server-url` is supplied, or connects to the supplied URL. Use the default gateway port when targeting an already running local server:
 
@@ -110,15 +110,35 @@ health-parsing implementation. `proskenion` no longer carries local copies of
 either. It connects to a running Aletheia server over HTTP, the same as the
 TUI.
 
-`api/client.rs`'s own request-building is NOT yet routed through skene's
-`ApiClient` the way `koilon`'s is (`koilon::api` fully re-exports
-`skene::api`) — that consolidation remains open, tracked by #4565.
+As of waves 3a-3c (#7230, #7232, proskenion-skene-wave3c), every VIEW-layer
+call site (planning, ops, credentials, metrics, memory, sessions, files,
+chat) reads and writes through `skene::api::client::ApiClient` typed
+methods and route-contract-backed DTOs, not raw `reqwest` or hand-built
+`/api/v1/` strings — `scripts/check-client-boundary.py` mechanically
+enforces this as a per-file ceiling that may only shrink
+(`scripts/client-boundary-baseline.toml`).
+
+4 infrastructure files below the view layer still build requests locally,
+each blocked on a skene primitive that does not exist yet rather than on
+migration effort — tracked precisely in #7251:
+
+- `api/client.rs`'s `authenticated_client()` family builds a raw
+  `reqwest::Client` skene has no public non-streaming equivalent for
+  (`raw_client()` is intentionally `#[cfg(test)]`-only, per #4925).
+- `api/sse.rs` keeps its own reconnect loop for Dioxus-coroutine-specific
+  debounced loss reporting skene's own `SseConnection` doesn't do.
+- `api/system_status.rs` wraps `GET /api/v1/system/status`, a route skene
+  has never modeled (it only wraps the flat `/api/v1/system/health`).
+- `services/connection.rs`'s liveness probe needs the parsed body/status
+  `ApiClient::health()` collapses away by returning only a bare `bool`.
 
 ```
-skene  (shared: domain types, event parsing)
+skene  (shared: domain types, event parsing, typed ApiClient — the boundary
+        for every view-layer call)
     ^
     |
-proskenion  (Dioxus desktop app; api/client.rs still locally-owned)
+proskenion  (Dioxus desktop app; 4 sub-view-layer files still build
+             requests locally — see #7251)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full crate dependency graph.

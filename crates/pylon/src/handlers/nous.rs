@@ -451,6 +451,7 @@ pub async fn tools(
     responses(
         (status = 200, description = "Updated nous summary", body = NousSummary),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
     ),
@@ -572,6 +573,7 @@ pub async fn update_enabled(
     responses(
         (status = 200, description = "Updated tool list", body = ToolsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
     ),
@@ -675,6 +677,7 @@ pub async fn update_tool(
     responses(
         (status = 200, description = "Recovery result", body = RecoverResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Nous not found", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -727,6 +730,7 @@ pub async fn recover(
         (status = 201, description = "Agent created", body = CreateAgentResponse),
         (status = 400, description = "Bad request", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 409, description = "Conflict", body = ErrorResponse),
         (status = 422, description = "Validation failed", body = ErrorResponse),
     ),

@@ -130,66 +130,17 @@ Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/ale
 
 ## Store migration
 
-Sessions now use a fjall-backed store. The pre-fjall SQLite session backend is
-historical. If you have a legacy SQLite `sessions.db` from aletheia 0.15.x, use
-the `aletheia-sessions-migrate` one-shot tool to move session history into a
-fresh fjall keyspace.
-
-The embedded Datalog engine (knowledge store) manages its own schema versioning internally.
-
-**Always back up before upgrading.** While migrations are tested, restoring from backup is the safest recovery path if something goes wrong.
-
-### Migrating a legacy SQLite `sessions.db` to fjall
-
-The migrator `crates/aletheia-sessions-migrate` (binary `aletheia-sessions-migrate`)
-reads a v32 SQLite sessions database read-only and writes its contents to a new
-fjall directory that matches the layout used by current aletheia. It supports:
-
-- `--dry-run` — inspect the source DB and report the migration plan without writing.
-- `--verify` — after migrating, sample rows and compare SHA-256 checksums of message bodies.
-- `--verify-only` — verify a previously written destination directory.
-- `--print-mapping` — print the SQLite → fjall field mapping.
-
-**Requirements and limits:**
-
-- Source DB must have `PRAGMA user_version = 32` (the last SQLite session schema).
-- Required tables must exist: `sessions`, `messages`, `usage`, `distillations`, `agent_notes`, `blackboard`.
-- Columns with no direct fjall equivalent (`thinking_enabled`, `thinking_budget`, `working_state`, `distillation_priming`) are preserved under a `migration_legacy` partition rather than dropped.
-- Messages whose parent session row is missing are recovered as synthesised `orphan-recovery` sessions.
-- The migrator does not migrate the knowledge store; `knowledge.fjall` must be created fresh or handled separately.
-
-**Migration workflow:**
-
-```bash
-# 1. Stop the service
-systemctl --user stop aletheia
-
-# 2. Back up the current instance directory
-cp -r "$ALETHEIA_ROOT" "${ALETHEIA_ROOT}-backup-$(date +%Y%m%d)"
-
-# 3. Run a dry run to confirm the source is readable
-aletheia-sessions-migrate \
-  --source instance/data/pre-0.16-archive/sessions.db \
-  --dest instance/data/sessions.db.migrated \
-  --dry-run
-
-# 4. Migrate and verify
-aletheia-sessions-migrate \
-  --source instance/data/pre-0.16-archive/sessions.db \
-  --dest instance/data/sessions.db.migrated \
-  --verify
-
-# 5. Swap the migrated keyspace into place
-mv instance/data/sessions.db instance/data/sessions.db.pre-migration
-mv instance/data/sessions.db.migrated instance/data/sessions.db
-
-# 6. Start the service and check health
-systemctl --user start aletheia
-"$ALETHEIA_BIN" health
-```
-
-If verification fails, the migrator exits non-zero and leaves the destination
-untouched. Restore from the backup taken in step 2 and inspect the mismatch report.
+Sessions now use a fjall-backed store; the pre-fjall SQLite session backend is
+historical, and the one-shot `aletheia-sessions-migrate` importer that moved a
+legacy aletheia 0.15.x SQLite `sessions.db` into a fresh fjall keyspace has
+been removed — a 2026-09-06 search found no 0.15.x sessions store anywhere
+reachable (no live instance, no pre-migration safety copy, no `/omphalos`
+rescue export, and none of the 21 snapshots in the restic repo) — so if a
+0.15.x `sessions.db` surfaces after all, check out
+`298f0834c66c4910bd54219984240222fc6a75a3`, the last commit that contains the
+tool, and build it there to migrate that store; the embedded Datalog engine
+(knowledge store) is unaffected, since it manages its own schema versioning
+internally and never went through this tool.
 
 ### Upgrading from <0.16 to >=0.16 (fjall session store) without migration
 

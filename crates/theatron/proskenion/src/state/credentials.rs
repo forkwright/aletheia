@@ -233,8 +233,10 @@ pub(crate) fn decode_role_claim(token: &str) -> Option<String> {
 /// Whether an RBAC role (as decoded by [`decode_role_claim`]) may add,
 /// validate, rotate, or remove credentials.
 ///
-/// WHY: mirrors `symbolon::auth::is_authorized`'s `Action::ManageCredentials`
-/// rule (`Role::Admin | Role::Operator => true`, everything else `false`).
+/// WHY: mirrors pylon's server-side gate on the credentials routes --
+/// `require_role(&claims, Role::Operator)` in
+/// `crates/pylon/src/handlers/credentials.rs`, which admits `Operator` and
+/// anything ranked above it (`Admin`) via `Role`'s ordinal `<` comparison.
 /// Kept as a narrow, explicit allowlist rather than "not readonly/agent" so
 /// a future role added on the server defaults to denied here until this is
 /// updated deliberately.

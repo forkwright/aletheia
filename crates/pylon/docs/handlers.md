@@ -745,6 +745,10 @@ session, oldest first. The read half of the route above — same `ApprovalRegist
 session-ownership check — for a client that connects late, restarts, or reconnects after missing
 the live `tool_approval_required` SSE event. Pending approvals live in memory only (never
 persisted), so a pylon restart clears them exactly as it already clears the registry's senders.
+A turn that ends with an approval still unanswered (client disconnect, shutdown) cancels it
+(#7252): the entry leaves this read, the domain bus publishes `tool.approval_resolved` with
+`decision: "turn_ended"`, and a late resolve attempt is answered `410` with
+`details.reason: "turn_ended"`.
 Requires `Role::Agent` or above (#7200/#7227's floor for every session-content read in this
 module).
 

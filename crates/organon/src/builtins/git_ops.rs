@@ -156,8 +156,22 @@ fn git_ok(out: GitRunOutput, empty_msg: &str) -> ToolResult {
 }
 
 /// Build a [`ToolResult`] from a failed git invocation.
+///
+/// WHY: git's raw `fatal: not a git repository ...` line reads to an agent
+/// like a tool malfunction, so it retries instead of concluding the workspace
+/// simply is not a work tree (nous workspace dirs are plain directories). Map
+/// that specific failure to an explicit, actionable message; everything else
+/// keeps git's own output.
 fn git_err(out: GitRunOutput) -> ToolResult {
-    let msg = format!("git exited with {}\n{}", out.code, out.stderr);
+    let msg = if out.stderr.contains("not a git repository") {
+        format!(
+            "workspace is not a git repository: git tools require the agent workspace to be \
+             inside a git work tree (git exited with {})",
+            out.code
+        )
+    } else {
+        format!("git exited with {}\n{}", out.code, out.stderr)
+    };
     ToolResult::error(msg).with_diagnostics(ToolDiagnostics {
         exit_code: Some(out.code),
         stderr: if out.stderr.is_empty() {
@@ -698,6 +712,58 @@ mod tests {
             .await
             .expect("exec");
         assert!(result.is_error, "dashed ref must be rejected");
+    }
+
+    #[tokio::test]
+    async fn git_log_outside_git_repo_returns_typed_not_a_repo_error() {
+        // WHY: nous workspace dirs are plain directories, not git work trees.
+        // The raw `fatal: not a git repository` line reads as a tool
+        // malfunction; the tool must say plainly that the workspace is not a
+        // repo so the agent stops retrying git tools there.
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+        let input = ToolInput {
+            name: ToolName::new("git_log").expect("valid"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let result = git_log_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
+        assert!(result.is_error, "git_log outside a repo must error");
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("workspace is not a git repository"),
+            "error should name the workspace/repo mismatch: {text}"
+        );
+        assert!(
+            !text.contains("fatal:"),
+            "raw git fatal line should be translated, not forwarded: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_status_outside_git_repo_returns_typed_not_a_repo_error() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+        let input = ToolInput {
+            name: ToolName::new("git_status").expect("valid"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let result = git_status_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
+        assert!(result.is_error, "git_status outside a repo must error");
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("workspace is not a git repository"),
+            "error should name the workspace/repo mismatch"
+        );
     }
 
     #[tokio::test]

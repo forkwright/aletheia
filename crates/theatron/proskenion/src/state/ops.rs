@@ -760,6 +760,74 @@ impl ToggleStore {
             .map(|(_, outcome)| outcome)
     }
 
+    /// Replace the agent-toggle list with a fresh snapshot from the server,
+    /// keeping any row with an in-flight optimistic flip (`pending == true`)
+    /// untouched instead of overwriting it with the snapshot's (necessarily
+    /// stale) value.
+    ///
+    /// WHY(#7281): the dashboard refresh (mount, the 30 s auto-refresh loop,
+    /// and the manual Refresh button) used to assign `agent_toggles`
+    /// wholesale from the fresh GET response. `flip_agent` sets a row's new
+    /// value and `pending: true` on click, reconciled only once
+    /// `resolve_agent`/`resolve_agent_result` sees that row's own PATCH
+    /// resolve; a refresh landing before that PATCH resolves silently
+    /// overwrote the click back to the pre-click server value with
+    /// `pending` cleared, so the toggle appeared to flip back on its own.
+    /// `recover_pending`'s doc comment above already named this exact
+    /// hazard for agent recovery ("the toggle list is rebuilt wholesale
+    /// from the server on every panel refresh, which would discard
+    /// per-toggle in-flight state") and moved that one field to the store
+    /// level to dodge it; this generalizes the same protection to the
+    /// toggle rows themselves rather than leaving them exposed to it.
+    pub(crate) fn load_agent_toggles(&mut self, fresh: Vec<AgentToggle>) {
+        let mut pending: HashMap<ApiNousId, AgentToggle> = self
+            .agent_toggles
+            .drain(..)
+            .filter(|t| t.pending)
+            .map(|t| (t.id.clone(), t))
+            .collect();
+        self.agent_toggles = fresh
+            .into_iter()
+            .map(|t| pending.remove(&t.id).unwrap_or(t))
+            .collect();
+    }
+
+    /// Replace the tool-toggle list with a fresh snapshot, keeping any row
+    /// with an in-flight optimistic flip untouched. See
+    /// [`Self::load_agent_toggles`] for why this is necessary.
+    pub(crate) fn load_tool_toggles(&mut self, fresh: Vec<ToolToggle>) {
+        let mut pending: HashMap<(ApiNousId, String), ToolToggle> = self
+            .tool_toggles
+            .drain(..)
+            .filter(|t| t.pending)
+            .map(|t| ((t.agent_id.clone(), t.tool_name.clone()), t))
+            .collect();
+        self.tool_toggles = fresh
+            .into_iter()
+            .map(|t| {
+                pending
+                    .remove(&(t.agent_id.clone(), t.tool_name.clone()))
+                    .unwrap_or(t)
+            })
+            .collect();
+    }
+
+    /// Replace the feature-flag list with a fresh snapshot, keeping any row
+    /// with an in-flight optimistic flip untouched. See
+    /// [`Self::load_agent_toggles`] for why this is necessary.
+    pub(crate) fn load_feature_flags(&mut self, fresh: Vec<FeatureFlag>) {
+        let mut pending: HashMap<String, FeatureFlag> = self
+            .feature_flags
+            .drain(..)
+            .filter(|f| f.pending)
+            .map(|f| (f.key.clone(), f))
+            .collect();
+        self.feature_flags = fresh
+            .into_iter()
+            .map(|f| pending.remove(&f.key).unwrap_or(f))
+            .collect();
+    }
+
     /// Get tools filtered by the currently expanded agent.
     #[must_use]
     pub(crate) fn tools_for_agent(&self, agent_id: &ApiNousId) -> Vec<&ToolToggle> {
@@ -872,6 +940,137 @@ mod tests {
         let toggle = &store.agent_toggles[0];
         assert!(!toggle.enabled, "must flip enabled state");
         assert!(toggle.pending, "must set pending flag");
+    }
+
+    // WHY(#7281): a dashboard refresh landing while a click's PATCH is
+    // still in flight must not silently revert that click.
+    #[test]
+    fn load_agent_toggles_keeps_pending_row_instead_of_overwriting_it() {
+        let mut store = ToggleStore::new();
+        store.agent_toggles.push(AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: false,
+            pending: false,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
+            error: None,
+        });
+        // Operator clicks the toggle: optimistic flip, PATCH in flight.
+        store.flip_agent(&nid("syn"));
+        assert!(
+            store.agent_toggles[0].enabled,
+            "sanity: click flipped it on"
+        );
+        assert!(store.agent_toggles[0].pending);
+
+        // A refresh lands before that PATCH resolves. Its GET response
+        // still reflects the pre-click server state.
+        store.load_agent_toggles(vec![AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: false,
+            pending: false,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
+            error: None,
+        }]);
+
+        let toggle = &store.agent_toggles[0];
+        assert!(
+            toggle.enabled,
+            "the pending click must survive an overlapping refresh"
+        );
+        assert!(
+            toggle.pending,
+            "pending must only clear once the click's own request resolves"
+        );
+    }
+
+    #[test]
+    fn load_agent_toggles_applies_fresh_snapshot_for_non_pending_rows() {
+        let mut store = ToggleStore::new();
+        store.agent_toggles.push(AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: true,
+            pending: false,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
+            error: None,
+        });
+
+        store.load_agent_toggles(vec![AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: false,
+            pending: false,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("dormant".to_string()),
+            error: None,
+        }]);
+
+        let toggle = &store.agent_toggles[0];
+        assert!(
+            !toggle.enabled,
+            "a row with no in-flight write must take the fresh snapshot"
+        );
+        assert_eq!(toggle.live_status.as_deref(), Some("dormant"));
+    }
+
+    #[test]
+    fn load_tool_toggles_keeps_pending_row_instead_of_overwriting_it() {
+        let mut store = ToggleStore::new();
+        let base = ToolToggle {
+            agent_id: nid("syn"),
+            tool_name: "read".to_string(),
+            enabled: false,
+            pending: false,
+            apply_state: ToggleApplyState::Synced,
+            error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
+        };
+        store.tool_toggles.push(base.clone());
+        store.flip_tool(&nid("syn"), "read");
+
+        store.load_tool_toggles(vec![base]);
+
+        let t = &store.tool_toggles[0];
+        assert!(
+            t.enabled,
+            "the pending click must survive an overlapping refresh"
+        );
+        assert!(t.pending);
+    }
+
+    #[test]
+    fn load_feature_flags_keeps_pending_row_instead_of_overwriting_it() {
+        let mut store = ToggleStore::new();
+        let base = FeatureFlag {
+            key: "experimental".to_string(),
+            description: "Beta features".to_string(),
+            enabled: false,
+            pending: false,
+            error: None,
+        };
+        store.feature_flags.push(base.clone());
+        store.flip_feature("experimental");
+
+        store.load_feature_flags(vec![base]);
+
+        let f = &store.feature_flags[0];
+        assert!(
+            f.enabled,
+            "the pending click must survive an overlapping refresh"
+        );
+        assert!(f.pending);
     }
 
     #[test]

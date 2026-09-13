@@ -58,11 +58,22 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "POST",
+        path_template: "/api/v1/sessions/resolve",
+    },
+    ClientRouteContract {
+        method: "POST",
         path_template: "/api/v1/sessions/stream",
     },
     ClientRouteContract {
         method: "GET",
         path_template: "/api/v1/sessions/{id}/history",
+    },
+    ClientRouteContract {
+        // WHY(#3276): reconnecting to a turn's SSE stream -- pylon's utoipa
+        // doc names both path params `{session_id}`/`{turn_id}`, so the
+        // contract test matches this literally.
+        method: "GET",
+        path_template: "/api/v1/sessions/{session_id}/turns/{turn_id}/events",
     },
     ClientRouteContract {
         method: "POST",
@@ -192,6 +203,18 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "GET",
+        path_template: "/api/v1/knowledge/entities/{id}/memories",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/check",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/health",
+    },
+    ClientRouteContract {
+        method: "GET",
         path_template: "/api/v1/knowledge/timeline",
     },
     ClientRouteContract {
@@ -282,6 +305,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         method: "DELETE",
         path_template: "/api/v1/knowledge/entities/{id}",
     },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/ops/tools",
+    },
 ];
 
 /// Encoding helpers for route builders.
@@ -355,6 +382,16 @@ pub mod sessions {
     /// [`session_replay_path`] to build an encoded path.
     pub const SESSION_REPLAY_TEMPLATE: &str = "/api/v1/sessions/{id}/replay";
 
+    /// Template for reconnecting to one turn's SSE event stream (#3276).
+    ///
+    /// `{session_id}`/`{turn_id}` are placeholders - do not interpolate
+    /// directly. Use [`session_turn_events_path`] to build an encoded path.
+    /// WHY: named `{session_id}`/`{turn_id}` (not `{id}`) to mirror pylon's
+    /// own utoipa doc for this route exactly, since the contract test
+    /// matches it literally.
+    pub const SESSION_TURN_EVENTS_TEMPLATE: &str =
+        "/api/v1/sessions/{session_id}/turns/{turn_id}/events";
+
     /// Template for the session-scoped, ownership-verifying tool-approval
     /// route (#7202). `{id}` is a placeholder - do not interpolate
     /// directly. Use [`session_approvals_path`] to build an encoded path.
@@ -420,6 +457,14 @@ pub mod sessions {
     pub fn session_approvals_path(id: &str) -> String {
         let encoded = encoding::path_segment(id);
         format!("{SESSIONS_TEMPLATE}/{encoded}/approvals")
+    }
+
+    /// Build the path for reconnecting to one turn's SSE event stream (#3276).
+    #[must_use]
+    pub fn session_turn_events_path(session_id: &str, turn_id: &str) -> String {
+        let session_id = encoding::path_segment(session_id);
+        let turn_id = encoding::path_segment(turn_id);
+        format!("{SESSIONS_TEMPLATE}/{session_id}/turns/{turn_id}/events")
     }
 }
 
@@ -818,6 +863,18 @@ pub mod config {
 pub mod planning {
     use super::encoding;
 
+    // WHY(#7224): the requirement/checkpoint/proposal/discussion route-builder
+    // families (and the proskenion UI actions that called them) were deleted
+    // rather than backed with real pylon handlers. Neither dianoia nor pylon's
+    // workspace store has a persisted, individually-addressable requirement,
+    // checkpoint, proposal, or discussion entity to mutate -- only generic
+    // `ProjectState`/`Transition` phase-gate verification machinery -- so
+    // implementing the routes would have meant inventing a domain model this
+    // repo has not decided to build. Consistent with #4482's hide/disable
+    // precedent for the tab shell, taken to completion for the sub-actions:
+    // only the two verification routes below remain, since those are the only
+    // ones pylon actually serves.
+
     /// Template for `GET` project verification.
     ///
     /// `{project_id}` is a placeholder — do not interpolate directly.
@@ -831,46 +888,6 @@ pub mod planning {
     /// Use [`project_verification_refresh_path`] to build an encoded path.
     pub const PROJECT_VERIFICATION_REFRESH_TEMPLATE: &str =
         "/api/v1/planning/projects/{project_id}/verification/refresh";
-
-    /// Template for updating one requirement.
-    ///
-    /// `{project_id}` and `{requirement_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_requirement_path`] to build an
-    /// encoded path.
-    pub const PROJECT_REQUIREMENT_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/requirements/{requirement_id}";
-
-    /// Template for checkpoint actions.
-    ///
-    /// `{project_id}` and `{checkpoint_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_checkpoint_action_path`] to build
-    /// an encoded path.
-    pub const PROJECT_CHECKPOINT_ACTION_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/checkpoints/{checkpoint_id}/action";
-
-    /// Template for category proposal actions.
-    ///
-    /// `{project_id}` and `{proposal_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_proposal_path`] to build an encoded
-    /// path.
-    pub const PROJECT_PROPOSAL_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/proposals/{proposal_id}";
-
-    /// Template for answering a planning discussion.
-    ///
-    /// `{project_id}` and `{discussion_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_discussion_answer_path`] to build
-    /// an encoded path.
-    pub const PROJECT_DISCUSSION_ANSWER_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/discussions/{discussion_id}/answer";
-
-    /// Template for reopening a planning discussion.
-    ///
-    /// `{project_id}` and `{discussion_id}` are placeholders - do not
-    /// interpolate directly. Use [`project_discussion_reopen_path`] to build
-    /// an encoded path.
-    pub const PROJECT_DISCUSSION_REOPEN_TEMPLATE: &str =
-        "/api/v1/planning/projects/{project_id}/discussions/{discussion_id}/reopen";
 
     /// Build the path for `GET` project verification.
     ///
@@ -904,104 +921,6 @@ pub mod planning {
     #[must_use]
     pub fn project_verification_refresh_url(base_url: &str, project_id: &str) -> String {
         keryx::url::join_base_path(base_url, &project_verification_refresh_path(project_id))
-    }
-
-    /// Build the path for updating one requirement.
-    #[must_use]
-    pub fn project_requirement_path(project_id: &str, requirement_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let requirement = encoding::path_segment(requirement_id);
-        format!("/api/v1/planning/projects/{project}/requirements/{requirement}")
-    }
-
-    /// Build the absolute URL for updating one requirement.
-    #[must_use]
-    pub fn project_requirement_url(
-        base_url: &str,
-        project_id: &str,
-        requirement_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_requirement_path(project_id, requirement_id),
-        )
-    }
-
-    /// Build the path for a checkpoint action.
-    #[must_use]
-    pub fn project_checkpoint_action_path(project_id: &str, checkpoint_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let checkpoint = encoding::path_segment(checkpoint_id);
-        format!("/api/v1/planning/projects/{project}/checkpoints/{checkpoint}/action")
-    }
-
-    /// Build the absolute URL for a checkpoint action.
-    #[must_use]
-    pub fn project_checkpoint_action_url(
-        base_url: &str,
-        project_id: &str,
-        checkpoint_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_checkpoint_action_path(project_id, checkpoint_id),
-        )
-    }
-
-    /// Build the path for a category proposal action.
-    #[must_use]
-    pub fn project_proposal_path(project_id: &str, proposal_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let proposal = encoding::path_segment(proposal_id);
-        format!("/api/v1/planning/projects/{project}/proposals/{proposal}")
-    }
-
-    /// Build the absolute URL for a category proposal action.
-    #[must_use]
-    pub fn project_proposal_url(base_url: &str, project_id: &str, proposal_id: &str) -> String {
-        keryx::url::join_base_path(base_url, &project_proposal_path(project_id, proposal_id))
-    }
-
-    /// Build the path for answering a planning discussion.
-    #[must_use]
-    pub fn project_discussion_answer_path(project_id: &str, discussion_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let discussion = encoding::path_segment(discussion_id);
-        format!("/api/v1/planning/projects/{project}/discussions/{discussion}/answer")
-    }
-
-    /// Build the absolute URL for answering a planning discussion.
-    #[must_use]
-    pub fn project_discussion_answer_url(
-        base_url: &str,
-        project_id: &str,
-        discussion_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_discussion_answer_path(project_id, discussion_id),
-        )
-    }
-
-    /// Build the path for reopening a planning discussion.
-    #[must_use]
-    pub fn project_discussion_reopen_path(project_id: &str, discussion_id: &str) -> String {
-        let project = encoding::path_segment(project_id);
-        let discussion = encoding::path_segment(discussion_id);
-        format!("/api/v1/planning/projects/{project}/discussions/{discussion}/reopen")
-    }
-
-    /// Build the absolute URL for reopening a planning discussion.
-    #[must_use]
-    pub fn project_discussion_reopen_url(
-        base_url: &str,
-        project_id: &str,
-        discussion_id: &str,
-    ) -> String {
-        keryx::url::join_base_path(
-            base_url,
-            &project_discussion_reopen_path(project_id, discussion_id),
-        )
     }
 }
 
@@ -1046,7 +965,7 @@ mod tests {
 
     use super::planning::*;
     use super::{ClientRouteContract, SKENE_CLIENT_ROUTE_CONTRACTS};
-    use super::{config, encoding, nous, sessions, system};
+    use super::{config, encoding, metrics, nous, providers, sessions, system, workspace};
 
     fn quoted_strings(source: &str) -> Vec<String> {
         let mut strings = Vec::new();
@@ -1113,6 +1032,233 @@ mod tests {
             assert!(
                 contracts.contains(&route),
                 "ApiClient route literal has no route contract: {route}"
+            );
+        }
+    }
+
+    // ── #7198: every contract must be reachable from the client, not just
+    // declared and left for a builder to accumulate with no wrapper ────────
+
+    /// Strip the trailing `#[cfg(test)] mod tests { ... }` block so a route
+    /// builder or literal exercised only by that file's own unit tests
+    /// doesn't count as a real client call site.
+    fn strip_trailing_test_module(source: &str) -> &str {
+        source
+            .split("\n#[cfg(test)]\nmod tests")
+            .next()
+            .unwrap_or(source)
+    }
+
+    /// Every `pub fn` name ending in `_path` declared in this file's
+    /// route-builder modules (i.e. before this file's own trailing test
+    /// module). Cross-checked against `builder_route_templates` by
+    /// `builder_enumeration_matches_source` below, so a builder added or
+    /// removed here can't silently drop out of the reachability check.
+    fn builder_fn_names(source: &str) -> BTreeSet<String> {
+        let production = strip_trailing_test_module(source);
+        let mut names = BTreeSet::new();
+        let mut rest = production;
+        while let Some((_, after_marker)) = rest.split_once("pub fn ") {
+            let Some((candidate, after_paren)) = after_marker.split_once('(') else {
+                break;
+            };
+            if let Some(name) = candidate.split_whitespace().next()
+                && name.ends_with("_path")
+            {
+                names.insert(name.to_owned());
+            }
+            rest = after_paren;
+        }
+        names
+    }
+
+    /// Every `_path` route builder in this file, paired with the template
+    /// constant its `format!` body targets. Every route module declares its
+    /// `_TEMPLATE`/`_PATH` constant in the same `{placeholder}` shape as
+    /// `ClientRouteContract::path_template`, so comparing against the
+    /// constant directly needs no invocation and no reverse-engineering of
+    /// a dummy placeholder value back out of a resolved path. Kept honest
+    /// by `builder_enumeration_matches_source`: add or remove a `_path`
+    /// builder above and that test fails until this list is updated too.
+    fn builder_route_templates() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("sessions_path", sessions::SESSIONS_TEMPLATE),
+            ("sessions_for_agent_path", sessions::SESSIONS_TEMPLATE),
+            ("session_history_path", sessions::SESSION_HISTORY_TEMPLATE),
+            ("session_archive_path", sessions::SESSION_ARCHIVE_TEMPLATE),
+            (
+                "session_unarchive_path",
+                sessions::SESSION_UNARCHIVE_TEMPLATE,
+            ),
+            ("session_name_path", sessions::SESSION_NAME_TEMPLATE),
+            ("session_replay_path", sessions::SESSION_REPLAY_TEMPLATE),
+            (
+                "session_approvals_path",
+                sessions::SESSION_APPROVALS_TEMPLATE,
+            ),
+            (
+                "session_turn_events_path",
+                sessions::SESSION_TURN_EVENTS_TEMPLATE,
+            ),
+            ("credentials_path", system::CREDENTIALS_TEMPLATE),
+            ("credential_path", system::CREDENTIAL_TEMPLATE),
+            (
+                "credential_validate_path",
+                system::CREDENTIAL_VALIDATE_TEMPLATE,
+            ),
+            ("credential_rotate_path", system::CREDENTIAL_ROTATE_TEMPLATE),
+            ("daemon_tasks_path", system::DAEMON_TASKS_TEMPLATE),
+            (
+                "daemon_task_enable_path",
+                system::DAEMON_TASK_ENABLE_TEMPLATE,
+            ),
+            (
+                "daemon_task_disable_path",
+                system::DAEMON_TASK_DISABLE_TEMPLATE,
+            ),
+            ("daemon_task_retry_path", system::DAEMON_TASK_RETRY_TEMPLATE),
+            ("files_path", workspace::FILES_TEMPLATE),
+            ("git_status_path", workspace::GIT_STATUS_TEMPLATE),
+            ("content_path", workspace::CONTENT_TEMPLATE),
+            ("content_write_path", workspace::CONTENT_TEMPLATE),
+            ("open_path", workspace::OPEN_TEMPLATE),
+            ("diff_path", workspace::DIFF_TEMPLATE),
+            ("search_path", workspace::SEARCH_TEMPLATE),
+            ("agents_path", metrics::AGENTS_TEMPLATE),
+            ("agent_performance_path", metrics::AGENT_TEMPLATE),
+            ("quality_path", metrics::QUALITY_TEMPLATE),
+            ("journal_path", metrics::JOURNAL_TEMPLATE),
+            ("agent_path", nous::AGENT_TEMPLATE),
+            ("agent_tools_path", nous::AGENT_TOOLS_TEMPLATE),
+            ("agent_recover_path", nous::AGENT_RECOVER_TEMPLATE),
+            ("section_path", config::SECTION_TEMPLATE),
+            // WHY: instantiates SECTION_TEMPLATE with a fixed section name
+            // rather than backing a distinct contract of its own.
+            ("feature_flags_path", config::SECTION_TEMPLATE),
+            ("reload_path", config::RELOAD_PATH),
+            ("project_verification_path", PROJECT_VERIFICATION_TEMPLATE),
+            (
+                "project_verification_refresh_path",
+                PROJECT_VERIFICATION_REFRESH_TEMPLATE,
+            ),
+            ("providers_path", providers::PROVIDERS_TEMPLATE),
+            ("providers_route_path", providers::PROVIDERS_ROUTE_TEMPLATE),
+        ]
+    }
+
+    /// `name` appears as a call, not merely as a substring of a longer
+    /// identifier (e.g. `agent_path` must not match inside
+    /// `agent_tools_path`) or inside a comment/string quoting it by name.
+    fn calls_function(source: &str, name: &str) -> bool {
+        let mut remaining = source;
+        while let Some((before, after)) = remaining.split_once(name) {
+            let before_is_boundary = before
+                .chars()
+                .next_back()
+                .is_none_or(|ch| !(ch.is_alphanumeric() || ch == '_'));
+            let after_is_call = after.trim_start().starts_with('(');
+            if before_is_boundary && after_is_call {
+                return true;
+            }
+            remaining = after;
+        }
+        false
+    }
+
+    /// Contracts whose route is real and pylon-backed but not yet reachable
+    /// from `skene::api`'s client surface (`client.rs`/`streaming.rs`/
+    /// `sse.rs`) -- tracked individually, rather than silently passed, so a
+    /// new orphan can't hide behind a growing exception list. Verified by
+    /// `known_unreachable_exceptions_are_still_declared_contracts` below to
+    /// never itself go stale the way `scripts/stub-baseline.toml` can.
+    const KNOWN_UNREACHABLE_FROM_API_CLIENT: &[(&str, &str)] = &[
+        // WHY(#7209): still called directly by proskenion's own
+        // pre-migration HTTP client
+        // (`crates/theatron/proskenion/src/api/client.rs`), not through
+        // `skene::api`'s `ApiClient`/`streaming`/`sse` surface -- tracked by
+        // the client-boundary ratchet's proskenion ceiling
+        // (`scripts/client-boundary-baseline.toml`), not a dead route.
+        // Remove this entry once that call site migrates to `skene::api` or
+        // the route gains a real `ApiClient` wrapper.
+        ("GET", "/api/v1/events"),
+    ];
+
+    #[test]
+    fn builder_enumeration_matches_source() {
+        let discovered = builder_fn_names(include_str!("routes.rs"));
+        let enumerated: BTreeSet<String> = builder_route_templates()
+            .into_iter()
+            .map(|(name, _)| name.to_owned())
+            .collect();
+        assert_eq!(
+            discovered, enumerated,
+            "a `_path` route builder was added or removed in this file \
+             without updating `builder_route_templates` -- the reachability \
+             check below only covers what's enumerated there (#7198)"
+        );
+    }
+
+    #[test]
+    fn known_unreachable_exceptions_are_still_declared_contracts() {
+        for (method, path) in KNOWN_UNREACHABLE_FROM_API_CLIENT {
+            assert!(
+                SKENE_CLIENT_ROUTE_CONTRACTS
+                    .iter()
+                    .any(|contract| contract.method == *method && contract.path_template == *path),
+                "KNOWN_UNREACHABLE_FROM_API_CLIENT lists {method} {path}, \
+                 which is no longer a declared contract -- remove the stale \
+                 exception"
+            );
+        }
+    }
+
+    #[test]
+    fn client_route_contracts_are_reachable_from_api_client() {
+        let client_source = strip_trailing_test_module(include_str!("client.rs"));
+        let streaming_source = strip_trailing_test_module(include_str!("streaming.rs"));
+        let sse_source = strip_trailing_test_module(include_str!("sse.rs"));
+        let client_surface = [client_source, streaming_source, sse_source];
+
+        // Every `_path` builder must have a real call site somewhere in the
+        // client surface -- otherwise it, and any contract it backs, can
+        // accumulate with no wrapper ever reaching it.
+        for (name, _) in builder_route_templates() {
+            assert!(
+                client_surface.iter().any(|src| calls_function(src, name)),
+                "route builder `{name}` has no call site in client.rs, \
+                 streaming.rs, or sse.rs"
+            );
+        }
+
+        // Everything the client surface can actually construct: direct
+        // `/api/...` literals plus every builder's produced shape.
+        let mut reachable: BTreeSet<String> = BTreeSet::new();
+        for source in client_surface {
+            reachable.extend(
+                quoted_strings(source)
+                    .into_iter()
+                    .filter(|literal| literal.starts_with("/api/"))
+                    .map(|literal| normalize_route(&literal)),
+            );
+        }
+        reachable.extend(
+            builder_route_templates()
+                .into_iter()
+                .map(|(_, path)| normalize_route(path)),
+        );
+
+        for contract in SKENE_CLIENT_ROUTE_CONTRACTS {
+            if KNOWN_UNREACHABLE_FROM_API_CLIENT
+                .contains(&(contract.method, contract.path_template))
+            {
+                continue;
+            }
+            let normalized = normalize_route(contract.path_template);
+            assert!(
+                reachable.contains(&normalized),
+                "contract has no reachable ApiClient call site: {} {}",
+                contract.method,
+                contract.path_template
             );
         }
     }
@@ -1219,30 +1365,6 @@ mod tests {
         assert_eq!(
             config::section_path("feature/flags"),
             "/api/v1/config/feature%2Fflags"
-        );
-    }
-
-    #[test]
-    fn planning_action_routes_encode_each_identifier_segment() {
-        assert_eq!(
-            project_requirement_path("proj/a?b", "req#one two"),
-            "/api/v1/planning/projects/proj%2Fa%3Fb/requirements/req%23one%20two"
-        );
-        assert_eq!(
-            project_checkpoint_action_path("proj:1", "check%2Fpoint"),
-            "/api/v1/planning/projects/proj%3A1/checkpoints/check%252Fpoint/action"
-        );
-        assert_eq!(
-            project_proposal_path("プロジェクト", "proposal/1"),
-            "/api/v1/planning/projects/%E3%83%97%E3%83%AD%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88/proposals/proposal%2F1"
-        );
-        assert_eq!(
-            project_discussion_answer_path("project", "discussion?1"),
-            "/api/v1/planning/projects/project/discussions/discussion%3F1/answer"
-        );
-        assert_eq!(
-            project_discussion_reopen_path("project", "discussion#1"),
-            "/api/v1/planning/projects/project/discussions/discussion%231/reopen"
         );
     }
 

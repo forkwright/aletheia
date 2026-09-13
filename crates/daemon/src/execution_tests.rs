@@ -29,9 +29,17 @@ struct TestBridge {
 
 impl TestBridge {
     fn ok(output: &str) -> Self {
+        Self::with_outcome(TaskOutcome::Success, output)
+    }
+
+    fn turn_failed(output: &str) -> Self {
+        Self::with_outcome(TaskOutcome::Failed, output)
+    }
+
+    fn with_outcome(outcome: TaskOutcome, output: &str) -> Self {
         Self {
             result: Mutex::new(Ok(ExecutionResult {
-                outcome: TaskOutcome::Success,
+                outcome,
                 errors: 0,
                 output: Some(output.to_owned()),
             })),
@@ -388,15 +396,73 @@ async fn prosoche_with_bridge_dispatches() {
     )
     .await
     .expect("should not error");
-    // WHY: Prosoche always reports success=true after a successful
-    // dispatch, regardless of the bridge's inner success flag, because
-    // the dispatch itself is what's being tracked here.
+    // WHY(#7252): a successful turn reports success with the turn's own
+    // output — the turn content is the prosoche report, and the runner's
+    // follow-up extraction reads it.
     assert!(result.is_success());
-    assert_eq!(result.output.as_deref(), Some("dispatched"));
+    assert_eq!(result.output.as_deref(), Some("ok"));
     assert_eq!(bridge.call_count(), 1);
     let calls = bridge.calls.lock().expect("not poisoned");
     assert_eq!(calls[0].0, "test-nous");
     assert_eq!(calls[0].1, "daemon:prosoche");
+}
+
+/// WHY(#7252): a turn that fails must record a failed task run — the old
+/// code logged the bridge's success flag and then reported success anyway,
+/// so `syn-prosoche` showed "task completed" after every failed turn.
+#[tokio::test]
+async fn prosoche_failed_turn_records_failed_task() {
+    let bridge = TestBridge::turn_failed("turn failed: history load_failed");
+    let result = execute_builtin(
+        &BuiltinTask::Prosoche,
+        "test-nous",
+        Some(&bridge),
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("bridge failure arrives as Ok(failed), not Err");
+    assert_eq!(
+        result.outcome,
+        TaskOutcome::Failed,
+        "a failed turn must propagate to the task outcome"
+    );
+    assert_eq!(
+        result.output.as_deref(),
+        Some("turn failed: history load_failed"),
+        "the turn's error must surface as the task output"
+    );
+}
+
+/// WHY(#7252): the full outcome vocabulary must survive the prosoche arm —
+/// the runner's backoff/auto-disable machinery keys on `Failed`, so
+/// collapsing any outcome into `Success` (the old behavior) silently
+/// disabled that supervision.
+#[tokio::test]
+async fn prosoche_bridge_outcomes_survive_the_call() {
+    for expected in [
+        TaskOutcome::Success,
+        TaskOutcome::Failed,
+        TaskOutcome::Skipped,
+    ] {
+        let bridge = TestBridge::with_outcome(expected, "from the bridge");
+        let result = execute_builtin(
+            &BuiltinTask::Prosoche,
+            "test-nous",
+            Some(&bridge),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("should not error");
+        assert_eq!(
+            result.outcome, expected,
+            "the bridge's classification must reach the task unchanged"
+        );
+        assert_eq!(result.output.as_deref(), Some("from the bridge"));
+    }
 }
 
 #[tokio::test]
@@ -772,4 +838,30 @@ async fn a_failed_backup_still_republishes_persisted_state() {
         vec![false],
         "the attempt is still recorded as an error"
     );
+}
+
+/// WHY(#7246): the field incident this regresses was a
+/// `routing-store-refresh` reader (this file's `after_action_log_dir`,
+/// consumed by `execute_lesson_extraction` above) whose after-action log
+/// path could drift from the writer's (`aletheia::runtime::RuntimeBuilder`,
+/// which now also calls `Oikos::after_action_log_dir`) because each
+/// independently spelled out `logs().join("after-actions")`. This test
+/// exercises the actual call site fixed for that incident --
+/// `after_action_log_dir_with`, the function `after_action_log_dir` itself
+/// delegates to -- against an injected root, and would fail the moment
+/// someone respells the literal directly in this file again instead of
+/// deriving it from `taxis::oikos::Oikos`.
+#[test]
+fn after_action_log_dir_is_one_path_authority() {
+    use koina::system::TestSystem;
+
+    for root in ["/srv/instance", "/tmp/aletheia-nonexistent-root-xyz-12345"] {
+        let env = TestSystem::new().with_env("ALETHEIA_ROOT", root);
+        assert_eq!(
+            after_action_log_dir_with(&env),
+            taxis::oikos::Oikos::discover_with(&env).after_action_log_dir(),
+            "daemon's after_action_log_dir_with must agree with taxis::oikos::Oikos's \
+             after_action_log_dir for root {root}"
+        );
+    }
 }

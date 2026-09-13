@@ -157,6 +157,23 @@ jobs:
           token: ${{ secrets.FLEET_REPO_TOKEN }}
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      # WHY(#7063): this job's own two proskenion-aware steps above (path-filter and
+      # pin checks) still only name the root and proskenion lockfiles as a pair. The
+      # release path otherwise re-resolves the root workspace's Cargo.lock in the
+      # `Test` step below (a plain, unlocked `cargo test --workspace` silently repairs
+      # root drift) but never touches crates/theatron/proskenion -- it is
+      # workspace-excluded and no command here has a manifest-path into it. Reusing
+      # scripts/check-all-lockfiles-locked.py's derived enumeration (root, proskenion,
+      # fuzz -- every `[workspace]`-declaring manifest with a tracked Cargo.lock, not a
+      # hardcoded proskenion path) puts the same --locked resolve proof gate-attestation
+      # already runs directly on the release workflow itself, so a second standalone
+      # workspace needs no edit here to be covered.
+      - name: Test check-all-lockfiles-locked.py
+        run: scripts/test-check-all-lockfiles-locked.py
+      - name: Check all committed lockfiles are locked
+        run: scripts/check-all-lockfiles-locked.py
+
       - name: Test
         run: cargo test --workspace --exclude proskenion
 
@@ -301,7 +318,7 @@ jobs:
             exit 0
           fi
           git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials # pii-allow: credential-helper format string, token comes from a secret at runtime
           chmod 0600 ~/.git-credentials
 
       - name: Extract version from tag

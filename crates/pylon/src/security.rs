@@ -173,8 +173,8 @@ mod tests {
         let sec = SecurityConfig::from_gateway(&gateway);
         assert_eq!(
             sec.csrf.header_value.expose_secret(),
-            "aletheia",
-            "default CSRF bootstrap header value must match the documented client header"
+            DEFAULT_CSRF_HEADER_VALUE,
+            "default CSRF bootstrap header value must match koina's compiled default"
         );
     }
 

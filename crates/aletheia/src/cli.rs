@@ -21,6 +21,7 @@ use crate::commands::ingest::IngestArgs;
 use crate::commands::maintenance;
 use crate::commands::memory;
 use crate::commands::migrate::MigrateArgs;
+use crate::commands::poiesis;
 use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
 use crate::commands::session_create::SessionCreateArgs;
@@ -169,4 +170,10 @@ pub(crate) enum Command {
     Repl(ReplArgs),
     /// Ingest files into the knowledge graph
     Ingest(IngestArgs),
+    /// Poiesis report authoring: scaffold (create), list/get components,
+    /// preview, qa/lint/verify, and render (run)
+    Poiesis {
+        #[command(subcommand)]
+        action: poiesis::Action,
+    },
 }

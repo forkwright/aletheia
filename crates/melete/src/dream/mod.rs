@@ -465,6 +465,10 @@ impl DreamEngine {
 
         let mut total_report = MergeReport::default();
         let mut distill_number: u32 = 0;
+        // WHY(#7261): tracked across the whole batch (not per-session)
+        // because the single lock-mtime watermark this function ends on has
+        // no finer-grained cursor to leave a partial batch un-advanced by.
+        let mut any_provider_not_ready_skip = false;
 
         for transcript in &transcripts {
             if transcript.messages.is_empty() {
@@ -485,11 +489,9 @@ impl DreamEngine {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    tracing::warn!(
-                        session_id = %transcript.session_id,
-                        error = %e,
-                        "distillation failed for session, skipping"
-                    );
+                    if log_distill_skip(&transcript.session_id, &e) {
+                        any_provider_not_ready_skip = true;
+                    }
                     continue;
                 }
             };
@@ -542,11 +544,8 @@ impl DreamEngine {
                 .await?;
         }
 
-        // NOTE: all transcripts processed; mark consolidation complete.
-        // WHY: mark_complete issues blocking std::fs I/O; run it on the
-        // blocking pool so this async task never stalls a Tokio worker
-        // thread.
-        run_lock_op(move || acquired.mark_complete()).await?;
+        // NOTE: all transcripts processed.
+        finish_consolidation_lock(acquired, any_provider_not_ready_skip).await?;
 
         Ok(total_report)
     }
@@ -658,6 +657,63 @@ where
     tokio::task::spawn_blocking(op)
         .await
         .context(DreamLockJoinSnafu)?
+}
+
+/// Classify and log a single transcript's distillation error.
+///
+/// Returns `true` when `e` is a provider-not-ready refusal (#7261:
+/// `hermeneus::error::Error::ProviderNotReady`, front-door Sleeping/Loading/
+/// Failed) rather than a genuine distillation failure — the caller uses this
+/// to keep the session eligible for the next dream cycle instead of treating
+/// it as permanently skipped.
+fn log_distill_skip(session_id: &str, e: &crate::error::Error) -> bool {
+    if e.is_provider_not_ready() {
+        tracing::warn!(
+            session_id = %session_id,
+            error = %e,
+            "distillation skipped for session: provider not ready, will retry next dream cycle"
+        );
+        true
+    } else {
+        tracing::warn!(
+            session_id = %session_id,
+            error = %e,
+            "distillation failed for session, skipping"
+        );
+        false
+    }
+}
+
+/// Complete or roll back the consolidation lock at the end of a batch.
+///
+/// WHY(#7261): `mark_complete`'s mtime bump advances the "since" watermark
+/// to now. A session skipped only because the provider was not ready must
+/// not be pushed behind that watermark, so when any such skip occurred
+/// during the batch, the whole batch — the only granularity the single
+/// mtime watermark offers — rolls back to the prior checkpoint instead, so
+/// it is reloaded and retried next cycle. Facts already merged this batch
+/// already landed IN the knowledge graph regardless of the lock's fate; a
+/// retried session that already succeeded only re-dedupes, it does not
+/// un-consolidate.
+///
+/// # Errors
+///
+/// Returns `DreamLockIo`/`DreamLockJoin` on filesystem or blocking-pool
+/// failure, same as the `mark_complete`/`rollback` it wraps.
+async fn finish_consolidation_lock(
+    acquired: lock::AcquiredLock,
+    any_provider_not_ready_skip: bool,
+) -> Result<()> {
+    if any_provider_not_ready_skip {
+        tracing::info!(
+            "one or more sessions skipped due to provider-not-ready refusals; \
+             leaving consolidation lock un-advanced so the batch is retried \
+             next dream cycle"
+        );
+        run_lock_op(move || acquired.rollback()).await
+    } else {
+        run_lock_op(move || acquired.mark_complete()).await
+    }
 }
 
 fn format_probe_transcript(messages: &[Message]) -> String {

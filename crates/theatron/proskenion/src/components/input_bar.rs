@@ -10,34 +10,58 @@ use crate::state::input::InputState;
 pub(crate) struct InputBarProps {
     /// Signal holding the input state (text, history, submission).
     pub input: Signal<InputState>,
-    /// Whether a stream is currently active (disables input).
+    /// Whether a stream is currently active.
+    ///
+    /// WHY(#7299): no longer disables input -- a message submitted while
+    /// streaming queues instead of dispatching (`on_submit`'s caller
+    /// decides which); it only changes which action buttons render.
     pub is_streaming: bool,
-    /// Callback fired when the user submits a message.
+    /// Whether the in-flight turn (`is_streaming`) is a reattached watch
+    /// rather than one this client submitted.
+    ///
+    /// WHY(#7297): cancelling a reattached turn only stops watching it --
+    /// it does not abort the turn server-side, unlike a self-submitted
+    /// turn -- so the action button reads "Stop watching" instead of
+    /// "Abort" to avoid claiming otherwise. Ignored when `is_streaming` is
+    /// `false`.
+    pub is_reattached: bool,
+    /// Callback fired when the user submits a message. Fires regardless of
+    /// `is_streaming`; the caller queues it behind the in-flight turn when
+    /// appropriate.
     pub on_submit: EventHandler<String>,
-    /// Callback fired when the user clicks the abort button.
+    /// Callback fired when the user clicks the abort/stop-watching button.
     pub on_abort: EventHandler<()>,
 }
 
 /// Rich chat input bar with multiline textarea and history navigation.
 ///
-/// - Submit: Enter (Ctrl+Enter also works)
+/// - Submit: Enter (Ctrl+Enter also works) -- queues behind an in-flight
+///   turn instead of dispatching immediately (#7299)
 /// - Newline: Shift+Enter
 /// - History: Up/Down arrows when cursor is at start/end
-/// - Disabled with "Streaming..." placeholder during active stream
+/// - An Abort button (or Stop watching, for a reattached turn) joins Send
+///   while a turn is streaming
 #[component]
 pub(crate) fn InputBar(props: InputBarProps) -> Element {
     let mut input = props.input;
     let is_streaming = props.is_streaming;
+    let is_reattached = props.is_reattached;
     let on_submit = props.on_submit;
     let on_abort = props.on_abort;
     let mut command_ui = use_context::<Signal<CommandUiState>>();
     let mut commands = use_context::<Signal<CommandStore>>();
 
-    let can_submit = !is_streaming && !input.read().text.trim().is_empty();
+    let can_submit = !input.read().text.trim().is_empty();
+    let send_label = if is_streaming { "Queue" } else { "Send" };
+    let placeholder = if is_streaming {
+        "Message queues until this turn ends... (Enter to queue, Shift+Enter for newline)"
+    } else {
+        "Type a message... (Enter to send, Shift+Enter for newline)"
+    };
 
     let mut do_submit = move || {
         let text = input.read().text.trim().to_string();
-        if text.is_empty() || is_streaming {
+        if text.is_empty() {
             return;
         }
         input.write().push_history(text.clone());
@@ -70,8 +94,7 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
             class: "input-bar",
             textarea {
                 class: "input-bar-textarea",
-                placeholder: if is_streaming { "Streaming..." } else { "Type a message... (Enter to send, Shift+Enter for newline)" },
-                disabled: is_streaming,
+                placeholder: "{placeholder}",
                 rows: "1",
                 value: "{input.read().text}",
                 oninput: move |evt: Event<FormData>| {
@@ -150,15 +173,14 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                 button {
                     class: "btn-chat-action btn-abort",
                     onclick: move |_| on_abort.call(()),
-                    "Abort"
+                    if is_reattached { "Stop watching" } else { "Abort" }
                 }
-            } else {
-                button {
-                    class: "btn-chat-action btn-send",
-                    disabled: !can_submit,
-                    onclick: move |_| do_submit(),
-                    "Send"
-                }
+            }
+            button {
+                class: "btn-chat-action btn-send",
+                disabled: !can_submit,
+                onclick: move |_| do_submit(),
+                "{send_label}"
             }
         }
     }

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::post;
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -132,7 +133,7 @@ async fn csrf_allows_post_with_correct_header() {
         .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", csrf_token)
+        .header(CSRF_HEADER_NAME, csrf_token)
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
                 "nous_id": "syn",
@@ -181,7 +182,7 @@ async fn csrf_rejects_wrong_header_value() {
         .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", "wrong-value")
+        .header(CSRF_HEADER_NAME, "wrong-value")
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
                 "nous_id": "syn",
@@ -215,7 +216,7 @@ async fn csrf_allows_delete_with_correct_header() {
         .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", csrf_token.clone())
+        .header(CSRF_HEADER_NAME, csrf_token.clone())
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
                 "nous_id": "syn",
@@ -234,7 +235,7 @@ async fn csrf_allows_delete_with_correct_header() {
         .method("DELETE")
         .uri(format!("/api/v1/sessions/{id}"))
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", csrf_token)
+        .header(CSRF_HEADER_NAME, csrf_token)
         .body(Body::empty())
         .unwrap();
 
@@ -569,10 +570,10 @@ fn security_config_default_values() {
     assert_eq!(config.body_limit_bytes, 1_048_576);
     assert!(config.csrf.enabled);
     assert!(!config.csrf.disable_acknowledged);
-    assert_eq!(config.csrf.header_name, "x-requested-with");
+    assert_eq!(config.csrf.header_name, CSRF_HEADER_NAME);
     assert_eq!(
         config.csrf.header_value.expose_secret(),
-        "aletheia",
+        DEFAULT_CSRF_HEADER_VALUE,
         "default CSRF header value must match the documented bootstrap header"
     );
     assert!(!config.tls.enabled);
@@ -589,7 +590,9 @@ fn security_config_from_gateway() {
     assert!(!config.tls.enabled);
     assert!(config.csrf.enabled);
     assert!(!config.csrf.disable_acknowledged);
-    assert_eq!(config.csrf.header_value.expose_secret(), "aletheia");
+    // NOTE: the from_gateway default CSRF header_value is pinned once, in
+    // `pylon::security::tests::from_gateway_preserves_default_csrf_header_value`;
+    // this test covers the other from_gateway-derived fields.
     assert_eq!(config.cors.max_age_secs, 3600);
 }
 

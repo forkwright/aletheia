@@ -83,3 +83,42 @@ pub struct RecoverResponse {
     /// degraded).
     pub recovered: bool,
 }
+
+/// Brief overview of a registered nous agent, returned by `PATCH
+/// /api/v1/nous/{id}` after toggling its enabled state.
+///
+/// Mirrors `pylon::handlers::nous_dto::NousSummary`.
+#[derive(Debug, Clone, Deserialize)]
+#[expect(
+    missing_docs,
+    reason = "fields mirror pylon's NousSummary; self-documenting by name"
+)]
+pub struct NousSummary {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub model: String,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub fallback_models: Vec<String>,
+    #[serde(default)]
+    pub fallback_providers: Vec<Option<String>>,
+    #[serde(default)]
+    pub provider_readiness: Vec<ModelProviderReadiness>,
+    pub status: String,
+    #[serde(default)]
+    pub tools: Vec<super::NousTool>,
+    /// Whether the requested config change was persisted.
+    #[serde(default)]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(default)]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(default)]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(default)]
+    pub restart_required: Option<bool>,
+}

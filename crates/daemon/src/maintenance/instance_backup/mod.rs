@@ -31,8 +31,8 @@ pub(crate) use constants::*;
 pub(crate) use filesystem::*;
 pub(crate) use manifest::*;
 pub(crate) use types::{
-    BackupBuild, EntryManifestMetadata, ManifestEvidence, ManifestSection, OptionalStoreRecord,
-    RestorePlan, RestorePlanEntry, RollbackEntry,
+    BackupBuild, EntryManifestMetadata, ExclusionCounts, ManifestEvidence, ManifestSection,
+    OptionalStoreRecord, RestorePlan, RestorePlanEntry, RollbackEntry,
 };
 pub(crate) use verify::*;
 

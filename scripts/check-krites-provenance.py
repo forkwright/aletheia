@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CI gate: PROVENANCE.toml completeness, NOTICE.md sync, no derived-row growth,
-status-sequence, soak expiry, offline verbatim recompute, consulted-sibling rule,
-per-file MPL Exhibit A notices."""
+status-sequence, land-dark-without-transition, soak expiry, offline verbatim recompute,
+consulted-sibling rule, per-file MPL Exhibit A notices."""
 
 from __future__ import annotations
 
@@ -211,6 +211,88 @@ def check_status_sequence(rows: list[dict], base_rows: list[dict] | None) -> lis
                     "verification target was hand-edited rather than carried forward by "
                     "scripts/krites-provenance-transition.py"
                 )
+    return errors
+
+
+def _landdark_mirror_candidates(path: pathlib.PurePosixPath) -> list[pathlib.PurePosixPath]:
+    """Every structurally-mirrored path a 'sovereign' replacement of `path` could land at,
+    per PROVENANCE-LEDGER.md's 'Naming convention (structurally enforced)'.
+
+    That section names three landed shapes, all carrying the SAME filename as the derived
+    file they replace: 'runtime/hnsw_sovereign/put.rs' mirrors 'runtime/hnsw/put.rs'
+    (`<parent>_sovereign/<file>`, sibling of parent); 'stop_word_filter/sovereign/mod.rs'
+    mirrors 'stop_word_filter/mod.rs' (`<parent>/sovereign/<file>`, child of parent).
+
+    The third, 'fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs',
+    mirrors 'fts/tokenizer/ascii_folding_filter/fold_table.rs' via a shape the first two
+    forms don't cover: Rust's file-module/directory-module equivalence, where
+    `<parent>/<stem>.rs` and `<parent>/<stem>/mod.rs` are the SAME module — a `mod
+    <stem>_sovereign;` declared from either file resolves inside `<parent>/<stem>/`, not
+    beside `<parent>/<stem>.rs`. A derived file module therefore also mirrors onto the two
+    forms above rooted at its own module directory (`<parent>/<stem>/sovereign/mod.rs`,
+    `<parent>/<stem>/<stem>_sovereign/mod.rs`) plus the sibling form one level in
+    (`<parent>/<stem>_sovereign/mod.rs`). This does not apply to a path already named
+    'mod.rs' — it has no further file/dir-module ambiguity to resolve.
+    """
+    parent = path.parent
+    candidates = [parent / "sovereign" / path.name]
+    if parent.name:
+        candidates.append(parent.parent / f"{parent.name}_sovereign" / path.name)
+    if path.suffix == ".rs" and path.name != "mod.rs":
+        mod_dir = parent / path.stem
+        candidates.append(mod_dir / "sovereign" / "mod.rs")
+        candidates.append(mod_dir / f"{path.stem}_sovereign" / "mod.rs")
+        candidates.append(parent / f"{path.stem}_sovereign" / "mod.rs")
+    return candidates
+
+
+def check_landdark_transition_required(rows: list[dict]) -> list[str]:
+    """aletheia#6988 / #6873: a 'derived' row must flip to 'dual' the moment its sovereign
+    replacement lands beside it, not sit at fuse 0 indefinitely.
+
+    See `_landdark_mirror_candidates` for the structurally-mirrored paths a sovereign
+    replacement can land at. That sibling's mere existence at status=sovereign is exactly
+    the 'derived -> dual (land dark)' evidence requirement named in PROVENANCE-LEDGER.md:
+    "the sovereign replacement already compiles beside the derived file, selected by a
+    feature cfg, with both reachable."
+
+    This is the check aletheia#6988's 'Done when' asked for ("CI fails on a new land-dark
+    row with fuse 0") and #7266 did not add — it hand-fixed the seven known
+    runtime/hnsw/*.rs rows but left nothing to catch the next one. Without it a row can sit
+    'derived'/fuse=0 forever even after its sovereign replacement ships and goes live, which
+    is exactly what aletheia#6873 measured tree-wide (0 'dual' rows while 68/210 rows were
+    already 'sovereign').
+
+    A row with no sovereign-named sibling of the same name
+    (runtime/hnsw/visited_pool.rs: no runtime/hnsw_sovereign/visited_pool.rs exists) is not
+    land-dark and is correctly left alone — this fires only on the specific evidence the
+    ledger doc names, never on the mere absence of a sibling, and never on basename-anywhere
+    matching.
+    """
+    sovereign_paths = {
+        pathlib.PurePosixPath(r["path"]) for r in rows if r["status"] == "sovereign"
+    }
+    errors = []
+    for row in rows:
+        if row["status"] != "derived":
+            continue
+        path = pathlib.PurePosixPath(row["path"])
+        mirror = next(
+            (
+                candidate
+                for candidate in _landdark_mirror_candidates(path)
+                if candidate in sovereign_paths
+            ),
+            None,
+        )
+        if mirror is not None:
+            errors.append(
+                f"{row['path']}: status=derived but {mirror} already exists at "
+                "status=sovereign — the replacement already compiles beside the derived file, "
+                "so this row must transition derived -> dual with a real "
+                "soak_expires_at_commit_count (scripts/krites-provenance-transition.py --to "
+                "dual --soak-commits N) rather than sitting at fuse 0 (aletheia#6988, #6873)"
+            )
     return errors
 
 
@@ -524,6 +606,7 @@ def main() -> int:
     errors += check_notice_sync(meta, rows)
     errors += check_no_derived_growth(rows, base_rows)
     errors += check_status_sequence(rows, base_rows)
+    errors += check_landdark_transition_required(rows)
     errors += check_soak_expiry(rows, git_commit_count(args.main_ref))
     errors += check_verbatim_recompute(rows)
     errors += check_no_unjustified_exemption(rows)

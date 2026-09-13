@@ -649,6 +649,100 @@ async fn stream_turn_approval_publishes_tool_approval_domain_events() {
     );
 }
 
+/// #7252 `Done when`: a turn that dies mid-approval-wait (here: the client
+/// disconnects while the tool blocks on a decision nobody will ever send)
+/// must not leave the approval dangling on the domain bus — the pending read
+/// empties AND a `tool.approval_resolved` with the `turn_ended` disposition
+/// is published, so a reconnecting client replaying the journal sees the
+/// request closed instead of paging the operator on a dead approval.
+#[tokio::test]
+async fn disconnect_mid_approval_wait_cancels_pending_approval_on_domain_bus() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    let mut event_bus_rx = state.event_bus.subscribe();
+
+    let resp = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "stream-approval-disconnect",
+            "run approval test tool",
+            "01ARZ3NDEKTSV4RRFFQ69G5FC8",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let mut stream = resp.into_body().into_data_stream();
+    let mut buffer = String::new();
+    let start = read_sse_data_event(&mut stream, &mut buffer, "message_start").await;
+    let session_id = start["session_id"]
+        .as_str()
+        .expect("message_start.session_id")
+        .to_owned();
+    let turn_id = start["turn_id"]
+        .as_str()
+        .expect("message_start.turn_id")
+        .to_owned();
+    let _required = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_required").await;
+    let _required_domain = await_domain_event(&mut event_bus_rx, "tool.approval_required").await;
+
+    // The client vanishes while the approval is still waiting: dropping the
+    // response stream aborts the turn task (AbortOnDrop), which drops the
+    // approval guard with the request still pending.
+    drop(stream);
+
+    let ended = await_domain_event(&mut event_bus_rx, "tool.approval_resolved").await;
+    assert_eq!(ended.payload["session_id"], session_id);
+    assert_eq!(ended.payload["nous_id"], "syn");
+    assert_eq!(ended.payload["turn_id"], turn_id);
+    assert_eq!(ended.payload["tool_id"], APPROVAL_TEST_TOOL_ID);
+    assert_eq!(
+        ended.payload["decision"], "turn_ended",
+        "an approval that outlived its turn is cancelled, not left pending: {ended:?}"
+    );
+
+    // Removal happens synchronously in the guard before the publish spawns,
+    // so once the domain event exists the reconciliation read is clean.
+    let list_req = authed_request(
+        "GET",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        None,
+    );
+    let list_resp = router.clone().oneshot(list_req).await.unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_body = body_json(list_resp).await;
+    assert!(
+        list_body["approvals"]
+            .as_array()
+            .expect("approvals must be an array")
+            .is_empty(),
+        "the dead turn's approval must not linger in the reconciliation read: {list_body}"
+    );
+
+    // A late operator answer is told the truth: the approval is gone because
+    // its turn ended, not that it never existed.
+    let late_req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        Some(serde_json::json!({
+            "turn_id": turn_id,
+            "tool_id": APPROVAL_TEST_TOOL_ID,
+            "decision": "approved",
+        })),
+    );
+    let late_resp = router.clone().oneshot(late_req).await.unwrap();
+    assert_eq!(late_resp.status(), StatusCode::GONE);
+    let late_body = body_json(late_resp).await;
+    assert_eq!(late_body["error"]["details"]["reason"], "turn_ended");
+
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        0,
+        "the approval-gated tool must never execute after its turn died"
+    );
+}
+
 // ── #7207: pending-approval reconciliation reads ──
 
 /// #7207 `Done when:`: a pending approval created, [the client] disconnected,

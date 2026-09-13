@@ -677,6 +677,7 @@ pub use webhook::{
     responses(
         (status = 200, description = "Graph health report"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))

@@ -2,7 +2,7 @@
 //!
 //! The localhosted launch contract requires a hard admission bound — one
 //! running request and at most two bounded waiters — instead of the adaptive
-//! concurrency defaults, and a token-budget clamp (32768 / 4096 / 8192)
+//! concurrency defaults, and a token-budget clamp (32768 / 4096 / 16384)
 //! wired through `resolve_nous`. These tests pin the TOML surface and the
 //! deployment-target-derived defaults.
 
@@ -124,13 +124,13 @@ fn budgets_table_parses_camel_case() {
 [providers.budgets]
 contextTokens = 32768
 maxOutputTokens = 4096
-bootstrapMaxTokens = 8192
+bootstrapMaxTokens = 16384
 ",
     );
     let budgets = entry.budgets.expect("budgets table should be present");
     assert_eq!(budgets.context_tokens, Some(32_768));
     assert_eq!(budgets.max_output_tokens, Some(4_096));
-    assert_eq!(budgets.bootstrap_max_tokens, Some(8_192));
+    assert_eq!(budgets.bootstrap_max_tokens, Some(16_384));
 }
 
 #[test]
@@ -190,7 +190,7 @@ models = ["qwen3.8-27b"]
 [providers.budgets]
 contextTokens = 32768
 maxOutputTokens = 4096
-bootstrapMaxTokens = 8192
+bootstrapMaxTokens = 16384
 
 [agents.defaults]
 contextTokens = 200000
@@ -222,7 +222,7 @@ workspace = "instance/nous/primary"
         let resolved = resolve_nous(&config, "primary");
         assert_eq!(resolved.limits.context_tokens, 32_768);
         assert_eq!(resolved.limits.max_output_tokens, 4_096);
-        assert_eq!(resolved.limits.bootstrap_max_tokens, 8_192);
+        assert_eq!(resolved.limits.bootstrap_max_tokens, 16_384);
     }
 
     #[test]
@@ -233,7 +233,7 @@ workspace = "instance/nous/primary"
         let resolved = resolve_nous(&config, "primary");
         assert_eq!(resolved.limits.context_tokens, 32_768);
         assert_eq!(resolved.limits.max_output_tokens, 4_096);
-        assert_eq!(resolved.limits.bootstrap_max_tokens, 8_192);
+        assert_eq!(resolved.limits.bootstrap_max_tokens, 16_384);
     }
 
     #[test]

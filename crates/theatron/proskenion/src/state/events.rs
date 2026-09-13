@@ -145,6 +145,16 @@ pub struct StreamingState {
     pub request_id: Option<RequestId>,
     /// Error message if the stream errored.
     pub error: Option<String>,
+    /// Whether this turn is being watched via reattachment (#7297) rather
+    /// than driven by this client's own submission.
+    ///
+    /// WHY: cancelling a reattached turn's connection does not abort it
+    /// server-side (only the original submitting connection can) -- so
+    /// `InputBar` renders a distinct "Stop watching" control instead of
+    /// "Abort" whenever this is set, and `views/chat.rs`'s cancellation
+    /// handling for a reattached turn stops watching locally instead of
+    /// fabricating a `TurnAbort`.
+    pub reattached: bool,
 }
 
 /// Information about a single tool invocation during streaming.

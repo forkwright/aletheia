@@ -647,6 +647,111 @@ def test_soak_expiry_fails_closed_when_commit_count_unavailable() -> None:
     )
 
 
+# --- aletheia#6988 / #6873: a derived row must transition once its sovereign
+# replacement lands beside it, not sit at fuse 0 forever ---
+
+
+def test_landdark_flags_the_original_hnsw_defect_shape() -> None:
+    # WHY: the exact reproduction of #6873's finding — runtime/hnsw/put.rs carried
+    # 'derived'/fuse=0 while runtime/hnsw_sovereign/put.rs already existed at
+    # 'sovereign'. #7266 hand-fixed this instance; this proves the *next* one is caught.
+    rows_ = [
+        row("runtime/hnsw/put.rs", "runtime/hnsw.rs", 27.3, "derived"),
+        row("runtime/hnsw_sovereign/put.rs", "none", 9.6, "sovereign"),
+    ]
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(
+        any("runtime/hnsw/put.rs" in e and "runtime/hnsw_sovereign/put.rs" in e for e in errors),
+        f"a derived row with a same-named '_sovereign' sibling must be flagged; got {errors}",
+    )
+
+
+def test_landdark_recognizes_nested_sovereign_subdir_convention() -> None:
+    # WHY: the ledger names two conventions ('<mod>_sovereign/' and '<mod>/sovereign/') —
+    # fts/tokenizer/stop_word_filter/sovereign/mod.rs mirrors
+    # fts/tokenizer/stop_word_filter/mod.rs. Both must be caught, not only the suffixed form.
+    rows_ = [
+        row("fts/tokenizer/stop_word_filter/mod.rs", "fts/tokenizer/stop_word_filter.rs", 40.0, "derived"),
+        row("fts/tokenizer/stop_word_filter/sovereign/mod.rs", "none", 15.5, "sovereign"),
+    ]
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(
+        any("fts/tokenizer/stop_word_filter/mod.rs" in e for e in errors),
+        f"the nested 'sovereign/' subdir convention must also be recognized; got {errors}",
+    )
+
+
+def test_landdark_recognizes_file_module_vs_sovereign_dir_convention() -> None:
+    # WHY: the real fold_table wave (#6636, e6f6f48d0) landed exactly this shape and the
+    # original check (recognizing only '<parent>_sovereign/<file>' and
+    # '<parent>/sovereign/<file>', same filename) missed it entirely — a judge review of
+    # this check found it passes the shape at derived/fuse 0 unflagged. A Rust file module
+    # 'fold_table.rs' and a directory module 'fold_table/mod.rs' are the SAME module, so its
+    # submodule 'mod fold_table_sovereign;' resolves inside 'fold_table/', not beside
+    # 'fold_table.rs' — the sovereign sibling lands one level deeper than the other two forms
+    # reach.
+    rows_ = [
+        row("fts/tokenizer/ascii_folding_filter/fold_table.rs", "fts/tokenizer/ascii_folding_filter.rs", 0.0, "derived"),
+        row("fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs", "none", 0.0, "sovereign"),
+    ]
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(
+        any(
+            "fts/tokenizer/ascii_folding_filter/fold_table.rs" in e
+            and "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs" in e
+            for e in errors
+        ),
+        f"a derived file-module row with a sovereign submodule sibling must be flagged; got {errors}",
+    )
+
+
+def test_landdark_ignores_derived_row_with_no_sovereign_sibling() -> None:
+    # WHY: runtime/hnsw/visited_pool.rs's real shape — a derived row with a sovereign-named
+    # sibling *directory* present (other files already retired) but no file of its own
+    # basename in that directory. #7266 left it derived deliberately; the check must agree.
+    rows_ = [
+        row("runtime/hnsw/visited_pool.rs", "runtime/hnsw.rs", 3.3, "derived"),
+        row("runtime/hnsw_sovereign/put.rs", "none", 9.6, "sovereign"),
+    ]
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(
+        errors == [],
+        f"a derived row with no matching-basename sovereign sibling must not be flagged; got {errors}",
+    )
+
+
+def test_landdark_ignores_dual_and_sovereign_rows() -> None:
+    # WHY: a row already 'dual' has already made the transition this check enforces (its
+    # soak is check_soak_expiry's job); a 'sovereign' row needs no transition at all.
+    rows_ = [
+        row("runtime/hnsw/put.rs", "runtime/hnsw.rs", 27.3, "dual", soak=3467),
+        row("fts/tokenizer/ascii_folding_filter/fold_table.rs", "none", 0.0, "sovereign"),
+        row("runtime/hnsw_sovereign/put.rs", "none", 9.6, "sovereign"),
+    ]
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(errors == [], f"dual and sovereign rows are never subject to this check; got {errors}")
+
+
+def test_landdark_ignores_unrelated_same_basename_elsewhere() -> None:
+    # WHY: precision matters — a 'mod.rs' derived elsewhere in the tree must not be flagged
+    # just because *some* unrelated 'sovereign' directory happens to also contain a 'mod.rs'.
+    # Only a *structurally mirrored* sibling (same parent, sovereign-suffixed or nested) counts.
+    rows_ = [
+        row("query/mod.rs", "query/mod.rs", 50.0, "derived"),
+        row("runtime/hnsw_sovereign/mod.rs", "none", 0.0, "sovereign"),
+    ]
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(errors == [], f"an unrelated same-basename sovereign file elsewhere must not match; got {errors}")
+
+
+def test_landdark_real_ledger_is_currently_clean() -> None:
+    # WHY: a regression guard against the real ledger, not only synthetic fixtures — proves
+    # #7266's fix (all seven runtime/hnsw/*.rs rows now 'dual') actually cleared this check.
+    _, rows_ = LIB.parse_ledger(LIB.LEDGER_PATH.read_text())
+    errors = CHECKER.check_landdark_transition_required(rows_)
+    expect(errors == [], f"the current PROVENANCE.toml must have no land-dark rows; got {errors}")
+
+
 # --- P6: offline verbatim recompute ---
 
 
@@ -1698,6 +1803,13 @@ def main() -> int:
         test_soak_expiry_rejects_nonpositive_expiry_on_dual_row,
         test_soak_expiry_skips_when_no_dual_rows,
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
+        test_landdark_flags_the_original_hnsw_defect_shape,
+        test_landdark_recognizes_nested_sovereign_subdir_convention,
+        test_landdark_recognizes_file_module_vs_sovereign_dir_convention,
+        test_landdark_ignores_derived_row_with_no_sovereign_sibling,
+        test_landdark_ignores_dual_and_sovereign_rows,
+        test_landdark_ignores_unrelated_same_basename_elsewhere,
+        test_landdark_real_ledger_is_currently_clean,
         test_verbatim_recompute_fails_closed_without_snapshot,
         test_verbatim_recompute_detects_drift,
         test_no_unjustified_exemption_rejects_bare_none,

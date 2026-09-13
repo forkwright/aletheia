@@ -14,7 +14,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
-use koina::http::{API_HEALTH, API_V1};
+use koina::http::{API_HEALTH, API_V1, CSRF_HEADER_NAME};
 use taxis::config::MetricsMode;
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse, classify_by_status};
@@ -124,6 +124,10 @@ pub fn build_router_with(
             "/sessions",
             get(sessions::list_sessions).post(sessions::create),
         )
+        // WHY: static segment must be registered alongside (and wins over)
+        // `/sessions/{id}` — resolve is the idempotent get-or-create used by
+        // interactive clients entering a nous's canonical conversation.
+        .route("/sessions/resolve", post(sessions::resolve))
         .route("/sessions/stream", post(sessions::stream_turn))
         .route(
             "/sessions/{id}",
@@ -447,7 +451,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
             .allow_headers([
                 HeaderName::from_static("content-type"),
                 HeaderName::from_static("authorization"),
-                HeaderName::from_static("x-requested-with"),
+                HeaderName::from_static(CSRF_HEADER_NAME),
                 // WHY(#5166): Browser API clients send these headers on mutations
                 // and SSE reconnects; include them in preflight responses.
                 HeaderName::from_static("idempotency-key"),
@@ -474,7 +478,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
         .allow_headers([
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),
-            HeaderName::from_static("x-requested-with"),
+            HeaderName::from_static(CSRF_HEADER_NAME),
             // WHY(#5166): Browser API clients send these headers on mutations
             // and SSE reconnects; include them in preflight responses.
             HeaderName::from_static("idempotency-key"),

@@ -200,9 +200,9 @@ pub struct CsrfConfig {
     pub enabled: bool,
     /// Explicit acknowledgement required when CSRF protection is disabled.
     pub disable_acknowledged: bool,
-    /// Required header name (e.g. `x-requested-with`).
+    /// Required header name (defaults to [`koina::http::CSRF_HEADER_NAME`]).
     pub header_name: String,
-    /// Required header value (e.g. `aletheia`).
+    /// Required header value (defaults to [`koina::http::DEFAULT_CSRF_HEADER_VALUE`]).
     pub header_value: SecretString,
 }
 
