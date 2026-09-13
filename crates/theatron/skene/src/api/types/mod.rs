@@ -180,6 +180,14 @@ pub struct Session {
     /// User-assigned display name.
     #[serde(default, alias = "name")]
     pub display_name: Option<String>,
+    /// The turn currently running against this session, if any, mirroring
+    /// `pylon::handlers::sessions::types_dto::SessionResponse::active_turn_id`
+    /// (PR #7267). `None` for an idle session. When set, a client that did
+    /// not submit the turn itself can reattach to its event stream via
+    /// `GET /api/v1/sessions/{id}/turns/{active_turn_id}/events`
+    /// ([`super::super::streaming::reattach_turn_stream`]).
+    #[serde(default)]
+    pub active_turn_id: Option<TurnId>,
 }
 
 impl Session {

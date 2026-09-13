@@ -48,6 +48,80 @@ fn turn_start_resets_streaming_state() {
     assert_eq!(state.streaming.turn_id.as_deref(), Some("t1"));
 }
 
+// WHY(#7297): a reattach's buffered replay includes the turn's original
+// `TurnStart`, which rebuilds `streaming` from scratch. Before
+// `ChatStateManager` tracked its own reattached mode, that rebuild always
+// hardcoded `reattached: false` -- wiping the flag `apply_active_turn_reattachment`
+// had stamped up front the instant the replay reached this event, so the
+// "Stop watching" control would flip back to "Abort" within milliseconds
+// of a reload.
+#[test]
+fn reattached_manager_preserves_reattached_flag_through_turn_start_replay() {
+    let mut state = make_state();
+    let mut mgr = ChatStateManager::new_reattached();
+
+    mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+            request_id: None,
+        },
+        &mut state,
+    );
+
+    assert!(
+        state.streaming.reattached,
+        "a reattached manager's replayed TurnStart must not clear reattached"
+    );
+}
+
+#[test]
+fn fresh_manager_does_not_stamp_reattached_on_turn_start() {
+    let mut state = make_state();
+    let mut mgr = make_manager();
+
+    mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+            request_id: None,
+        },
+        &mut state,
+    );
+
+    assert!(!state.streaming.reattached);
+}
+
+#[test]
+fn turn_end_kind_classifies_terminal_events() {
+    assert_eq!(
+        TurnEndKind::of(&StreamEvent::TurnComplete {
+            outcome: make_outcome("done"),
+        }),
+        Some(TurnEndKind::Completed)
+    );
+    assert_eq!(
+        TurnEndKind::of(&StreamEvent::TurnAbort {
+            reason: "cancelled by user".to_string(),
+        }),
+        Some(TurnEndKind::Aborted)
+    );
+    assert_eq!(
+        TurnEndKind::of(&StreamEvent::Error("boom".to_string())),
+        Some(TurnEndKind::Errored)
+    );
+}
+
+#[test]
+fn turn_end_kind_is_none_for_non_terminal_events() {
+    assert_eq!(
+        TurnEndKind::of(&StreamEvent::TextDelta("hi".to_string())),
+        None
+    );
+}
+
 #[test]
 fn turn_start_captures_session_id_and_request_id() {
     // WHY(#4821): session_id and request_id were previously discarded on

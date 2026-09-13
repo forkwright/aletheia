@@ -459,10 +459,17 @@ pub(crate) fn Ops() -> Element {
             };
 
             {
+                // WHY(#7281): go through the store's merge-preserving
+                // loaders instead of a direct field assignment -- a bare
+                // assignment here would silently discard any row the
+                // operator clicked (and is still awaiting a PATCH response
+                // for) if this refresh -- mount, the 30s auto-refresh, or a
+                // manual Refresh click -- lands before that click's own
+                // request resolves.
                 let mut ts = toggle_store.write();
-                ts.agent_toggles = agent_toggles;
-                ts.tool_toggles = tool_toggles;
-                ts.feature_flags = feature_flags;
+                ts.load_agent_toggles(agent_toggles);
+                ts.load_tool_toggles(tool_toggles);
+                ts.load_feature_flags(feature_flags);
             }
 
             dash_fetch.set(FetchState::Loaded(()));

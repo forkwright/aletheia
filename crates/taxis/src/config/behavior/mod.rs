@@ -22,7 +22,8 @@ pub use knowledge::{
     KnowledgeConfig,
 };
 pub use messaging::{
-    InboundMessagePolicy, MessagingConfig, OutboundMessagePolicy, RawPayloadPolicy,
+    GroupParticipantPolicy, InboundMessagePolicy, MessagingConfig, OutboundMessagePolicy,
+    RawPayloadPolicy,
 };
 pub use nous::NousBehaviorConfig;
 pub use provider::{

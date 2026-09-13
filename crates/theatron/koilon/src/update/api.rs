@@ -307,6 +307,7 @@ fn sanitize_sessions(sessions: Vec<Session>) -> Vec<Session> {
             display_name: s
                 .display_name
                 .map(|n| sanitize_for_display(&n).into_owned()),
+            active_turn_id: s.active_turn_id,
         })
         .collect()
 }
@@ -439,6 +440,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
         app.dashboard.focused_agent = Some("syn".into());
@@ -597,6 +599,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         }];
         handle_sessions_loaded(&mut app, "syn".into(), sessions);
         assert_eq!(app.dashboard.agents[0].sessions.len(), 1);
@@ -616,6 +619,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         }];
         handle_sessions_loaded(&mut app, "unknown".into(), sessions);
         // No agents, should not panic
@@ -758,6 +762,7 @@ mod tests {
             session_type: None,
             updated_at: None,
             display_name: None,
+            active_turn_id: None,
         });
         app.dashboard.agents.push(agent);
         let messages = vec![HistoryMessage {

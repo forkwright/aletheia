@@ -56,6 +56,10 @@ primary = "claude-sonnet-4-6"
 # retriesBeforeFallback = 2           # retry primary N times before fallback
 
 contextTokens = 200000  # auto-upgraded to 1M for Opus models
+# bootstrapMaxTokens = 40000  # token budget for bootstrap (system prompt + persona)
+# content. A section that would push the total over this cap is dropped; the
+# nous logs a WARN naming the dropped section and this configured budget
+# (aletheia#7300) rather than silently truncating the persona.
 # Tool profile: least-privilege-starter
 toolGroups = ["read", "plan", "verify"]
 # Tool profile: full-power-local
@@ -64,6 +68,10 @@ toolGroups = ["read", "plan", "verify"]
 # configured external tool servers, and `spawn_subtask` delegates work to
 # child agents.
 # toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
+# WARNING: pairs with the full-power-local toolGroups profile above — widens
+# the nous's filesystem reach beyond its workspace. Only for trusted
+# single-operator deployments; system paths stay out of scope by omission.
+# allowedRoots = ["/home/<operator>", "/data", "/srv"]
 # thinkingEnabled = false
 # thinkingBudget = 10000
 # maxToolIterations = 50
@@ -117,6 +125,10 @@ workspace = "nous/main"
 # [agents.defaults.behavior]
 # toolApprovalRequiredPolicy = "gate"
 # toolApprovalMandatoryPolicy = "gate"
+# Trusted single-operator deployment: pairs with the full-power-local
+# toolGroups and allowedRoots examples above.
+# toolApprovalRequiredPolicy = "auto_approve"
+# toolApprovalMandatoryPolicy = "auto_approve"
 
 # --- Capacity (Wave 1 — deployment-tunable) ---
 # Tool output and context window limits. Hot-reloadable.
@@ -248,6 +260,15 @@ models = [
   "qwen3-coder-30b-a3b",
   "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
 ]
+# Launch-contract token-budget clamp (#7152): bounds this provider's
+# resolved limits regardless of agents.defaults / per-agent overrides —
+# `min(agent_limit, provider_budget)`. Match these to the serving model's
+# actual ctx-size; bootstrapMaxTokens must stay below contextTokens.
+# See taxis::config::behavior::LOCAL_BUDGET_* for the reference values.
+# [providers.budgets]
+# contextTokens = 32768
+# maxOutputTokens = 4096
+# bootstrapMaxTokens = 16384
 
 [[providers]]
 name = "local-inference"

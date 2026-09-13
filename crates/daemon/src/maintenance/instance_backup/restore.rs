@@ -73,7 +73,7 @@ impl InstanceBackup {
         let mut bytes_copied = 0u64;
         for entry in &restore_plan.entries {
             let staged_path = staging_dir.path().join(&entry.target_rel);
-            let (bytes, _) = copy_path(&entry.backup_source, &staged_path)?;
+            let (bytes, _, _) = copy_path(&entry.backup_source, &staged_path)?;
             bytes_copied += bytes;
             verify_staged_restore_entry(entry, &staged_path)?;
         }

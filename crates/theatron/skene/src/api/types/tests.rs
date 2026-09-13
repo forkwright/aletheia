@@ -240,6 +240,7 @@ fn make_session(key: &str) -> Session {
         session_type: None,
         updated_at: None,
         display_name: None,
+        active_turn_id: None,
     }
 }
 
