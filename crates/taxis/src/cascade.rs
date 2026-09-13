@@ -152,6 +152,41 @@ pub fn discover_with(
     results
 }
 
+/// The three cascade tier paths for `filename`, most-specific first
+/// (`nous/{id}` -> `shared` -> `theke`), independent of whether any of
+/// them currently exist.
+///
+/// [`resolve_with`] and [`resolve_all_with`] build this exact ordered list
+/// internally and then filter it by existence. Exposed so a caller that
+/// needs to inspect a tier whose file might be currently *absent* — e.g.
+/// "was a file ever present at this specific tier path", which existence
+/// alone cannot answer — does not have to hand-copy this private
+/// candidate order (`SpawnServiceImpl::resolve_contract` in
+/// `nous::spawn_svc`, #7323 — a deleted, more-specific tier's file must
+/// be distinguishable from one that never existed, even when a less
+/// specific tier's file still exists and would otherwise satisfy
+/// [`resolve`]).
+#[must_use]
+pub fn candidates(
+    oikos: &Oikos,
+    nous_id: &str,
+    filename: &str,
+    subdir: Option<&str>,
+) -> [PathBuf; 3] {
+    match subdir {
+        Some(sub) => [
+            oikos.nous_dir(nous_id).join(sub).join(filename),
+            oikos.shared().join(sub).join(filename),
+            oikos.theke().join(sub).join(filename),
+        ],
+        None => [
+            oikos.nous_dir(nous_id).join(filename),
+            oikos.shared().join(filename),
+            oikos.theke().join(filename),
+        ],
+    }
+}
+
 /// Resolve a single named file through the cascade.
 ///
 /// Returns the most-specific path, or `None` if not found in any tier.
@@ -177,21 +212,7 @@ pub fn resolve_with(
     filename: &str,
     subdir: Option<&str>,
 ) -> Option<PathBuf> {
-    let candidates: Vec<PathBuf> = if let Some(sub) = subdir {
-        vec![
-            oikos.nous_dir(nous_id).join(sub).join(filename),
-            oikos.shared().join(sub).join(filename),
-            oikos.theke().join(sub).join(filename),
-        ]
-    } else {
-        vec![
-            oikos.nous_dir(nous_id).join(filename),
-            oikos.shared().join(filename),
-            oikos.theke().join(filename),
-        ]
-    };
-
-    for candidate in candidates {
+    for candidate in candidates(oikos, nous_id, filename, subdir) {
         if fs.exists(&candidate) {
             debug!(?candidate, filename, "cascade resolved");
             return Some(candidate);
@@ -227,24 +248,13 @@ pub fn resolve_all_with(
     filename: &str,
     subdir: Option<&str>,
 ) -> Vec<CascadeEntry> {
-    let tiers: Vec<(Tier, PathBuf)> = if let Some(sub) = subdir {
-        vec![
-            (Tier::Nous, oikos.nous_dir(nous_id).join(sub).join(filename)),
-            (Tier::Shared, oikos.shared().join(sub).join(filename)),
-            (Tier::Theke, oikos.theke().join(sub).join(filename)),
-        ]
-    } else {
-        vec![
-            (Tier::Nous, oikos.nous_dir(nous_id).join(filename)),
-            (Tier::Shared, oikos.shared().join(filename)),
-            (Tier::Theke, oikos.theke().join(filename)),
-        ]
-    };
+    let tier_order = [Tier::Nous, Tier::Shared, Tier::Theke];
 
-    tiers
+    candidates(oikos, nous_id, filename, subdir)
         .into_iter()
-        .filter(|(_, path)| fs.exists(path))
-        .map(|(tier, path)| CascadeEntry {
+        .zip(tier_order)
+        .filter(|(path, _tier)| fs.exists(path))
+        .map(|(path, tier)| CascadeEntry {
             path,
             tier,
             name: filename.to_owned(),
