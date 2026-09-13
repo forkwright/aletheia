@@ -285,7 +285,7 @@ Treat any `verbatim_pct` figure — for a `derived`/`dual` row against its recor
 
 ## What that requires
 
-Under MPL §3.1, every file in this crate derived from `cozo-core` — **including our modifications to it** — stays governed by the MPL as file-level copyleft: it binds these files and reaches no further into aletheia.
+Under MPL §3.1, every file in this crate derived from `cozo-core`, **including our modifications to it**, stays governed by the MPL as file-level copyleft: it binds these files and reaches no further into aletheia.
 
 Aletheia distributes the whole as a Larger Work under AGPL-3.0-or-later. MPL §3.3 permits exactly that, because CozoDB does not attach Exhibit B and so is not Incompatible With Secondary Licenses, and AGPL-3.0 is a Secondary License under §1.12. A recipient may therefore take the covered files under either license, at their option. The crate's `license` field records the combination.
 

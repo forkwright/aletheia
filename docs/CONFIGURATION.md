@@ -1286,7 +1286,7 @@ Opt-in, bounded raw provider-payload retention on `InboundMessage::raw` (Signal 
 
 ## tuning
 
-A global kill switch, a per-cycle change cap, and evidence thresholds gate a feedback loop that adjusts prosoche parameters from observed outcomes. WHY configurable: the loop is disabled by default (experimental); operators enable and tune it incrementally.
+A global kill switch, a per-cycle change cap, and evidence thresholds gate a feedback loop that proposes registry parameter changes from observed outcome metrics during the prosoche cycle. WHY configurable: the loop is disabled by default (experimental); operators enable and tune it incrementally.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

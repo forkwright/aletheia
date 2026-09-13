@@ -293,7 +293,10 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 1. Break down `aletheia_extraction_quality_total{status="rejected"}` by `reason`.
 2. If `empty_field` or `self_reference` dominates, improve entity normalization or prompt instructions.
 3. If `low_confidence` dominates, check whether the model is hedging on the input or the confidence threshold is miscalibrated.
-4. If low-information content dominates, tune the prompt to skip metadata-heavy turns.
+4. If the remaining reason dominates, tune the prompt to skip metadata-heavy turns:
+   ```
+   aletheia_extraction_quality_total{status="rejected",reason="trivial"}
+   ```
 
 ### ExtractionContradictionSpike
 

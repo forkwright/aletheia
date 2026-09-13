@@ -3,7 +3,7 @@
 ## Before anything else: find the binary that owns your store
 
 **Do not run a bare `aletheia` during an upgrade.** An instance that has been upgraded
-before can have two binaries — the one its unit runs by absolute path, and an
+before often has two binaries — the one its unit runs by absolute path, and an
 older one still on `PATH` from an earlier install. They can be many versions apart:
 
 ```bash
