@@ -7,7 +7,7 @@ license sits beside this file at
 [LICENSE-MIT-stopwords-iso](../../../../../LICENSE-MIT-stopwords-iso)
 (`crates/krites/LICENSE-MIT-stopwords-iso`).
 
-## Why this file exists, and why it is not just a paragraph in `crates/krites/NOTICE.md`
+## Why this file exists, and why it is not a paragraph in `crates/krites/NOTICE.md`
 
 `crates/krites/PROVENANCE.toml` tracks lineage from one upstream, **CozoDB**
 (`cozo-core`, MPL-2.0) — the ledger's `[meta]` table names that repository

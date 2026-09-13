@@ -46,6 +46,19 @@ reason = "memmap2 unsound (unchecked pointer offset) — transitive via candle-c
 id = "RUSTSEC-2026-0204"
 reason = "crossbeam-epoch unmaintained — transitive dependency, no upgrade path"
 
+# WHY the next two entries (aletheia#4726): proskenion joined the root
+# workspace, and its GTK3/webkit2gtk-4.1 desktop UI stack (dioxus-desktop ->
+# wry/tao/gtk) pulls in these two unmaintained-but-not-vulnerable crates.
+# Neither has a safe upgrade available upstream, and neither is reachable
+# except through the desktop dependency chain.
+[[advisories.ignore]]
+id = "RUSTSEC-2025-0057"
+reason = "fxhash unmaintained — transitive via selectors -> kuchikiki -> wry -> dioxus-desktop -> dioxus, proskenion's desktop UI toolkit; no safe upgrade (rustc-hash requires a kuchikiki-side migration we do not control)"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2024-0370"
+reason = "proc-macro-error unmaintained — transitive via glib-macros/gtk3-macros -> gtk -> ... -> dioxus-desktop -> dioxus, proskenion's GTK3/webkit2gtk desktop UI stack; no safe upgrade until the gtk-rs 0.18 chain migrates off it"
+
 [licenses]
 # WHY: `version = 2` enables modern SPDX 3.x parsing so "AGPL-3.0-or-later" /
 # "LGPL-3.0-or-later" are accepted as bare license identifiers. Without this,
@@ -84,6 +97,18 @@ confidence-threshold = 0.8
 [[licenses.exceptions]]
 name = "koinon"
 allow = ["LicenseRef-PolyForm-Noncommercial-1.0.0"]
+
+# WHY (aletheia#4726): libfuzzer-sys's own license expression is
+# "(MIT OR Apache-2.0) AND NCSA" — MIT alone already satisfies the OR half
+# (both MIT and Apache-2.0 are in the global allow list above), so only
+# NCSA needs the per-crate exception. It arrives transitively via
+# rav1e -> ravif -> image, which dioxus-desktop (proskenion's desktop UI
+# toolkit) unifies into the shared `image` dependency with AVIF decoding
+# enabled; libfuzzer-sys itself is rav1e's fuzz-target scaffolding, never
+# invoked at runtime, and NCSA is both OSI-approved and FSF Free/Libre.
+[[licenses.exceptions]]
+name = "libfuzzer-sys"
+allow = ["MIT", "NCSA"]
 
 [bans]
 multiple-versions = "warn"
@@ -192,9 +217,25 @@ skip = [
 # WHY: "pure Rust, no C++" — rustls replaces openssl across the workspace.
 # WHY: pandoc must stay an external subprocess so we keep the GPL-clean
 # boundary and never link a pandoc Rust binding into the binary.
+#
+# WHY wrappers = ["openssl", "native-tls"] (aletheia#4726): dioxus-desktop
+# (proskenion's desktop UI toolkit) hardcodes
+# `tungstenite = { features = ["native-tls"] }` for its devtools hot-reload
+# websocket on non-Android targets -- upstream, not something our own
+# Cargo.toml feature selection controls. openssl-sys has two direct parents
+# in the resolved graph: the `openssl` safe wrapper (normal dependency) and
+# `native-tls` itself (a direct build-dependency on openssl-sys alongside
+# openssl, for its own build-script probing) -- cargo-deny requires every
+# direct parent named as a wrapper, not just the outermost one. No aletheia
+# crate depends on openssl-sys directly or reaches it by any other path; the
+# "pure Rust, no C++" posture stays the rule everywhere else
+# (reqwest/rustls across the workspace, see [workspace.dependencies]
+# rustls). Revisit if dioxus-desktop ever exposes a rustls-backed devtools
+# transport; tracked as part of the proskenion-lints follow-up (see
+# crates/theatron/proskenion/Cargo.toml WHY comment).
 [[bans.deny]]
 crate = "openssl-sys"
-wrappers = []
+wrappers = ["openssl", "native-tls"]
 
 [[bans.deny]]
 crate = "pandoc"
@@ -215,3 +256,16 @@ allow-org.github = ["forkwright"]
 [[advisories.ignore]]
 id = "RUSTSEC-2026-0206"
 reason = "rustybuzz unmaintained (maintenance-status only, no vuln). Transitive GUI text-shaping via theatron (parley/vello, Dioxus-native+Blitz). No maintained successor; not a security surface. Matches the theatron ignore + existing precedent."
+
+# WHY the next two entries (aletheia#4726): both are `informational = "unsound"`
+# advisories, which cargo-deny does not fail on by default (same class as the
+# memmap2 entry above) -- listed here anyway to keep osv-scanner.toml (which
+# fails on ANY finding via --fail-on-vuln=true, informational included) in
+# sync via `kanon audit derive-ignores --apply`.
+[[advisories.ignore]]
+id = "RUSTSEC-2024-0429"
+reason = "glib::VariantStrIter unsound Iterator impl (fixed >=0.20.0) -- glib 0.18.5 is pinned by the whole gtk-rs 0.18 release train (gtk/gdk/gio/pango/cairo-rs/webkit2gtk/atk), which dioxus-desktop 0.7.10 (proskenion's desktop UI toolkit) depends on; bumping requires that entire third-party stack to release together, not something this crate's dependents control. proskenion's own source never uses VariantStrIter directly."
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0097"
+reason = "rand::thread_rng() unsound only when the `log` feature is enabled AND a custom logger calls back into ThreadRng during a reseed (fixed >=0.8.6) -- transitive via selectors -> kuchikiki -> wry -> dioxus-desktop -> dioxus (phf_generator's compile-time perfect-hash-table codegen, itself only reachable as a build-time helper of `selectors`); no custom log integration touches this path, and phf_generator has no upgrade path off its `rand = \"^0.7\"` pin without a coordinated upstream release."

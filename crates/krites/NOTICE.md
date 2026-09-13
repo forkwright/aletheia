@@ -6,7 +6,7 @@
 
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
-A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
+A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown in the table's Upstream column as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4` (last upstream commit 2024-12-04; pin status: pin_is_upstream_head)
 - 212 files under `src/`: 134 derived, 71 sovereign, 7 dual
@@ -285,7 +285,7 @@ Treat any `verbatim_pct` figure — for a `derived`/`dual` row against its recor
 
 ## What that requires
 
-Under MPL §3.1 every file in this crate that is derived from `cozo-core`, **including our modifications to it**, stays governed by the MPL. That is file-level copyleft: it binds these files and reaches no further into aletheia.
+Under MPL §3.1, every file in this crate derived from `cozo-core`, **including our modifications to it**, stays governed by the MPL as file-level copyleft: it binds these files and reaches no further into aletheia.
 
 Aletheia distributes the whole as a Larger Work under AGPL-3.0-or-later. MPL §3.3 permits exactly that, because CozoDB does not attach Exhibit B and so is not Incompatible With Secondary Licenses, and AGPL-3.0 is a Secondary License under §1.12. A recipient may therefore take the covered files under either license, at their option. The crate's `license` field records the combination.
 

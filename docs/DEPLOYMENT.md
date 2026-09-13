@@ -190,9 +190,9 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-CSRF protection is enabled by default. All state-changing requests (POST, PUT,
-DELETE, PATCH) to `/api/v1/` must include the configured header. The default
-bootstrap value is:
+By default, all state-changing requests (POST, PUT, DELETE, PATCH) to
+`/api/v1/` must include the configured CSRF header. The default bootstrap
+value is:
 
 ```
 X-Requested-With: aletheia
@@ -399,9 +399,9 @@ Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider)
 
 ## Prosoche heartbeat timer
 
-The optional user timer is the **external** prosoche heartbeat path. It checks
-the running server and then executes the local prosoche self-audit task. The
-timer starts one minute after activation and runs every five minutes.
+The optional user timer drives the **external** prosoche heartbeat path: it
+checks the running server, then executes the local prosoche self-audit task,
+starting one minute after activation and running every five minutes.
 
 Use this timer when `[maintenance.prosoche].mode` is set to `"external"` or
 `"both"`. With the default `mode = "daemon"`, the daemon's in-process scheduler

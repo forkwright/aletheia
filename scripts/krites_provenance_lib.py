@@ -905,7 +905,7 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something "
         "to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite "
         "with a natural predecessor — the ledger retains that predecessor as "
-        "`replaced_upstream_path` (shown below as \"cf. `path`\") and keeps measuring against it. "
+        "`replaced_upstream_path` (shown in the table's Upstream column as \"cf. `path`\") and keeps measuring against it. "
         "`upstream_path` itself stays `none` on every `sovereign` row either way: this is not an "
         "MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A "
         "row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to "
@@ -1088,9 +1088,9 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
     lines.append("## What that requires")
     lines.append("")
     lines.append(
-        "Under MPL §3.1 every file in this crate that is derived from `cozo-core`, **including our "
-        "modifications to it**, stays governed by the MPL. That is file-level copyleft: it binds "
-        "these files and reaches no further into aletheia."
+        "Under MPL §3.1, every file in this crate derived from `cozo-core`, **including our "
+        "modifications to it**, stays governed by the MPL as file-level copyleft: it binds these "
+        "files and reaches no further into aletheia."
     )
     lines.append("")
     lines.append(

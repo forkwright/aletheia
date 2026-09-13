@@ -373,10 +373,11 @@ knowledge store wiring that Pylon uses.
 
 ### "I want the desktop UI"
 
-`proskenion` is excluded from the workspace (GTK3/webkit2gtk dependency). Build it standalone:
+`proskenion` is a non-default workspace member (GTK3/webkit2gtk dependency), so a bare
+`cargo build`/`cargo check` skips it. Opt in explicitly:
 
 ```bash
-cargo build --manifest-path crates/theatron/proskenion/Cargo.toml
+cargo build -p proskenion
 ```
 
 ### "I want to run integration tests"

@@ -1,4 +1,4 @@
-# Data sovereignty
+# Data storage and control
 
 What Aletheia stores, where it lives, and how to control it.
 

@@ -68,8 +68,8 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 ## Interfaces
 
 - **TUI** - Terminal dashboard. Rich markdown rendering, session management.
-- **Desktop app** - v1.0 target surface, currently installed separately from source.
-- **Signal** - Inbound messages are delivered as conversational turns to the configured agent. Messages prefixed with `!` are intercepted as operator commands (see below).
+- **Desktop app** - v1.0 target surface, installed separately from source.
+- **Signal** - Inbound messages are delivered as conversational turns to the configured agent. Messages prefixed with `!` are intercepted as operator commands (see "Signal `!`-commands").
 - **CLI** - `aletheia help` for the full command reference.
 - **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

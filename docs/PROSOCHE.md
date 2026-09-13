@@ -62,7 +62,7 @@ Each agent has an `instance/nous/<agent-id>/PROSOCHE.md` file that defines its h
 
 ### Server scheduling
 
-Daemon-side prosoche scheduling is configured under `[maintenance.prosoche]`:
+`[maintenance.prosoche]` configures daemon-side prosoche scheduling:
 
 | Field | Default | Meaning |
 |-------|---------|---------|

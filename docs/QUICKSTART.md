@@ -171,7 +171,7 @@ Opens a rich terminal UI with markdown rendering, session management, and real-t
 
 ### Optional preview: desktop
 
-The desktop app is the v1.0 target surface and currently installs separately
+The desktop app is the v1.0 target surface and installs separately
 from source:
 
 ```bash
@@ -231,7 +231,7 @@ binary path, so there is nothing to keep in step by hand.
 aletheia -r ~/aletheia/instance service install --systemd-user
 ```
 
-`--binary` overrides the binary path (default: the currently running
+`--binary` overrides the binary path (default: the running
 executable); `install` refuses to overwrite an existing unit unless you also
 pass `--force`. Use `aletheia service print --systemd-user` first to review
 the generated unit without writing it.
@@ -410,7 +410,7 @@ fuser -k 18789/tcp    # kill the process on that port
 
 ### Auth mode `none` rejects mutations with the default role
 
-When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.none_role`. The compiled default is `"readonly"` -- only dashboard reads will work; sessions, messages, and config changes are rejected. This is deliberate: a browser-facing `auth.mode = "none"` instance must not default to full-privilege access (a page opened in the same browser as the operator could otherwise reach it). Set `none_role` explicitly if you want a no-auth instance to accept mutations.
+When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.none_role`, compiled to `"readonly"` unless overridden -- only dashboard reads will work; sessions, messages, and config changes are rejected. This is deliberate: a browser-facing `auth.mode = "none"` instance must not default to full-privilege access (a page opened in the same browser as the operator could otherwise reach it). Set `none_role` explicitly if you want a no-auth instance to accept mutations.
 
 Fix: set the role you actually want in your config:
 

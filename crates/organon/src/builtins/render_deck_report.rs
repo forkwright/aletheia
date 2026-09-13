@@ -17,6 +17,7 @@ use indexmap::IndexMap;
 use poiesis_core::bodies::Deck;
 use poiesis_core::envelope::Meta;
 use poiesis_deck::DeckRenderer;
+use poiesis_printer_chromium::{PrintOptions, PrinterError};
 
 use crate::builtins::poiesis::{json_data_property, media_type_for_format};
 use crate::builtins::report_capability::{ReportOutputEffect, ReportToolEffect, SubprocessEffect};
@@ -141,16 +142,131 @@ impl ToolExecutor for RenderDeckReportExecutor {
     }
 }
 
+/// Seam over the Chromium-backed PDF backend
+/// ([`poiesis_printer_chromium::print_to_pdf`]) so tests can substitute a
+/// fake instead of depending on a real Chromium launch (#7346). Production
+/// code always routes through [`RealPdfPrinter`]; `tests::FakePdfPrinter`
+/// is the only other implementation and is reachable only from
+/// `#[cfg(test)]` code.
+trait PdfPrinter: Send + Sync {
+    /// Convert `html` to PDF bytes per `opts`. Mirrors
+    /// [`poiesis_printer_chromium::print_to_pdf`]'s signature and error
+    /// type exactly, so [`RealPdfPrinter`] is a pure pass-through.
+    fn print_to_pdf<'a>(
+        &'a self,
+        html: &'a str,
+        opts: &'a PrintOptions,
+    ) -> Pin<Box<dyn Future<Output = std::result::Result<Vec<u8>, PrinterError>> + Send + 'a>>;
+}
+
+/// The real backend: routes straight to
+/// [`poiesis_printer_chromium::print_to_pdf`].
+struct RealPdfPrinter;
+
+impl PdfPrinter for RealPdfPrinter {
+    fn print_to_pdf<'a>(
+        &'a self,
+        html: &'a str,
+        opts: &'a PrintOptions,
+    ) -> Pin<Box<dyn Future<Output = std::result::Result<Vec<u8>, PrinterError>> + Send + 'a>> {
+        Box::pin(poiesis_printer_chromium::print_to_pdf(html, opts))
+    }
+}
+
+/// Classification of a PDF-render failure (#7346), kept as a typed value
+/// instead of only a formatted string, so callers can distinguish
+/// [`PrinterError::ChromiumNotFound`] from [`PrinterError::BrowserLaunch`]
+/// from every other renderer-side failure without parsing prose.
+#[derive(Debug)]
+enum PdfRenderError {
+    /// No Chromium binary on `PATH` / `CHROMIUM_PATH`
+    /// ([`PrinterError::ChromiumNotFound`]).
+    ChromiumNotFound,
+    /// A Chromium binary was found but the CDP browser process itself
+    /// failed to launch ([`PrinterError::BrowserLaunch`]) -- e.g. a
+    /// missing D-Bus session bus, or a sandbox rejection on a
+    /// locked-down CI runner. `reason` is the launcher's own error text;
+    /// for chromiumoxide's `CdpError::LaunchExit`/`LaunchTimeout` that
+    /// text already includes the child process's exit status and
+    /// captured stderr, so nothing is lost by classifying instead of
+    /// just interpolating.
+    ChromiumLaunchFailed {
+        /// The launcher's own error text (exit status / stderr, when the
+        /// underlying `CdpError` carries them).
+        reason: String,
+    },
+    /// Any other renderer-side failure (page navigation, PDF generation,
+    /// timeout, or cleanup) -- a real defect or resource exhaustion, not a
+    /// recognized environment precondition.
+    Other(String),
+}
+
+impl PdfRenderError {
+    /// Classify a [`PrinterError`] without discarding its message.
+    fn classify(err: PrinterError) -> Self {
+        match err {
+            PrinterError::ChromiumNotFound => Self::ChromiumNotFound,
+            PrinterError::BrowserLaunch { source } => Self::ChromiumLaunchFailed {
+                reason: source.to_string(),
+            },
+            other => Self::Other(other.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for PdfRenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // WHY delegate instead of re-typing the message: the wording
+            // is defined once, in PrinterError::ChromiumNotFound's own
+            // #[snafu(display(..))] (poiesis-printer-chromium error.rs).
+            Self::ChromiumNotFound => std::fmt::Display::fmt(&PrinterError::ChromiumNotFound, f),
+            Self::ChromiumLaunchFailed { reason } => write!(f, "Chromium launch failed: {reason}"),
+            Self::Other(reason) => write!(f, "{reason}"),
+        }
+    }
+}
+
+/// Everything [`render_deck_to_bytes_inner`] can fail with: a setup
+/// failure unrelated to Chromium (tempdir, component extraction, or deck
+/// rendering itself -- reported as free-form text, as before #7346), or a
+/// PDF-render failure carrying a typed [`PdfRenderError`] classification.
+#[derive(Debug)]
+enum RenderDeckError {
+    /// Failed before the PDF/Chromium step was ever reached.
+    Setup(String),
+    /// Failed inside the PDF/Chromium step; see [`PdfRenderError`].
+    Pdf(PdfRenderError),
+}
+
+impl RenderDeckError {
+    /// Render into the [`ToolResult`] error the agent sees -- the same
+    /// error path this tool always reported through, just built from a
+    /// classified value rather than an ad hoc format string.
+    fn into_tool_result(self) -> ToolResult {
+        match self {
+            Self::Setup(message) => ToolResult::error(message),
+            Self::Pdf(pdf_err) => ToolResult::error(format!("PDF render failed: {pdf_err}")),
+        }
+    }
+}
+
 /// Materializes the embedded component packs into a scratch directory,
 /// renders `deck` through them via [`DeckRenderer`], and converts the
 /// result to the requested output format's bytes -- an HTML pass-through,
-/// or a PDF via a headless Chromium subprocess.
-async fn render_deck_to_bytes(
+/// or a PDF via a headless Chromium subprocess reached through `printer`.
+///
+/// Takes the [`PdfPrinter`] seam explicitly so tests can exercise this
+/// function's PDF branch -- and each [`PdfRenderError`] classification --
+/// hermetically. [`render_deck_to_bytes`] is the production entry point,
+/// always calling this with [`RealPdfPrinter`].
+async fn render_deck_to_bytes_inner(
     deck: &Deck,
     meta: &Meta,
     format: &str,
     disable_sandbox: bool,
-) -> std::result::Result<(Vec<u8>, &'static str), ToolResult> {
+    printer: &dyn PdfPrinter,
+) -> std::result::Result<(Vec<u8>, &'static str), RenderDeckError> {
     // WHY a fresh temp directory per call, not a cached registry: `Deck`
     // rendering reads each component's template FILE by path again at
     // render time (poiesis_deck::render reads def.html via
@@ -158,20 +274,21 @@ async fn render_deck_to_bytes(
     // extracted directory must outlive the render() call below —
     // simplest correct lifetime is "lives exactly as long as this render".
     let tempdir = tempfile::tempdir().map_err(|e| {
-        ToolResult::error(format!(
+        RenderDeckError::Setup(format!(
             "failed to create a temp directory for component packs: {e}"
         ))
     })?;
-    let registry = poiesis_core::embedded::extract_to(tempdir.path())
-        .map_err(|e| ToolResult::error(format!("failed to materialize component packs: {e}")))?;
+    let registry = poiesis_core::embedded::extract_to(tempdir.path()).map_err(|e| {
+        RenderDeckError::Setup(format!("failed to materialize component packs: {e}"))
+    })?;
 
     let renderer = DeckRenderer::new(registry, &deck.aspect);
     let html = renderer
         .render(deck, meta)
-        .map_err(|e| ToolResult::error(format!("deck render failed: {e}")))?;
+        .map_err(|e| RenderDeckError::Setup(format!("deck render failed: {e}")))?;
 
     let result = if format == "pdf" {
-        let mut opts = poiesis_printer_chromium::PrintOptions::from_aspect(&deck.aspect);
+        let mut opts = PrintOptions::from_aspect(&deck.aspect);
         opts.disable_sandbox = disable_sandbox;
         // WHY awaited directly, not `spawn_blocking`: unlike poiesis_doc's
         // pandoc/typst renderers (genuinely blocking subprocess calls),
@@ -180,9 +297,9 @@ async fn render_deck_to_bytes(
         // (from `PrintOptions`) already bounds the whole operation.
         // Wrapping an async fn in `spawn_blocking` would need a nested
         // `block_on`, which is the anti-pattern this avoids.
-        match poiesis_printer_chromium::print_to_pdf(&html, &opts).await {
+        match printer.print_to_pdf(&html, &opts).await {
             Ok(pdf_bytes) => (pdf_bytes, "pdf"),
-            Err(e) => return Err(ToolResult::error(format!("PDF render failed: {e}"))),
+            Err(e) => return Err(RenderDeckError::Pdf(PdfRenderError::classify(e))),
         }
     } else {
         (html.into_bytes(), "html")
@@ -195,6 +312,21 @@ async fn render_deck_to_bytes(
     // function, after every use.
     drop(tempdir);
     Ok(result)
+}
+
+/// Production entry point: [`render_deck_to_bytes_inner`] against the real
+/// Chromium backend, with its [`RenderDeckError`] collapsed to the
+/// [`ToolResult`] error `RenderDeckReportExecutor::execute` already knows
+/// how to propagate.
+async fn render_deck_to_bytes(
+    deck: &Deck,
+    meta: &Meta,
+    format: &str,
+    disable_sandbox: bool,
+) -> std::result::Result<(Vec<u8>, &'static str), ToolResult> {
+    render_deck_to_bytes_inner(deck, meta, format, disable_sandbox, &RealPdfPrinter)
+        .await
+        .map_err(RenderDeckError::into_tool_result)
 }
 
 fn render_deck_report_def() -> ToolDef {
@@ -464,18 +596,150 @@ mod tests {
         }
     }
 
-    // WHY unconditional rather than `if !chromium_available { return; }`:
+    // WHY hermetic tests (a) plus an environment probe (b), not one test:
+    // #7346's original single test ran real Chromium and matched only
+    // `Ok(pdf) | Err(ChromiumNotFound)`, so `PrinterError::BrowserLaunch`
+    // fell outside that match and panicked. Hermetic tests here prove the
+    // PDF branch and every `PdfRenderError` classification deterministically
+    // via `FakePdfPrinter`; the probe below proves only that a real
+    // Chromium launch on this host lands in one of those same outcomes.
+
+    /// Fakes [`PdfPrinter`] so the PDF branch -- and each
+    /// [`PdfRenderError`] classification -- can be exercised without a
+    /// real Chromium launch. `outcome` is a non-capturing fn pointer
+    /// (rather than a boxed closure) because every fixture below is a
+    /// fixed, `Copy`-able value; a fn pointer keeps the fake trivially
+    /// constructible per test.
+    struct FakePdfPrinter {
+        outcome: fn() -> std::result::Result<Vec<u8>, PrinterError>,
+    }
+
+    impl PdfPrinter for FakePdfPrinter {
+        fn print_to_pdf<'a>(
+            &'a self,
+            _html: &'a str,
+            _opts: &'a PrintOptions,
+        ) -> Pin<Box<dyn Future<Output = std::result::Result<Vec<u8>, PrinterError>> + Send + 'a>>
+        {
+            let outcome = (self.outcome)();
+            Box::pin(async move { outcome })
+        }
+    }
+
+    #[tokio::test]
+    async fn render_deck_to_bytes_pdf_branch_succeeds_via_fake_renderer() {
+        let deck = minimal_deck();
+        let meta = Meta::new("Test Deck").expect("valid meta");
+        let fake = FakePdfPrinter {
+            outcome: || Ok(b"%PDF-fake".to_vec()),
+        };
+
+        let (bytes, format) = render_deck_to_bytes_inner(&deck, &meta, "pdf", true, &fake)
+            .await
+            .expect("fake printer reports success");
+
+        assert_eq!(format, "pdf");
+        assert_eq!(bytes, b"%PDF-fake");
+    }
+
+    #[tokio::test]
+    async fn render_deck_to_bytes_classifies_chromium_not_found() {
+        let deck = minimal_deck();
+        let meta = Meta::new("Test Deck").expect("valid meta");
+        let fake = FakePdfPrinter {
+            outcome: || Err(PrinterError::ChromiumNotFound),
+        };
+
+        let err = render_deck_to_bytes_inner(&deck, &meta, "pdf", true, &fake)
+            .await
+            .expect_err("fake printer reports missing chromium");
+
+        assert!(
+            matches!(err, RenderDeckError::Pdf(PdfRenderError::ChromiumNotFound)),
+            "got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn render_deck_to_bytes_classifies_browser_launch_failure() {
+        let deck = minimal_deck();
+        let meta = Meta::new("Test Deck").expect("valid meta");
+        let fake = FakePdfPrinter {
+            outcome: || {
+                Err(PrinterError::BrowserLaunch {
+                    // WHY std::io::Error, not the real chromiumoxide
+                    // CdpError: it is Send + Sync + std::error::Error
+                    // (all `BrowserLaunch { source }` requires) and its
+                    // Display carries whatever text it is given, standing
+                    // in for the real launcher's own exit-status/stderr
+                    // text without depending on chromiumoxide internals.
+                    source: Box::new(std::io::Error::other(
+                        "Browser process exited with status exit status: 1, \
+                         stderr: \"Failed to connect to the bus\"",
+                    )),
+                })
+            },
+        };
+
+        let err = render_deck_to_bytes_inner(&deck, &meta, "pdf", true, &fake)
+            .await
+            .expect_err("fake printer reports a launch failure");
+
+        match err {
+            RenderDeckError::Pdf(PdfRenderError::ChromiumLaunchFailed { reason }) => {
+                assert!(
+                    reason.contains("Failed to connect to the bus"),
+                    "a launch failure must carry the launcher's own stderr/exit \
+                     context, not just a generic label, got: {reason}"
+                );
+            }
+            other => panic!("expected ChromiumLaunchFailed, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn render_deck_to_bytes_classifies_other_renderer_failures_distinctly() {
+        let deck = minimal_deck();
+        let meta = Meta::new("Test Deck").expect("valid meta");
+        let fake = FakePdfPrinter {
+            outcome: || {
+                Err(PrinterError::Timeout {
+                    operation: "browser launch",
+                    timeout_secs: 60,
+                })
+            },
+        };
+
+        let err = render_deck_to_bytes_inner(&deck, &meta, "pdf", true, &fake)
+            .await
+            .expect_err("fake printer reports a timeout");
+
+        assert!(
+            matches!(err, RenderDeckError::Pdf(PdfRenderError::Other(_))),
+            "a timeout is a real defect/resource-exhaustion signal, not an \
+             environment precondition like ChromiumNotFound or \
+             ChromiumLaunchFailed, and must classify distinctly from both: {err:?}"
+        );
+    }
+
+    // WHY a probe against the real binary, classification only, rather
+    // than `if !chromium_available { return; }`:
     // mirrors the established crate idiom in
     // `poiesis_doc::pandoc::tests::docx_format_without_pandoc_returns_not_installed_or_fails`
     // -- run the real call on every host and match on whichever outcome the
-    // environment actually produces, instead of silently skipping. That
-    // keeps a host WITH chromium honest (it must produce real PDF bytes, not
-    // just `Ok(_)`) while a host WITHOUT it still drives
-    // `render_deck_to_bytes`'s `format: "pdf"` branch end-to-end -- the same
-    // path `RenderDeckReportExecutor::execute` uses -- and pins the failure
-    // to the one typed error that means "no chromium binary"
-    // (`poiesis_printer_chromium::PrinterError::ChromiumNotFound`), not any
-    // error.
+    // environment actually produces, instead of silently skipping. Unlike
+    // the hermetic tests above, this drives the real
+    // [`RealPdfPrinter`]/Chromium launch on whatever host runs the suite,
+    // so it asserts only that the outcome is one of the three recognized
+    // classifications (real PDF bytes, `ChromiumNotFound`, or
+    // `ChromiumLaunchFailed`) -- never that rendering itself succeeds. A
+    // `ChromiumNotFound` or `ChromiumLaunchFailed` outcome is a loudly
+    // logged, named environment precondition, not a suppressed failure:
+    // the test still passes, but nothing about the classification is
+    // silent. Anything else (a `Setup` failure, or `PdfRenderError::Other`
+    // from a page/PDF/cleanup error) is a real defect this test must still
+    // fail loud on, exactly like the pre-#7346 test did for any outcome
+    // beyond its original two.
     //
     // WHY `disable_sandbox: true`, not `false`: that third argument only
     // selects Chromium's OS-level process sandbox, a host kernel/container
@@ -485,42 +749,43 @@ mod tests {
     // `POIESIS_CHROMIUM_DISABLE_SANDBOX` are the shipped, intentional way to
     // opt out of it). With it left enabled, GitHub's `ubuntu-24.04` runners
     // (unprivileged user namespaces disabled since Ubuntu 23.10+) crash
-    // Chromium's zygote with "No usable sandbox!" -- a THIRD, host-specific
-    // outcome this test's binary match (Ok(pdf) | Err(ChromiumNotFound))
-    // never accounted for, so a present-but-unsandboxable binary panicked
-    // the match arm instead of exercising either documented branch. Passing
-    // `true` collapses the outcome back to the two this test actually
-    // means to cover -- binary present (real PDF) or absent
-    // (`ChromiumNotFound`) -- without depending on whatever sandbox
-    // support the host happens to have; it is safe here because the deck
-    // HTML rendered is fixed, locally generated fixture content, not
-    // untrusted input.
+    // Chromium's zygote with "No usable sandbox!", which without this flag
+    // would surface as a `ChromiumLaunchFailed` precondition rather than
+    // exercising the real-PDF branch; it is safe to force off here because
+    // the deck HTML rendered is fixed, locally generated fixture content,
+    // not untrusted input.
     #[tokio::test]
-    async fn render_deck_to_bytes_pdf_renders_or_reports_missing_chromium() {
+    async fn render_deck_to_bytes_pdf_probe_classifies_environment_outcome() {
         let deck = minimal_deck();
         let meta = Meta::new("Test Deck").expect("valid meta");
 
-        match render_deck_to_bytes(&deck, &meta, "pdf", true).await {
+        match render_deck_to_bytes_inner(&deck, &meta, "pdf", true, &RealPdfPrinter).await {
             Ok((bytes, format)) => {
                 assert_eq!(format, "pdf");
                 assert!(
                     bytes.starts_with(b"%PDF"),
-                    "chromium is present, so the PDF branch must produce a real \
-                     PDF; got {} byte(s) starting with {:?}",
+                    "chromium is present and its launch succeeded, so the PDF \
+                     branch must produce a real PDF; got {} byte(s) starting \
+                     with {:?}",
                     bytes.len(),
                     &bytes[..bytes.len().min(16)]
                 );
             }
-            Err(tool_result) => {
-                let message = tool_result.content.text_summary();
-                assert!(
-                    message.contains("Chromium binary not found"),
-                    "no chromium/chromium-browser/google-chrome(-stable) on PATH \
-                     and no CHROMIUM_PATH override means render_deck_to_bytes must \
-                     surface PrinterError::ChromiumNotFound's message verbatim, \
-                     got: {message}"
+            Err(RenderDeckError::Pdf(PdfRenderError::ChromiumNotFound)) => {
+                eprintln!(
+                    "precondition: no chromium/chromium-browser/google-chrome(-stable) \
+                     on PATH and no CHROMIUM_PATH override"
                 );
             }
+            Err(RenderDeckError::Pdf(PdfRenderError::ChromiumLaunchFailed { reason })) => {
+                eprintln!("precondition: chromium found but its launch failed: {reason}");
+            }
+            Err(other) => panic!(
+                "render_deck_to_bytes produced an unclassified outcome -- a real \
+                 defect (or a new environment precondition this test does not yet \
+                 know how to classify), not one of the three recognized outcomes \
+                 (Ok(pdf) | ChromiumNotFound | ChromiumLaunchFailed): {other:?}"
+            ),
         }
     }
 }

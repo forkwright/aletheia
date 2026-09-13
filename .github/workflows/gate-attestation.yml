@@ -30,8 +30,10 @@
 #     enforces true unconditionally whenever Cargo.toml resolves any
 #     forkwright git dependency — do not special-case a dependency as "public,
 #     so no token needed" here without changing that checker first.
-#   - doctest_cmd and system_packages stay at fleet default ("" / skip) — no
-#     doctest step, no apt-get step in the prior inline job.
+#   - doctest_cmd stays at fleet default ("" / skip) — no doctest step in the
+#     prior inline job. system_packages diverges from fleet default ("" /
+#     skip) as of aletheia#4726: proskenion joined the root --workspace and
+#     needs GTK3/webkit2gtk-4.1 at link time (see the `with:` block below).
 #
 # WHY gate-coverage-scripts / gate-coverage-compile-checks stay as separate,
 # unconditional, always-on jobs rather than folding into the hybrid-gate.yml
@@ -159,7 +161,12 @@ jobs:
       clippy_cmd: "cargo clippy --workspace --all-targets --features test-core -- -D warnings"
       nextest_cmd: "cargo nextest run --profile ci --workspace --features test-core"
       doctest_cmd: ""
-      system_packages: ""
+      # WHY not "" (aletheia#4726): proskenion is now a full --workspace member
+      # (default-members excludes it from a bare build, but the hybrid-gate
+      # commands above are explicit --workspace, so they compile it). Its Dioxus
+      # desktop UI depends on GTK3/webkit2gtk-4.1 at link time -- same package
+      # set as desktop.yml's "Install GTK/WebKit system dependencies" step.
+      system_packages: "libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev"
       needs_fleet_repo_token: true
       rust_cache_key: "gate-attestation"
       # WHY 60 and not the reusable's default 45: measured on a SUCCESSFUL main run,
@@ -390,17 +397,6 @@ jobs:
 
       - name: Diaporeia MCP inventory generator tests
         run: scripts/test-diaporeia-mcp-inventory.py
-
-      # WHY: the pin check compares proskenion's theatron pins against the ROOT
-      # Cargo.toml, but its only PR-time home was desktop.yml, whose paths
-      # filter covers crates/theatron/proskenion/**, crates/theatron/skene/**,
-      # scripts/*proskenion* and desktop.yml itself — not the root manifest.
-      # So a PR that re-pinned theatron in the root workspace drifted the two
-      # manifests apart with the check never running, and the failure surfaced
-      # later on an unrelated PR that happened to touch a proskenion path.
-      # Running it here binds it to every PR; it is pure-python, no compile.
-      - name: Check proskenion theatron pins
-        run: scripts/check-proskenion-pins.py
 
       - name: Check workspace lockfiles are tracked
         run: scripts/check-workspace-locks.py
@@ -694,9 +690,11 @@ jobs:
       # to itertools 0.15.0 in the root lock but left fuzz/Cargo.lock on
       # 0.14.0; #7147 then regenerated it incidentally, with no check
       # forcing that regeneration to happen. This validates every
-      # [workspace]-declaring manifest with --locked (root, proskenion,
-      # fuzz), not just fuzz, and fails the moment cargo would need to
-      # rewrite any of them.
+      # [workspace]-declaring manifest with --locked (root and fuzz --
+      # aletheia#4726 folded proskenion's private [workspace] into the root
+      # one, so it no longer has a lockfile of its own to enumerate here),
+      # not just fuzz, and fails the moment cargo would need to rewrite
+      # either.
       - name: Test check-all-lockfiles-locked.py
         run: scripts/test-check-all-lockfiles-locked.py
 
@@ -764,9 +762,15 @@ jobs:
           # and the land-dark selector provides the two sovereign-HNSW tests.
           # Listing through nextest is the authority for test existence and
           # ignored state; the following run proves the same world passes.
+          #
+          # WHY --exclude proskenion (aletheia#4726): this gate is scoped to
+          # krites' sovereign-HNSW feature world, unrelated to the desktop UI --
+          # excluding it keeps this runner GTK/webkit2gtk-free rather than
+          # installing system packages solely to compile an unrelated crate.
           nextest_selection=(
             --profile ci
             --workspace
+            --exclude proskenion
             --features test-core,krites_sovereign_hnsw
           )
           cargo nextest list --message-format json "${nextest_selection[@]}" \
@@ -802,6 +806,14 @@ jobs:
       # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
       # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      # WHY(aletheia#4726): proskenion joined the root --workspace; this job's
+      # `cargo check --workspace` now compiles its Dioxus desktop UI, which
+      # links GTK3/webkit2gtk-4.1 -- same package set as desktop.yml.
+      - name: Install GTK/WebKit system dependencies
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:

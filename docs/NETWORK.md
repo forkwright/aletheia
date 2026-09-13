@@ -9,7 +9,7 @@ Every network connection Aletheia makes, documented for transparency.
 
 ## Outbound connections
 
-Sorted by criticality (highest sovereignty impact first).
+Sorted by criticality (highest data-exposure impact first).
 
 | Endpoint | Protocol | Direction | Carries | Triggered by | Source reference |
 |----------|----------|-----------|---------|--------------|------------------|
@@ -101,7 +101,7 @@ These components make **no network calls**:
 
 ---
 
-## Anthropic data sovereignty (defaults)
+## Anthropic outbound data controls (defaults)
 
 The `hermeneus` crate owns the Anthropic client boundary. Every outbound
 request is scrubbed before it leaves the process:

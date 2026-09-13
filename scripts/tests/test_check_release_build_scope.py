@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -472,6 +473,123 @@ workspace = true
         self.assertIn('kept = "1"', rewritten)
         self.assertIn("[lints]", rewritten)
         self.assertNotIn("test-only", rewritten)
+
+    def probe_root_manifest(
+        self, source: str, sibling_packages: tuple[str, ...], package: str = "aletheia"
+    ) -> str:
+        """Run probe_root_manifest against a synthetic root manifest under a scratch REPO_ROOT."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        (root / scope.MANIFEST_NAME).write_text(source, encoding="utf-8")
+        manifest_dirs = {root / "crates" / name for name in (package, *sibling_packages)}
+        build = scope.ValidatedBuild(
+            expected=scope.ExpectedBuild(
+                kind="native", name="probe", condition="true", matrix_target="x86_64", matrix_cross=False, argv=()
+            ),
+            package=package,
+            binary=package,
+            features="default",
+        )
+        with mock.patch.object(scope, "REPO_ROOT", root):
+            return scope.probe_root_manifest(build, manifest_dirs)
+
+    def test_absent_exclude_table_gets_one_inserted_after_members_and_default_members_is_stripped(
+        self,
+    ) -> None:
+        source = """\
+[workspace]
+resolver = "2"
+members = [
+    "crates/aletheia",
+    "crates/koina",
+]
+default-members = [
+    "crates/aletheia",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+"""
+        rewritten = self.probe_root_manifest(source, sibling_packages=("koina",))
+
+        members_block = 'members = [\n    "crates/aletheia",\n]'
+        exclude_block = 'exclude = [\n    "crates/koina",\n]'
+        self.assertNotIn("default-members", rewritten)
+        self.assertIn(members_block, rewritten)
+        self.assertIn(exclude_block, rewritten)
+        # WHY: the new exclude table must be inserted directly after the
+        # members table this function just wrote, not merely present
+        # somewhere in the file (which could hide a mis-anchored insert).
+        self.assertEqual(
+            rewritten.index(exclude_block),
+            rewritten.index(members_block) + len(members_block) + 1,
+        )
+        self.assertIn("[workspace.package]", rewritten)
+
+    def test_existing_exclude_table_is_substituted_in_place_not_appended_after_members(
+        self,
+    ) -> None:
+        source = """\
+[workspace]
+members = [
+    "crates/aletheia",
+    "crates/koina",
+]
+resolver = "2"
+exclude = [
+    "crates/koina",
+]
+
+[workspace.package]
+version = "0.1.0"
+"""
+        rewritten = self.probe_root_manifest(source, sibling_packages=("koina", "symbolon"))
+
+        members_block = 'members = [\n    "crates/aletheia",\n]'
+        exclude_block = 'exclude = [\n    "crates/koina",\n    "crates/symbolon",\n]'
+        self.assertNotIn("default-members", rewritten)
+        self.assertIn(members_block, rewritten)
+        self.assertIn(exclude_block, rewritten)
+        # WHY: this manifest's exclude table pre-existed one line below
+        # members (separated by `resolver = "2"`); an in-place regex
+        # substitution keeps it there, while the absent-table insertion path
+        # (covered above) would instead place it immediately after members.
+        self.assertEqual(
+            rewritten.index(exclude_block),
+            rewritten.index('resolver = "2"') + len('resolver = "2"\n'),
+        )
+        self.assertNotEqual(
+            rewritten.index(exclude_block),
+            rewritten.index(members_block) + len(members_block) + 1,
+        )
+
+    def test_probe_manifest_parses_and_isolates_exactly_one_member(self) -> None:
+        source = """\
+[workspace]
+resolver = "2"
+members = [
+    "crates/aletheia",
+    "crates/koina",
+    "crates/symbolon",
+]
+default-members = [
+    "crates/aletheia",
+    "crates/koina",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+"""
+        rewritten = self.probe_root_manifest(source, sibling_packages=("koina", "symbolon"))
+
+        parsed = tomllib.loads(rewritten)
+        workspace = parsed["workspace"]
+        self.assertEqual(workspace["members"], ["crates/aletheia"])
+        self.assertNotIn("default-members", workspace)
+        self.assertEqual(sorted(workspace["exclude"]), ["crates/koina", "crates/symbolon"])
 
 
 class CrossInputs(unittest.TestCase):
