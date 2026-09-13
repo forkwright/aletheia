@@ -558,10 +558,6 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "hermetic race regression controls temporary filesystem identities directly"
-    )]
     fn allowed_root_handle_refuses_symlinked_authority() {
         use std::os::unix::fs::symlink;
 
