@@ -1027,6 +1027,12 @@ fn exec_def() -> ToolDef {
             required: vec!["command".to_owned()],
         },
         category: ToolCategory::Workspace,
+        // ARCHITECTURE(#7174): this is the fallback half of
+        // `git_ops::DESTRUCTIVE_GIT_OPERATION_POLICY` -- exec is the one
+        // remaining path to a destructive git operation once git_ops
+        // refuses commit/push/reset/rebase/merge, and Irreversible is what
+        // makes that path `ApprovalRequirement::Mandatory` at the dispatch
+        // approval boundary rather than merely advisory.
         reversibility: Reversibility::Irreversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Command],

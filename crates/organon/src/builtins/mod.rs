@@ -31,6 +31,8 @@ pub(crate) mod filesystem_policy;
 pub mod fs_ops;
 /// Git read-only and non-destructive operations (status, log, diff, branch, checkout).
 pub mod git_ops;
+/// Named destructive-git-operation policy shared by git_ops and workspace.
+pub(crate) mod git_ops_policy;
 /// Generic HTTP client (POST/PUT/DELETE/PATCH with headers + body).
 pub mod http_client;
 /// Inspect report tool: extract text from documents.
