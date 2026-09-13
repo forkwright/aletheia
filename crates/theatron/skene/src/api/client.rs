@@ -640,6 +640,30 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Permanently delete a session and every stored turn/state it holds
+    /// (aletheia#7341). Irreversible; returns 404 if the session does not
+    /// exist and 409 if it currently has a turn in flight.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn purge_session(&self, session_id: &str) -> Result<()> {
+        let resp = self
+            .request(
+                reqwest::Method::DELETE,
+                &super::routes::sessions::session_purge_path(session_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "purge session",
+            })?;
+        Self::check_status(resp, "purge request").await?;
+        Ok(())
+    }
+
     /// Rename a session.
     #[must_use]
     #[expect(

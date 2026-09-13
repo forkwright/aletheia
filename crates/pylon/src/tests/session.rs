@@ -5,13 +5,66 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use koina::ulid::Ulid;
 use mneme::store::test_support::inject_raw_tool_audit_row;
-use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore};
-use mneme::types::{Role as MnemeRole, UsageRecord};
+use mneme::store::{
+    FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRecordSpec, FinalizeTurnRequest,
+    SessionStore,
+};
+use mneme::types::{Role as MnemeRole, TurnRecordStatus, UsageRecord};
 use tower::ServiceExt;
 use tracing::Instrument;
 
 use super::helpers::*;
+
+/// Test double for the working-checkpoint-store failure path (aletheia#7341):
+/// every method fails, standing in for a wedged fjall handle.
+#[derive(Debug, Default)]
+struct FailingCheckpointStore;
+
+impl organon::types::WorkingCheckpointStore for FailingCheckpointStore {
+    fn write_checkpoint(
+        &self,
+        _session_id: &str,
+        _turn_id: Ulid,
+        _turn_number: u64,
+        _content: &str,
+    ) -> std::result::Result<(), organon::error::StoreError> {
+        Err(organon::error::StoreError::Backend {
+            message: "injected working-checkpoint-store failure".to_owned(),
+        })
+    }
+
+    fn read_latest(
+        &self,
+        _session_id: &str,
+    ) -> std::result::Result<Option<organon::types::WorkingCheckpoint>, organon::error::StoreError>
+    {
+        Err(organon::error::StoreError::Backend {
+            message: "injected working-checkpoint-store failure".to_owned(),
+        })
+    }
+
+    fn read_recent(
+        &self,
+        _session_id: &str,
+        _limit: usize,
+    ) -> std::result::Result<Vec<organon::types::WorkingCheckpoint>, organon::error::StoreError>
+    {
+        Err(organon::error::StoreError::Backend {
+            message: "injected working-checkpoint-store failure".to_owned(),
+        })
+    }
+
+    fn delete_session(
+        &self,
+        _session_id: &str,
+    ) -> std::result::Result<usize, organon::error::StoreError> {
+        Err(organon::error::StoreError::Backend {
+            message: "injected working-checkpoint-store failure".to_owned(),
+        })
+    }
+}
 
 #[test]
 fn skene_session_lifecycle_values_match_backend_session_statuses() {
@@ -1115,6 +1168,307 @@ async fn purge_unknown_session_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "session_not_found");
+}
+
+// Plant one turn's worth of state across every partition `delete_session`
+// is supposed to clear: messages, usage, a structured tool-audit row, a
+// durable turn record, and (standing in for recall/run-context provenance,
+// which nous persists as a note in the same `TURN_NOTE_CATEGORY` category
+// `turn_record.rs` uses) a note -- plus a row in the separate on-disk fjall
+// working-checkpoint store (opened once in `aletheia::runtime`, shared into
+// `AppState`, not part of `mneme::store::SessionStore`), extracted to its
+// own `async fn` so `purge_removes_full_footprint_and_allows_fresh_resolve`
+// stays under `clippy::too_many_lines`.
+async fn plant_full_footprint(state: &AppState, id: &str, nous_id: &str, session_key: &str) {
+    {
+        let store = state.session_store.lock().await;
+        let audit_records = vec![FinalizeToolAuditRecord {
+            turn_seq: 1,
+            tool_call_id: "toolu-purge-1",
+            tool_name: "read_file",
+            duration_ms: 5,
+            is_error: false,
+            outcome: "success",
+            result: Some("ok"),
+            approval: Some("auto_approved"),
+            receipt: "receipt-purge-1",
+        }];
+        store
+            .finalize_turn(&FinalizeTurnRequest {
+                session_id: id,
+                nous_id,
+                session_key,
+                model: None,
+                parent_session_id: None,
+                messages: &[
+                    FinalizeMessage {
+                        role: MnemeRole::User,
+                        content: "remember the launch code",
+                        tool_call_id: None,
+                        tool_name: None,
+                        token_estimate: 5,
+                    },
+                    FinalizeMessage {
+                        role: MnemeRole::Assistant,
+                        content: "noted",
+                        tool_call_id: None,
+                        tool_name: None,
+                        token_estimate: 3,
+                    },
+                ],
+                usage: Some(&UsageRecord {
+                    session_id: id.to_owned(),
+                    turn_seq: 1,
+                    input_tokens: 5,
+                    output_tokens: 3,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    model: None,
+                    created_at: "2026-09-13T00:00:00Z".to_owned(),
+                }),
+                tool_audit_records: &audit_records,
+                completion_note: None,
+                turn_record: Some(FinalizeTurnRecordSpec {
+                    turn_id: "01PURGETEST0000000000000A",
+                    status: TurnRecordStatus::Completed,
+                    started_at: "2026-09-13T00:00:00.000Z",
+                    completed_at: Some("2026-09-13T00:00:01.000Z"),
+                    provider: None,
+                    stop_reason: None,
+                    cost_usd: None,
+                    idempotency_key: None,
+                }),
+            })
+            .expect("finalize turn");
+        store
+            .add_note(id, nous_id, "context", "recall: user prefers dark mode")
+            .expect("add recall/run-context note");
+    }
+
+    state
+        .working_checkpoint_store
+        .write_checkpoint(id, Ulid::new(), 1, "agent-curated scratch state")
+        .expect("write working checkpoint");
+}
+
+/// Assert a purged session id is gone from every read path: history,
+/// replay, get-by-id, and the session list. Extracted so
+/// `purge_removes_full_footprint_and_allows_fresh_resolve` stays under
+/// `clippy::too_many_lines`.
+async fn assert_purged_session_unreadable(router: &axum::Router, id: &str) {
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/history")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "history must be gone");
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/replay")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "replay must be gone");
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "get_session must be gone"
+    );
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions?limit=100"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let ids: Vec<&str> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert!(
+        !ids.contains(&id),
+        "purged session must not appear in the session list"
+    );
+}
+
+// WHY(aletheia#7341): phase-09 stage S4 acceptance, exercised through the
+// real route rather than only at the store layer (graphe's own
+// `delete_session_removes_usage_distillation_and_note_rows` already proves
+// the store transaction in isolation) -- a purged session must be
+// unreadable through every existing read path, a fresh `resolve` for the
+// same (nous_id, session_key) must start clean, and no store the purge
+// clears may keep an orphaned row.
+#[tokio::test]
+async fn purge_removes_full_footprint_and_allows_fresh_resolve() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap().to_owned();
+    let nous_id = created["nous_id"].as_str().unwrap().to_owned();
+    let session_key = created["session_key"].as_str().unwrap().to_owned();
+
+    plant_full_footprint(&state, &id, &nous_id, &session_key).await;
+
+    // Sanity: the footprint exists before purge.
+    {
+        let store = state.session_store.lock().await;
+        assert!(!store.get_history(&id, None).expect("history").is_empty());
+        assert!(!store.get_notes(&id).expect("notes").is_empty());
+        assert!(!store.get_usage_for_session(&id).expect("usage").is_empty());
+    }
+    assert!(
+        !state
+            .working_checkpoint_store
+            .read_recent(&id, 10)
+            .expect("read recent checkpoints")
+            .is_empty(),
+        "checkpoint must exist before purge"
+    );
+
+    let req = authed_request("DELETE", &format!("/api/v1/sessions/{id}/purge"), None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    assert_purged_session_unreadable(&router, &id).await;
+
+    // Canonical model: resolving the same (nous_id, session_key) pair again
+    // starts a brand-new, clean session rather than resurrecting the old one.
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/resolve",
+        Some(serde_json::json!({
+            "nous_id": nous_id,
+            "session_key": session_key,
+        })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resolved = body_json(resp).await;
+    let new_id = resolved["id"].as_str().unwrap().to_owned();
+    assert_ne!(
+        new_id, id,
+        "fresh resolve after purge must mint a new session id, not reuse the purged one"
+    );
+
+    // Store-level footprint: zero rows in every store `delete_session`
+    // clears, and the fresh session for the same pair starts with zero
+    // turns.
+    let store = state.session_store.lock().await;
+    assert!(
+        store.find_session_by_id(&id).expect("lookup").is_none(),
+        "session row must be removed"
+    );
+    assert!(
+        store.get_history(&id, None).expect("history").is_empty(),
+        "message rows must be removed"
+    );
+    assert!(
+        store.get_notes(&id).expect("notes").is_empty(),
+        "recall/run-context note rows must be removed"
+    );
+    assert!(
+        store.get_usage_for_session(&id).expect("usage").is_empty(),
+        "usage rows must be removed"
+    );
+    assert!(
+        store
+            .recent_tool_audit_records(10)
+            .expect("tool audit")
+            .records
+            .iter()
+            .all(|record| record.session_id != id),
+        "tool audit rows must be removed"
+    );
+    assert!(
+        store
+            .turn_records_for_session(&id)
+            .expect("turn records")
+            .is_empty(),
+        "turn record rows must be removed"
+    );
+    assert!(
+        store
+            .get_history(&new_id, None)
+            .expect("history")
+            .is_empty(),
+        "a fresh session for the same nous_id/session_key must start with zero turns"
+    );
+    assert!(
+        state
+            .working_checkpoint_store
+            .read_recent(&id, 10)
+            .expect("read recent checkpoints")
+            .is_empty(),
+        "working checkpoint rows must be removed"
+    );
+}
+
+// WHY(aletheia#7341): purging a session out from under a running turn would
+// either corrupt the turn's in-progress writes or resurrect rows the turn
+// re-appends after the delete transaction commits.
+#[tokio::test]
+async fn purge_session_with_turn_in_flight_returns_409() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    state
+        .turn_buffer_registry
+        .get_or_create(&id, "01INFLIGHTTURN00000000000")
+        .await;
+
+    let req = authed_request("DELETE", &format!("/api/v1/sessions/{id}/purge"), None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "conflict");
+
+    // The session survives the rejected purge attempt.
+    let resp = router
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// WHY(aletheia#7341): the working-checkpoint store is a separate fjall
+// database from `mneme::store::SessionStore`; its own failures must not be
+// swallowed. A 503 (not a silently-skipped success) plus an intact session
+// row prove the checkpoint delete is a real, ordered step in the purge, not
+// a best-effort no-op.
+#[tokio::test]
+async fn purge_returns_503_and_session_survives_when_checkpoint_store_fails() {
+    let (state, _dir) = test_state().await;
+    let state = Arc::new(AppState {
+        working_checkpoint_store: Arc::new(FailingCheckpointStore),
+        ..(*state).clone()
+    });
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    let req = authed_request("DELETE", &format!("/api/v1/sessions/{id}/purge"), None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    // Ordering: the checkpoint-store delete runs before the session-row
+    // delete, so a checkpoint-store failure never reaches the session row --
+    // the purge is safely retryable once the store recovers.
+    let resp = router
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]

@@ -393,6 +393,60 @@ impl organon::types::WorkingCheckpointStore for FjallWorkingCheckpointStore {
 
         Ok(results)
     }
+
+    fn delete_session(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<usize, organon::error::StoreError> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let partition = self
+            .partition()
+            .map_err(|e| organon::error::StoreError::StoreIo {
+                context: format!("working checkpoint session delete failed: {e}"),
+                source: std::io::Error::other("fjall error"),
+            })?;
+
+        let prefix = Self::prefix_key(session_id);
+
+        // WHY: per feedback_fjall_iter_truncate_pitfall.md, collecting the
+        // full prefix before removing is required here (unlike `read_latest`/
+        // `read_recent`, this deletes every matching row, not just the newest
+        // N) -- the same collect-then-remove shape `prune_old` already uses.
+        let to_remove: Vec<_> = {
+            let snap = self.db.read_tx();
+            let mut keys = Vec::new();
+            for guard in snap.prefix(&partition, prefix.as_bytes()) {
+                let (key, _) =
+                    guard
+                        .into_inner()
+                        .map_err(|e| organon::error::StoreError::StoreIo {
+                            context: format!("working checkpoint session delete iter failed: {e}"),
+                            source: std::io::Error::other("fjall iter error"),
+                        })?;
+                keys.push(key);
+            }
+            keys
+        };
+
+        let removed = to_remove.len();
+        if removed > 0 {
+            let mut tx = self.db.write_tx();
+            for key in to_remove {
+                tx.remove(&partition, &*key);
+            }
+            tx.commit()
+                .map_err(|e| organon::error::StoreError::StoreIo {
+                    context: format!("working checkpoint session delete commit failed: {e}"),
+                    source: std::io::Error::other("fjall commit error"),
+                })?;
+        }
+
+        Ok(removed)
+    }
 }
 
 /// True when `key` ends in the pre-#4853 legacy suffix: a `:` followed by
