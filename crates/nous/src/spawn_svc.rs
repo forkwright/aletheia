@@ -278,26 +278,70 @@ impl SpawnServiceImpl {
     /// is unchanged: it means "no override configured" and still resolves
     /// to defaults.
     ///
+    /// WHY(#7323): #7169 left a cheaper escalation open — *deleting* a
+    /// restrictive `roles.toml` (rather than corrupting it) still lands on
+    /// `NotFound`, which used to defer straight to
+    /// `ContractRegistry::defaults()` without ever asking whether a
+    /// contract had been configured there before. A first cut at this
+    /// fix only asked that question when `taxis::cascade::resolve`
+    /// returned `None` (no tier's file exists at all) — but the cascade
+    /// resolves the *first* tier whose file merely exists, most-specific
+    /// first, so deleting a restrictive `nous/{id}/roles.toml` while a
+    /// more liberal `shared/` or `theke/roles.toml` still exists makes
+    /// `resolve` return that lower tier's path, `load_from_file` on it
+    /// succeeds, and the deleted, more-specific tier is never consulted
+    /// at all — the exact escalation this issue names. This now checks
+    /// every candidate tier's own
+    /// [`crate::roles::contract::has_been_configured`] sentinel, most
+    /// specific first, *before* loading whichever tier the cascade
+    /// resolves: a tier that has never had a `roles.toml` still defaults
+    /// with no ceremony (#4775 unchanged), but any tier that is currently
+    /// absent yet was previously configured refuses the spawn instead of
+    /// silently falling through to a less specific tier or the liberal
+    /// defaults.
+    ///
     /// # Errors
     ///
-    /// Returns `Err` if the resolved `roles.toml` exists but cannot be read
-    /// or parsed. The caller must abort the spawn rather than fall back.
+    /// Returns `Err` if any candidate tier's `roles.toml` is currently
+    /// absent but was previously configured there (#7323), or if the
+    /// tier the cascade resolves exists but cannot be read or parsed
+    /// (#7169). The caller must abort the spawn rather than fall back.
     fn resolve_contract(
         &self,
         parent_nous_id: &str,
         role: Role,
     ) -> Result<Option<crate::roles::contract::RoleContract>, String> {
-        use crate::roles::contract::ContractRegistry;
+        use crate::roles::contract::{ContractRegistry, has_been_configured, sentinel_path};
+
+        // WHY(#7323): most-specific-first, independent of which (if any)
+        // tier the cascade below ends up resolving to -- a deleted
+        // nous-tier file must refuse even when a surviving shared- or
+        // theke-tier file would otherwise let the cascade resolve past
+        // it. See the fn-level WHY above for why checking only the
+        // cascade's `None` branch missed this.
+        let tiers = taxis::cascade::candidates(&self.oikos, parent_nous_id, "roles.toml", None);
+        if let Some(removed) = tiers.iter().find(|p| !p.exists() && has_been_configured(p)) {
+            return Err(format!(
+                "role={role} path={} roles.toml is missing but a contract was previously \
+                 configured at this tier, refusing spawn rather than silently falling through \
+                 to a less specific tier or the liberal defaults — restore {} to return the \
+                 operator-configured contract, or delete the sentinel at {} to deliberately \
+                 return this tier to hardcoded defaults",
+                removed.display(),
+                removed.display(),
+                sentinel_path(removed).display()
+            ));
+        }
 
         let registry =
             match taxis::cascade::resolve(&self.oikos, parent_nous_id, "roles.toml", None) {
-                None => ContractRegistry::defaults(),
                 Some(path) => ContractRegistry::load_from_file(&path).map_err(|e| {
                     format!(
                         "role={role} path={} roles.toml failed to load, refusing spawn: {e}",
                         path.display()
                     )
                 })?,
+                None => ContractRegistry::defaults(),
             };
 
         Ok(registry.get(role.as_str()).cloned())
@@ -1451,6 +1495,164 @@ model = "test-role-model-override"
         assert!(
             err.contains("roles.toml"),
             "refusal must name roles.toml so an operator can find the bad file: {err}"
+        );
+    }
+
+    // WHY(#7323): #7169 closed the corrupt-it escalation but left a
+    // cheaper one open -- *deleting* a restrictive `roles.toml` lands on
+    // `taxis::cascade::resolve` returning `None` (no tier's file exists at
+    // all), which `resolve_contract` used to defer straight to
+    // `ContractRegistry::defaults()` without ever having called
+    // `load_from_file` at all, so the #7169 fail-closed logic inside it
+    // was never reached for this exact scenario. Proves the fix end to
+    // end through the real production call path
+    // (`build_spawn_config` -> `resolve_contract`), not just the
+    // unit-level `ContractRegistry::load_from_file` behavior.
+    #[test]
+    fn spawn_config_deleted_roles_toml_refuses_spawn() {
+        let (_dir, oikos) = make_oikos();
+        let roles_path = oikos.shared().join("roles.toml");
+        std::fs::write(
+            &roles_path,
+            r#"
+[coder]
+version = 2
+tool_groups = ["read"]
+"#,
+        )
+        .expect("write restrictive roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        // First spawn loads the restrictive contract successfully -- this
+        // is the "a contract was configured here" event the fix must
+        // remember.
+        svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        )
+        .expect("first spawn with a valid restrictive roles.toml must succeed");
+
+        // The operator (or an attacker) deletes the restrictive contract
+        // instead of corrupting it -- no tier's roles.toml exists now.
+        std::fs::remove_file(&roles_path).expect("delete roles.toml");
+
+        let result = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        let err = result.expect_err(
+            "a roles.toml that was previously loaded from successfully must refuse the spawn \
+             once deleted, not silently restore the liberal hardcoded defaults",
+        );
+        assert!(
+            err.contains("roles.toml"),
+            "refusal must name roles.toml so an operator can find the removed contract: {err}"
+        );
+    }
+
+    // WHY(#7323): the case above deletes the *only* tier's roles.toml, so
+    // `taxis::cascade::resolve` returns `None` and there is nothing else
+    // to fall through to. That alone does not prove the fix checks every
+    // tier -- it only proves the `None` branch is handled. Here a more
+    // liberal `shared/roles.toml` survives the deletion, so
+    // `taxis::cascade::resolve` happily resolves *past* the missing
+    // nous-tier file straight to the shared one, and (before this fix)
+    // `ContractRegistry::load_from_file` on that surviving path would
+    // succeed -- the deleted, more-specific tier would never be
+    // consulted at all, silently handing the spawn the less restrictive
+    // shared-tier contract. Mirrors
+    // `spawn_config_corrupted_nous_tier_does_not_mask_restrictive_shared_tier`'s
+    // two-tier shape, but for deletion rather than corruption.
+    #[test]
+    fn spawn_config_deleted_nous_tier_roles_toml_does_not_fall_through_to_shared_tier() {
+        let (_dir, oikos) = make_oikos();
+
+        // Liberal and less specific -- what the cascade would resolve to
+        // once the nous-tier file below is deleted, if the fix only
+        // checked whichever tier the cascade actually resolves.
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[coder]
+version = 1
+tool_groups = "all"
+"#,
+        )
+        .expect("write liberal shared/roles.toml");
+
+        // Restrictive and more specific -- the tier that gets deleted.
+        let nous_dir = oikos.nous_dir("test-parent");
+        std::fs::create_dir_all(&nous_dir).expect("create nous/{id} dir");
+        let nous_roles_path = nous_dir.join("roles.toml");
+        std::fs::write(
+            &nous_roles_path,
+            r#"
+[coder]
+version = 2
+tool_groups = ["read"]
+"#,
+        )
+        .expect("write restrictive nous/{id}/roles.toml");
+
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        // First spawn loads the restrictive nous-tier contract
+        // successfully -- the "configured at this exact tier" event the
+        // fix must remember independent of what the shared tier holds.
+        svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        )
+        .expect("first spawn with a valid restrictive nous-tier roles.toml must succeed");
+
+        // The operator (or an attacker) deletes only the more-specific
+        // nous-tier contract; the liberal shared-tier file is untouched.
+        std::fs::remove_file(&nous_roles_path).expect("delete nous-tier roles.toml");
+
+        let result = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        let err = result.expect_err(
+            "deleting a previously-configured nous-tier roles.toml must refuse the spawn even \
+             though a more liberal shared-tier roles.toml still exists and would otherwise let \
+             the cascade resolve past the deletion",
+        );
+        assert!(
+            err.contains(&nous_roles_path.display().to_string()),
+            "refusal must name the missing nous-tier path specifically, not merely mention \
+             \"roles.toml\" generically, so it cannot be confused with the surviving \
+             shared-tier path the cascade would otherwise fall through to: {err}"
         );
     }
 
