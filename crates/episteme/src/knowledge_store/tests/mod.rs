@@ -24,6 +24,8 @@ mod hot_reload;
 #[cfg(feature = "mneme-engine")]
 mod lesson_e2e;
 #[cfg(feature = "mneme-engine")]
+mod merge_atomicity;
+#[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
 mod migration_atomicity;

@@ -67,6 +67,8 @@ mod facts;
 #[cfg(feature = "mneme-engine")]
 pub(crate) mod marshal;
 #[cfg(feature = "mneme-engine")]
+mod merge_commit;
+#[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
 mod migration_atomic;

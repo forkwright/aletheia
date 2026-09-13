@@ -63,7 +63,7 @@ pub struct HealthCheck {
 ///
 /// Distinct from [`HealthCheck`]: each record names an explicit code owner,
 /// uses a smaller and more meaningful status vocabulary
-/// (`"healthy"`/`"degraded"`/`"failed"`/`"unknown"`), and — critically — is
+/// (`"healthy"`/`"degraded"`/`"failed"`/`"timeout"`/`"unknown"`), and — critically — is
 /// allowed to report `"unknown"` rather than defaulting an unreachable
 /// subsystem to `"healthy"`. A control plane that lies toward optimism when
 /// it cannot actually see a subsystem is worse than one that says so.
@@ -73,7 +73,14 @@ pub struct SubsystemStatus {
     pub id: String,
     /// Human-readable name for the control-plane UI.
     pub name: String,
-    /// `"healthy"`, `"degraded"`, `"failed"`, or `"unknown"`.
+    /// `"healthy"`, `"degraded"`, `"failed"`, `"timeout"`, or `"unknown"`.
+    ///
+    /// `"timeout"` (#7288) means the check did not answer within its bound
+    /// — a distinct, typed signal from a confirmed `"failed"` — and
+    /// aggregates as `"degraded"`, not `"failed"`, when computing
+    /// [`SubsystemStatusResponse::status`]: an unanswered check is
+    /// unconfirmed, not proven down, so it must not promote the whole
+    /// endpoint to a 503.
     pub status: String,
     /// Crate/module that owns this subsystem's behavior — one code owner
     /// per record, per #5313's acceptance criteria.
@@ -90,7 +97,7 @@ pub struct SubsystemStatus {
     /// Explanation when status is `"degraded"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
-    /// Explanation when status is `"failed"` or `"unknown"`.
+    /// Explanation when status is `"failed"`, `"timeout"`, or `"unknown"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
     /// Redacted structured diagnostics: counts, backlog depth, per-item
