@@ -10,7 +10,7 @@
 # `version.workspace = true` across the standalone-workspace boundary, so it
 # must be kept equal to the root Cargo.toml [workspace.package].version by
 # hand; scripts/check-proskenion-pins.py enforces the equality.
-version = "0.45.0"
+version = "0.46.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 rust-version = "1.94"
@@ -55,7 +55,7 @@ name = "proskenion"
 # it through this standalone manifest. `version` must equal the root
 # Cargo.toml [workspace.package].version (see [workspace.package] above);
 # scripts/check-proskenion-pins.py enforces the equality.
-version = "0.45.0"
+version = "0.46.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 rust-version = "1.94"
