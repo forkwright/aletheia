@@ -17,7 +17,7 @@
 //! defaulting to a target that stops being the only one.
 
 use std::io::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use snafu::prelude::*;
@@ -62,9 +62,16 @@ pub(crate) struct ServiceArgs {
 pub(crate) struct ServiceUnitSpec {
     /// Absolute path to the aletheia binary `ExecStart` should invoke.
     pub binary: PathBuf,
-    /// Absolute instance root: source of `-r`, `ReadWritePaths`,
-    /// `WorkingDirectory`, and (joined with `config/env`) `EnvironmentFile`.
+    /// Absolute instance root: source of `-r`, `ReadWritePaths`, and
+    /// (joined with `config/env`) `EnvironmentFile`.
     pub instance_root: PathBuf,
+    /// Absolute layout root (the instance root's parent) used as
+    /// `WorkingDirectory`. Kept distinct from `instance_root` -- not because
+    /// anything in the unit is itself cwd-relative, but because
+    /// `DriftDetectionConfig::default()` resolves the sibling
+    /// `instance.example` template relative to the process cwd (see the WHY
+    /// on [`generate_unit`]).
+    pub working_directory: PathBuf,
 }
 
 impl ServiceUnitSpec {
@@ -88,14 +95,21 @@ impl ServiceUnitSpec {
 // matching the hand-written template's contract for a fresh instance with no
 // credentials written yet.
 //
-// WHY: WorkingDirectory is the instance root itself rather than a sibling
-// "layout root" the way the hand-written template used it -- every path here
-// is already resolved and absolute, so nothing in this unit depends on the
-// process cwd to find a relative sibling.
+// WHY(#5096): WorkingDirectory is the instance root's *parent* (the layout
+// root), matching the hand-written template's cwd contract -- not because
+// any directive in this unit is itself cwd-relative (every path here is
+// already resolved and absolute), but because
+// `DriftDetectionConfig::default()` (crates/daemon/src/maintenance/drift_detection.rs)
+// resolves the sibling template `instance.example` relative to the running
+// process's *cwd*. Setting WorkingDirectory to the instance root itself
+// would silently break drift detection (`template_available=false`) the
+// moment the service starts, because it would look for
+// `<instance_root>/instance.example` instead of the actual sibling.
 #[must_use]
 pub(crate) fn generate_unit(spec: &ServiceUnitSpec) -> String {
     let binary = spec.binary.display();
     let root = spec.instance_root.display();
+    let working_directory = spec.working_directory.display();
     let env_file = spec.env_file();
     let env_file = env_file.display();
 
@@ -113,7 +127,7 @@ pub(crate) fn generate_unit(spec: &ServiceUnitSpec) -> String {
          Environment=RUST_BACKTRACE=1\n\
          EnvironmentFile=-{env_file}\n\
          ExecStart={binary} -r {root}\n\
-         WorkingDirectory={root}\n\
+         WorkingDirectory={working_directory}\n\
          Restart=on-failure\n\
          RestartSec=5\n\
          StandardOutput=journal\n\
@@ -139,8 +153,11 @@ pub(crate) fn generate_unit(spec: &ServiceUnitSpec) -> String {
 /// # Errors
 ///
 /// Fails if `--systemd-user` was not passed (the only supported target, kept
-/// explicit rather than assumed) or if `--binary` was omitted and the current
-/// executable's path cannot be determined.
+/// explicit rather than assumed); if `--binary` was given but does not exist,
+/// is unreadable, or canonicalizes to a non-absolute path; if `--binary` was
+/// omitted and the current executable's path cannot be determined; or if the
+/// resolved instance root has no parent directory to derive a systemd
+/// `WorkingDirectory` (layout root) from.
 fn resolve_spec(args: &ServiceArgs, instance_root: Option<&PathBuf>) -> Result<ServiceUnitSpec> {
     if !args.systemd_user {
         whatever!(
@@ -156,16 +173,58 @@ fn resolve_spec(args: &ServiceArgs, instance_root: Option<&PathBuf>) -> Result<S
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
+    let instance_root = oikos.root().to_path_buf();
 
+    // WHY(#5096): see the WHY on `generate_unit` -- WorkingDirectory must be
+    // the layout root (the instance root's parent), not the instance root
+    // itself, or drift detection's cwd-relative `instance.example` lookup
+    // breaks. Fail loud rather than falling back to the instance root: a
+    // silent fallback here is exactly the bug this derivation exists to
+    // avoid.
+    let working_directory = instance_root
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            crate::error::Error::msg(format!(
+                "aletheia service: instance root {} has no parent directory; \
+             cannot derive a systemd WorkingDirectory (layout root) for \
+             drift detection's sibling instance.example template",
+                instance_root.display()
+            ))
+        })?;
+
+    // WHY(#5096): `--binary` must resolve to a real, absolute, executable
+    // path -- an unresolvable or relative ExecStart target is a unit that
+    // `install` would happily write and `systemctl start` would only fail on
+    // later, so this fails loud instead of falling back to the caller's
+    // (possibly relative, possibly nonexistent) input.
     let binary = match &args.binary {
-        Some(path) => std::fs::canonicalize(path).unwrap_or_else(|_| path.clone()),
+        Some(path) => {
+            let canonical = std::fs::canonicalize(path).with_whatever_context(|_| {
+                format!(
+                    "aletheia service: --binary {} does not exist or is not \
+                     readable (ExecStart requires an absolute, existing path)",
+                    path.display()
+                )
+            })?;
+            if !canonical.is_absolute() {
+                whatever!(
+                    "aletheia service: --binary {} resolved to a non-absolute \
+                     path {} (ExecStart requires an absolute path)",
+                    path.display(),
+                    canonical.display()
+                );
+            }
+            canonical
+        }
         None => std::env::current_exe()
             .whatever_context("failed to resolve the current executable's path")?,
     };
 
     Ok(ServiceUnitSpec {
         binary,
-        instance_root: oikos.root().to_path_buf(),
+        instance_root,
+        working_directory,
     })
 }
 
@@ -195,6 +254,24 @@ fn systemd_user_unit_dir(xdg_config_home: Option<&str>, home: Option<&str>) -> R
     );
 }
 
+/// Refuse to overwrite an existing installed unit unless `force` is set.
+///
+/// Pure function of the destination path and the `--force` flag so it is
+/// directly testable without touching the real systemd user unit directory.
+///
+/// # Errors
+///
+/// Fails if `dest` already exists and `force` is `false`.
+fn ensure_install_destination(dest: &Path, force: bool) -> Result<()> {
+    if dest.exists() && !force {
+        whatever!(
+            "aletheia service install: {} already exists (pass --force to overwrite)",
+            dest.display()
+        );
+    }
+    Ok(())
+}
+
 pub(crate) async fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
     match action {
         Action::Print(args) => {
@@ -218,13 +295,7 @@ async fn run_install(args: &ServiceArgs, instance_root: Option<&PathBuf>) -> Res
         std::env::var("HOME").ok().as_deref(),
     )?;
     let dest = dir.join("aletheia.service");
-
-    if dest.exists() && !args.force {
-        whatever!(
-            "aletheia service install: {} already exists (pass --force to overwrite)",
-            dest.display()
-        );
-    }
+    ensure_install_destination(&dest, args.force)?;
 
     // WHY: `std::fs::write` is disallowed in this crate (crates/aletheia/clippy.toml)
     // in favor of `tokio::fs` -- this handler is async so the write does not block
@@ -279,13 +350,26 @@ fn verify_with_systemd_analyze(unit_text: &str) -> Result<()> {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test setup requires synchronous filesystem access"
+)]
 mod tests {
     use super::*;
 
+    /// Build a spec directly (bypassing `resolve_spec`), deriving
+    /// `working_directory` from `root`'s parent the same way `resolve_spec`
+    /// does, falling back to `root` itself for the degenerate root-less
+    /// paths a couple of these tests use.
     fn spec(binary: &str, root: &str) -> ServiceUnitSpec {
+        let instance_root = PathBuf::from(root);
+        let working_directory = instance_root
+            .parent()
+            .map_or_else(|| instance_root.clone(), Path::to_path_buf);
         ServiceUnitSpec {
             binary: PathBuf::from(binary),
-            instance_root: PathBuf::from(root),
+            instance_root,
+            working_directory,
         }
     }
 
@@ -311,8 +395,10 @@ mod tests {
             "ReadWritePaths should be the resolved instance root:\n{unit}"
         );
         assert!(
-            unit.contains("WorkingDirectory=/srv/aletheia/instance"),
-            "WorkingDirectory should be the resolved instance root:\n{unit}"
+            unit.contains("WorkingDirectory=/srv/aletheia\n"),
+            "WorkingDirectory should be the instance root's parent (the \
+             layout root), not the instance root itself -- drift detection's \
+             sibling instance.example lookup depends on this:\n{unit}"
         );
     }
 
@@ -361,15 +447,40 @@ mod tests {
     #[test]
     fn resolve_spec_uses_explicit_instance_root_and_binary() {
         let dir = tempfile::tempdir().unwrap();
+        // WHY: `resolve_spec` now canonicalizes `--binary` and fails loud if
+        // that fails, so this test needs a binary path that actually exists
+        // rather than the placeholder `/bin/aletheia` the fallback-behavior
+        // version of this test used to accept unchecked.
+        let binary_dir = tempfile::tempdir().unwrap();
+        let binary_path = binary_dir.path().join("aletheia");
+        std::fs::write(&binary_path, b"").unwrap();
+        let canonical_binary = std::fs::canonicalize(&binary_path).unwrap();
+
         let args = ServiceArgs {
             systemd_user: true,
-            binary: Some(PathBuf::from("/bin/aletheia")),
+            binary: Some(binary_path),
             force: false,
         };
         let root = dir.path().to_path_buf();
         let resolved = resolve_spec(&args, Some(&root)).unwrap();
         assert_eq!(resolved.instance_root, root);
-        assert_eq!(resolved.binary, PathBuf::from("/bin/aletheia"));
+        assert_eq!(resolved.binary, canonical_binary);
+    }
+
+    #[test]
+    fn resolve_spec_fails_loud_on_relative_or_missing_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = ServiceArgs {
+            systemd_user: true,
+            binary: Some(PathBuf::from("./target/does-not-exist-5096")),
+            force: false,
+        };
+        let root = dir.path().to_path_buf();
+        let err = resolve_spec(&args, Some(&root)).unwrap_err();
+        assert!(
+            err.to_string().contains("does-not-exist-5096"),
+            "expected the error to name the offending --binary path: {err}"
+        );
     }
 
     #[test]
@@ -422,5 +533,60 @@ mod tests {
             "generated unit should pass `systemd-analyze verify` \
              (see stdout/stderr printed above for the specific directive)",
         );
+    }
+
+    #[test]
+    fn verify_with_systemd_analyze_fails_loud_on_rejected_unit() {
+        if !systemd_analyze_available() {
+            eprintln!("skipping: systemd-analyze not available on this host");
+            return;
+        }
+
+        // WHY: a nonexistent ExecStart target is something systemd-analyze
+        // verify actively rejects (as opposed to merely warning about), so
+        // this exercises the fail-loud path deterministically rather than
+        // relying on some other directive systemd may or may not enforce.
+        let unit = generate_unit(&spec(
+            "/nonexistent/aletheia",
+            "/tmp/aletheia-service-unit-test-instance",
+        ));
+
+        let err = verify_with_systemd_analyze(&unit).unwrap_err();
+        assert!(
+            err.to_string().contains("systemd-analyze verify failed"),
+            "expected a fail-loud error naming systemd-analyze verify: {err}"
+        );
+    }
+
+    // ── install destination ──────────────────────────────────────────────
+
+    #[test]
+    fn ensure_install_destination_refuses_an_existing_dest_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("aletheia.service");
+        std::fs::write(&dest, "existing unit").unwrap();
+
+        let err = ensure_install_destination(&dest, false).unwrap_err();
+        assert!(
+            err.to_string().contains("--force"),
+            "expected the error to mention --force: {err}"
+        );
+    }
+
+    #[test]
+    fn ensure_install_destination_allows_an_existing_dest_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("aletheia.service");
+        std::fs::write(&dest, "existing unit").unwrap();
+
+        ensure_install_destination(&dest, true).expect("--force should permit overwrite");
+    }
+
+    #[test]
+    fn ensure_install_destination_allows_a_dest_that_does_not_exist_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("aletheia.service");
+
+        ensure_install_destination(&dest, false).expect("a fresh install needs no --force");
     }
 }

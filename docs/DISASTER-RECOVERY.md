@@ -148,11 +148,12 @@ cp -a "$HOME/aletheia-restored"/*/home/*/aletheia/instance/* "$HOME/aletheia/ins
 mkdir -p "$HOME/.local/bin"
 cp target/release/aletheia "$HOME/.local/bin/aletheia"
 
-# 6. Reinstall the systemd unit
-mkdir -p "$HOME/.config/systemd/user"
-cp instance.example/services/aletheia.service "$HOME/.config/systemd/user/aletheia.service"
-# Edit ExecStart, EnvironmentFile, and ReadWritePaths if your layout differs.
-systemd-analyze verify "$HOME/.config/systemd/user/aletheia.service"
+# 6. Reinstall the systemd unit (derives ExecStart/EnvironmentFile/
+#    ReadWritePaths/WorkingDirectory from -r and --binary; add --force if a
+#    stale unit from before the loss is still on disk)
+aletheia -r "$HOME/aletheia/instance" service install --systemd-user \
+  --binary "$HOME/.local/bin/aletheia"
+aletheia -r "$HOME/aletheia/instance" service verify --systemd-user
 
 # 7. Start and verify
 systemctl --user daemon-reload

@@ -463,43 +463,47 @@ Exposes `nous_turn_duration_seconds`, `anthropic_requests_total`, `http_requests
 
 ## Systemd service (Linux)
 
-A service template lives in `instance.example/services/aletheia.service`.
-It uses `%h` (systemd's `$HOME` specifier) so paths resolve automatically. The
-committed unit is parseable as shipped and verifies with
-`systemd-analyze verify`.
+Generate and install the unit with `aletheia service` (#5096) instead of
+copying and hand-editing the reference template — every path-bearing
+directive (`ExecStart`, `EnvironmentFile`, `ReadWritePaths`, `WorkingDirectory`)
+is derived from one resolved instance root and binary path, so there is no
+`%h`/`sed` lockstep to get wrong:
 
 ```bash
-# 1. Copy the template
-mkdir -p ~/.config/systemd/user
-cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
+# 1. Install the unit for this instance (derives every path from -r and the
+#    running binary's own path; pass --binary to point at a different one)
+aletheia -r ~/aletheia/instance service install --systemd-user
 
-# 2. Review and edit the unit file
-#    - Adjust ExecStart if the binary is not at ~/.local/bin/aletheia or the
-#      instance is not at ~/aletheia/instance.
-#    - Adjust EnvironmentFile and ReadWritePaths if the instance path changes.
+# 2. Verify the generated unit with `systemd-analyze verify`
+aletheia -r ~/aletheia/instance service verify --systemd-user
 
-# 3. Verify the unit parses
-systemd-analyze verify ~/.config/systemd/user/aletheia.service
-
-# 4. Enable and start
+# 3. Enable and start
 systemctl --user daemon-reload
 systemctl --user enable --now aletheia
 
-# 5. Persist across logout (run once per user)
+# 4. Persist across logout (run once per user)
 loginctl enable-linger
 ```
 
-The template sets
-`ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance`
-(`-r` points the binary at the instance root) and loads an optional
-`EnvironmentFile` from `%h/aletheia/instance/config/env` (silently ignored if absent).
-`ReadWritePaths=%h/aletheia/instance` grants write access to the instance under
-`ProtectSystem=strict`; update it when you change the instance root.
-Drift detection resolves the sibling `instance.example` template from the
-configured instance root; if the template is unavailable, the task reports
-degraded/failed rather than clean.
+`aletheia service print --systemd-user` prints the generated unit without
+writing it, for review before `install`. `install` refuses to overwrite an
+existing unit unless you pass `--force`.
+
+The generated `ExecStart` runs the resolved binary with `-r <instance root>`
+and loads an optional `EnvironmentFile` from `<instance root>/config/env`
+(silently ignored if absent). `ReadWritePaths=<instance root>` grants write
+access to the instance under `ProtectSystem=strict`. `WorkingDirectory` is set
+to the instance root's *parent* (the layout root), not the instance root
+itself, because drift detection resolves the sibling `instance.example`
+template relative to the process cwd; if the template is unavailable, the
+task reports degraded/failed rather than clean.
 If your API key is stored in `instance/config/credentials/anthropic.json` (written by
 `aletheia init`), no extra environment setup is needed.
+
+`instance.example/services/aletheia.service` remains checked in as a
+hand-maintained reference for the unit's shape and hardening contract (it is
+not read by `aletheia service`); prefer the generator above for an actual
+install.
 
 View logs:
 

@@ -221,29 +221,20 @@ The embedded knowledge engine and session store are inside the binary — no ext
 
 ## Optional: systemd service
 
-For always-on operation, install the included systemd user service. The
-committed unit verifies with `systemd-analyze verify` and defaults to
-`~/.local/bin/aletheia` plus `~/aletheia/instance`.
+For always-on operation, generate and install the unit with `aletheia service`
+(#5096) rather than copying and hand-editing the reference template — it
+derives every path-bearing directive (`ExecStart`, `EnvironmentFile`,
+`ReadWritePaths`, `WorkingDirectory`) from one resolved instance root and
+binary path, so there is nothing to keep in step by hand.
 
 ```bash
-mkdir -p ~/.config/systemd/user
-cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
+aletheia -r ~/aletheia/instance service install --systemd-user
 ```
 
-Edit the service file if your paths differ. Keep comments on their own lines;
-systemd does not support inline comments on directive lines. Key lines to
-customize:
-
-```ini
-EnvironmentFile=-%h/aletheia/instance/config/env
-ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance
-ReadWritePaths=%h/aletheia/instance
-WorkingDirectory=%h/aletheia
-```
-
-Drift detection resolves the sibling `instance.example` template from the
-configured instance root. If the template is unavailable, the drift-detection
-task reports degraded/failed rather than clean.
+`--binary` overrides the binary path (default: the currently running
+executable); `install` refuses to overwrite an existing unit unless you also
+pass `--force`. Use `aletheia service print --systemd-user` first to review
+the generated unit without writing it.
 
 The environment file is owned by the instance. Start from the checked-in
 template when you need process-manager environment variables:
@@ -253,11 +244,16 @@ cp .env.example ~/aletheia/instance/config/env
 chmod 600 ~/aletheia/instance/config/env
 ```
 
-Verify the edited unit before enabling it:
+Verify the generated unit before enabling it:
 
 ```bash
-systemd-analyze verify ~/.config/systemd/user/aletheia.service
+aletheia -r ~/aletheia/instance service verify --systemd-user
 ```
+
+(`WorkingDirectory` is set to the instance root's *parent* — the layout root
+— not the instance root itself, because drift detection resolves the sibling
+`instance.example` template relative to the process cwd; if the template is
+unavailable, that task reports degraded/failed rather than clean.)
 
 Then enable and start:
 

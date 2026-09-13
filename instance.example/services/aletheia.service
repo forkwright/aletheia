@@ -1,3 +1,11 @@
+# NOTE(#5096): this is a hand-maintained REFERENCE artifact -- it documents
+# the unit's shape and hardening contract for readers browsing the repo, but
+# it is not read, copied, or templated by any aletheia code. For an actual
+# install, generate and verify the unit instead:
+#   aletheia -r <instance root> service install --systemd-user
+#   aletheia -r <instance root> service verify --systemd-user
+# See crates/aletheia/src/commands/service.rs.
+
 [Unit]
 Description=Aletheia AI Gateway
 After=network-online.target
