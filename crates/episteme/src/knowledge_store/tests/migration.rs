@@ -122,6 +122,52 @@ fn missing_intermediate_stamp_is_detected_as_hole() {
     );
 }
 
+/// aletheia#7161: a store that migrated to its current version before
+/// per-step stamping existed has no `migration:N` row for any of its
+/// earliest steps -- not a hole, but the boundary where stamping began.
+/// `init_schema` must backfill that contiguous prefix and open, while
+/// `missing_intermediate_stamp_is_detected_as_hole` above proves a gap
+/// *between* present stamps still fails closed.
+#[test]
+fn pre_stamp_era_prefix_is_backfilled_on_open() {
+    let store = make_store();
+    let fact = make_fact("f1", "alice", "pre-stamp-era backfill preserves facts");
+    store.insert_fact(&fact).expect("insert fact");
+
+    for version in 2..=5 {
+        store
+            .run_mut_query(
+                &format!(r#"?[key] <- [["migration:{version}"]] :rm schema_version {{key}}"#),
+                std::collections::BTreeMap::new(),
+            )
+            .expect("remove pre-stamp-era migration stamp");
+    }
+
+    store
+        .init_schema()
+        .expect("a contiguous pre-stamp-era prefix should backfill and open, not fail closed");
+
+    for version in 2..=5 {
+        assert_eq!(
+            store
+                .migration_stamp_version(version)
+                .expect("read backfilled migration stamp"),
+            Some(version),
+            "migration:{version} should be backfilled as pre-stamp-era"
+        );
+    }
+    assert_eq!(
+        store.schema_version().expect("schema version"),
+        KnowledgeStore::SCHEMA_VERSION,
+        "backfill must not change the store's current schema version"
+    );
+
+    let facts = store
+        .query_facts("alice", "2026-06-01", 10)
+        .expect("query facts after backfilled open");
+    assert_eq!(facts.len(), 1, "backfill must not touch existing data");
+}
+
 #[test]
 fn crash_mid_sequence_resume_applies_only_missing_tail() {
     let store = make_store_allowing_assumed_meta();
