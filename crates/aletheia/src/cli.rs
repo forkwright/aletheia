@@ -24,6 +24,7 @@ use crate::commands::migrate::MigrateArgs;
 use crate::commands::poiesis;
 use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
+use crate::commands::service;
 use crate::commands::session_create::SessionCreateArgs;
 use crate::commands::session_export::SessionExportArgs;
 use crate::commands::session_store;
@@ -104,6 +105,12 @@ pub(crate) enum Command {
     Tls {
         #[command(subcommand)]
         action: tls::Action,
+    },
+    /// Generate, install, or verify a systemd user service unit from
+    /// resolved install paths
+    Service {
+        #[command(subcommand)]
+        action: service::Action,
     },
     /// Show system status
     Status {
