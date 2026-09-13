@@ -235,8 +235,14 @@ backend source Proskenion/Koilon should consume for control-plane status views.
 Tracked subsystems today: `provider_reachability`, `provider_credentials`,
 `embeddings`, `session_store`, `nous_runtime`, `turn_event_persistence`,
 `memory_graph`, `daemon_runtime`, `tool_execution_history`,
-`training_qa_persistence`, `metrics_exposure`, `event_bus`,
-`config_security_posture`.
+`metrics_exposure`, `event_bus`, `config_security_posture`.
+
+`training_qa_persistence` was dropped (#7292): it reported a permanently
+`"unknown"` status with no pylon-reachable signal from `nous::training`.
+Wiring a real reader is a design decision (what "healthy" means for the
+DPO/training-corpus pending-state store, and whether `nous::training`
+should expose a pylon-reachable signal at all) left for a future issue if
+that signal becomes worth building.
 
 `daemon_runtime` (#7206): every registered daemon task is background,
 non-serving-path work (cron/maintenance -- nothing on the request-serving
