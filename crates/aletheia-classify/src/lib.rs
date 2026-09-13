@@ -35,7 +35,7 @@
 //! }
 //! ```
 
-pub use classifier::{AuthorClass, AuthorProbs, Classifier};
+pub use classifier::{AuthorClass, AuthorProbs, AuthorVerdict, CalibrationArtifact, Classifier};
 pub use error::{ClassifyError, Result};
 
 /// Heuristic rule-bank author classification and inference.
