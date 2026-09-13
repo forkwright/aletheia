@@ -863,6 +863,18 @@ async fn receipt_v2_binds_vault_and_file_expanded_input_without_storing_it() {
         .expect("write file-ref fixture");
     let mut ctx = test_tool_ctx();
     ctx.workspace = dir.path().to_path_buf();
+    // WHY(#7338): `test_tool_ctx()`'s default `allowed_roots` now derives
+    // from the real system temp dir (honors `TMPDIR`), which this fixture's
+    // own `tempfile::TempDir` also falls under -- but overriding only
+    // `workspace` above (and leaving the broader default `allowed_roots` in
+    // place) still let the "path" argument validate against a root wider
+    // than this test's own fixture directory. Scope `allowed_roots` to the
+    // exact tempdir under test instead, matching
+    // `live_approval_uses_canonical_path_while_replay_keeps_model_path`
+    // above, so this test proves the "path" argument is checked against
+    // *this* fixture's root, not merely against whatever the ambient
+    // `TMPDIR` happens to be.
+    ctx.allowed_roots = vec![dir.path().to_path_buf()];
     ctx.services = Some(tool_services_with_secret("token", "short-secret"));
     let placeholder = serde_json::json!({
         "note": "{{file:payload.txt}}",
