@@ -11,7 +11,6 @@
 //! retry after the failure converges cleanly.
 
 #![expect(clippy::expect_used, reason = "test setup and assertions")]
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 use std::collections::BTreeMap;
 
