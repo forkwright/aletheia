@@ -488,8 +488,8 @@ CSRF protection settings.
 |-------|------|---------|-------------|
 | `enabled` | bool | true | Whether CSRF header checking is active. |
 | `disableAcknowledged` | bool | false | Explicit acknowledgement required when CSRF protection is disabled. |
-| `headerName` | string | "x-requested-with" | Required header name (e.g. `x-requested-with`). |
-| `headerValue` | secret string | `SecretString::from(DEFAULT_CSRF_HEADER_VALUE)` | Required header value (e.g. `aletheia`). |
+| `headerName` | string | "x-requested-with" | Required header name (defaults to [`koina::http::CSRF_HEADER_NAME`]). |
+| `headerValue` | secret string | `SecretString::from(DEFAULT_CSRF_HEADER_VALUE)` | Required header value (defaults to [`koina::http::DEFAULT_CSRF_HEADER_VALUE`]). |
 
 ### gateway.rateLimit
 
