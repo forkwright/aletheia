@@ -55,6 +55,41 @@
                     "type": "toml",
                     "path": "crates/theatron/proskenion/Cargo.lock",
                     "jsonpath": "$.package[?(@.name.value == 'proskenion')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "fuzz/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'eidos')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "fuzz/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'hermeneus')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "fuzz/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'koina')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "fuzz/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'mneme')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "fuzz/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'nous')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "fuzz/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name.value == 'taxis')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "_llm/current_state.toml",
+                    "jsonpath": "$.state.version"
                 }
             ]
         }
