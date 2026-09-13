@@ -509,7 +509,15 @@ mod tests {
     #[test]
     fn default_url_when_none() {
         ensure_crypto_provider();
-        let config = Config::load(None, None, None, None).unwrap();
+        // WHY(forge sandbox hermeticity): see config_load_no_credential --
+        // plain Config::load resolves file_config from the real OS config
+        // directory, which a sandbox that provisions a tui.toml for
+        // unrelated live-API tests can populate with a non-default url,
+        // inverting this assertion. Load through an empty directory this
+        // test owns so "falls back to the compiled default" is a fact this
+        // test established, not an assumption about the ambient config dir.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
         assert_eq!(config.url, DEFAULT_URL);
     }
 
@@ -715,9 +723,16 @@ mod tests {
     #[test]
     fn theme_parsing_light() {
         ensure_crypto_provider();
-        let config = Config::load(None, None, None, None).unwrap();
-        // Default is auto (None) when no file setting
-        let _ = config.theme;
+        // WHY(forge sandbox hermeticity): see config_load_no_credential --
+        // load through an empty directory this test owns so "no theme
+        // setting" is a fact this test established, not an assumption about
+        // the ambient config dir's tui.toml.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
+        assert!(
+            config.theme.is_none(),
+            "empty config dir must not resolve a theme"
+        );
     }
 
     #[test]
@@ -725,15 +740,20 @@ mod tests {
         ensure_crypto_provider();
         // ALETHEIA_ROOT env var must not be set for this test to be meaningful.
         // We can't mutate env vars (unsafe-code is denied in this crate).
-        // Verify that when neither env nor file provides workspace_root, it is None.
         if std::env::var("ALETHEIA_ROOT").is_ok() {
             // Skip: env is set externally: can't control it without unsafe
             return;
         }
-        let config = Config::load(None, None, None, None).unwrap();
-        // workspace_root may be None (no file) or Some (if tui.toml has workspace_root).
-        // The load succeeds either way.
-        let _ = config.workspace_root;
+        // WHY(forge sandbox hermeticity): see config_load_no_credential --
+        // load through an empty directory this test owns so "no
+        // workspace_root" is a fact this test established, not an
+        // assumption about the ambient config dir's tui.toml.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
+        assert!(
+            config.workspace_root.is_none(),
+            "empty config dir and unset ALETHEIA_ROOT must not resolve a workspace_root"
+        );
     }
 
     #[test]
