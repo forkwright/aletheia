@@ -27,8 +27,7 @@ pub(crate) struct SessionCreateArgs {
     pub key: String,
 
     /// Server URL for lock detection
-    #[arg(long, default_value = "http://127.0.0.1:18789")]
-    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    #[arg(long, default_value = crate::cli::DEFAULT_GATEWAY_URL)]
     pub url: String,
 }
 
@@ -135,6 +134,23 @@ fn validate_identifier(value: &str, field: &str) -> Result<()> {
 )]
 mod tests {
     use super::*;
+
+    /// PROOF(review #5100): `session-create`'s lock-detection `--url` no
+    /// longer restates its own gateway-URL default — it resolves to the one
+    /// constant every HTTP-backed command shares.
+    #[test]
+    fn default_url_matches_the_shared_gateway_default() {
+        use clap::Parser as _;
+
+        #[derive(Debug, clap::Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            session_create: SessionCreateArgs,
+        }
+
+        let wrapper = Wrapper::try_parse_from(["session-create", "alice"]).unwrap();
+        assert_eq!(wrapper.session_create.url, crate::cli::DEFAULT_GATEWAY_URL);
+    }
 
     #[test]
     fn validate_identifier_accepts_non_empty() {

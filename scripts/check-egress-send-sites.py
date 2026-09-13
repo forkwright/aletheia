@@ -78,12 +78,10 @@ SANCTIONED = {
 # Sites that do not route through the checkpoint and do not need to. A reason here is
 # a claim someone can check, not a way to make the script quiet.
 EXEMPT = {
-    "crates/aletheia/src/commands/ingest.rs": (
-        "operator CLI: the destination is an argument the operator typed, not model "
-        "output, and its credential is an Authorization header -- which reqwest DOES "
-        "strip across a cross-host redirect, unlike the custom token headers in #6910 "
-        "and #6921"
-    ),
+    # WHY(#5100) ingest.rs is gone from here, not merely quiet: it no longer builds
+    # its own reqwest request at all. It now calls pylon::client::GatewayClient,
+    # which owns the one `.send()` this command's traffic reaches -- outside the
+    # scanned roots, so it is not this script's call site to account for either.
     "crates/aletheia/src/commands/memory/mod.rs": (
         "operator CLI, same shape as ingest.rs: operator-supplied URL, Authorization "
         "header that reqwest strips cross-host"

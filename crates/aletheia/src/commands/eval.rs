@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use clap::Args;
-use dokimion::benchmarks::EvalClient;
 use dokimion::coverage::Policy as CoveragePolicy;
+use pylon::client::GatewayClient;
 use snafu::prelude::*;
 
 use crate::commands::current_git_sha;
@@ -13,8 +13,7 @@ use crate::error::Result;
 #[derive(Debug, Clone, Args)]
 pub(crate) struct EvalArgs {
     /// Server URL to evaluate
-    #[arg(long, default_value = "http://127.0.0.1:18789")]
-    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
+    #[arg(long, default_value = crate::cli::DEFAULT_GATEWAY_URL)]
     pub url: String,
     /// Bearer token for authenticated endpoints
     #[arg(long, env = "ALETHEIA_EVAL_TOKEN")]
@@ -178,12 +177,21 @@ async fn build_eval_provenance(
         token.is_some(),
     ));
     let cli_args: Vec<String> = std::env::args().collect();
-    let target_identity = EvalClient::new(url.to_owned(), token.cloned())
-        .health()
-        .await
-        .ok()
-        .and_then(|h| h.version)
-        .filter(|version| !version.is_empty());
+    // WHY(#5100): routed through the shared `pylon::client::GatewayClient`
+    // instead of standing up a second, divergent HTTP client just to read a
+    // version string. `health_details()` is the operator-only route, so this
+    // silently yields `None` without a valid operator token — same as
+    // before, when the client this replaced queried the public liveness
+    // route, which never carried a `version` field to begin with.
+    let target_identity = match GatewayClient::new(url, token.cloned()) {
+        Ok(client) => client
+            .health_details()
+            .await
+            .ok()
+            .map(|health| health.version)
+            .filter(|version| !version.is_empty()),
+        Err(_) => None,
+    };
     let mut provenance = dokimion::provenance::EvalProvenance::new(
         dokimion::provenance::generate_eval_run_id(),
         url.to_owned(),
@@ -352,6 +360,86 @@ mod tests {
     fn validate_accepts_well_formed_args() {
         validate_args(&args_with("http://127.0.0.1:18789", 30, None)).unwrap();
         validate_args(&args_with("https://example.com:8443/path", 1, Some("ping"))).unwrap();
+    }
+
+    #[test]
+    fn default_url_matches_the_shared_gateway_default() {
+        use clap::Parser as _;
+
+        #[derive(Debug, clap::Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            eval: EvalArgs,
+        }
+
+        // PROOF(#5100): `eval` no longer restates its own gateway-URL
+        // default — it resolves to the one constant every HTTP-backed
+        // command shares.
+        let wrapper = Wrapper::try_parse_from(["eval"]).unwrap();
+        assert_eq!(wrapper.eval.url, crate::cli::DEFAULT_GATEWAY_URL);
+    }
+
+    /// PROOF(#5100): provenance's `target_identity` now comes from
+    /// `pylon::client::GatewayClient::health_details()` — the shared
+    /// client's operator-only route — instead of a second, divergent
+    /// `dokimion::benchmarks::EvalClient`. Before the migration this never
+    /// populated at all (the client it replaced queried the public liveness
+    /// route, which carries no `version` field); after, an authenticated
+    /// caller gets the server's real version.
+    #[tokio::test]
+    async fn provenance_target_identity_comes_from_the_shared_client() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        organon::testing::install_crypto_provider();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 1024];
+            let _ = socket.read(&mut buf).await;
+            let body = r#"{"status":"healthy","version":"9.9.9-test","git_sha":"deadbeef","git_dirty":false,"build_timestamp":"2026-01-01T00:00:00Z","uptime_seconds":5,"checks":[],"data_dir":"/tmp/x"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        });
+
+        let url = format!("http://{addr}");
+        let token = Some("op-token".to_owned());
+        let provenance = build_eval_provenance(
+            &url,
+            token.as_ref(),
+            None,
+            false,
+            30,
+            &CoveragePolicy::Ci,
+            false,
+        )
+        .await;
+        server.await.unwrap();
+
+        assert_eq!(provenance.target_identity.as_deref(), Some("9.9.9-test"));
+    }
+
+    #[tokio::test]
+    async fn provenance_target_identity_is_none_when_unreachable() {
+        organon::testing::install_crypto_provider();
+
+        let provenance = build_eval_provenance(
+            "http://127.0.0.1:1",
+            None,
+            None,
+            false,
+            30,
+            &CoveragePolicy::Ci,
+            false,
+        )
+        .await;
+
+        assert_eq!(provenance.target_identity, None);
     }
 
     #[test]
