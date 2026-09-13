@@ -232,7 +232,7 @@ deploymentTarget = "embedded"
 models = ["Qwen3.5-35B-A3B-Q8_0"]
 ```
 
-`deploymentTarget` is load-bearing for sovereignty filtering. OpenAI cloud
+`deploymentTarget` is load-bearing for filtering by where traffic terminates. OpenAI cloud
 entries must be `cloud`; local servers must declare whether traffic terminates
 on the same host (`embedded`) or an operator-trusted local endpoint
 (`localhosted`).

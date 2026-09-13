@@ -25,9 +25,9 @@ sudo dnf install webkit2gtk4.1-devel gtk3-devel libxdo-devel librsvg2-devel
 
 **macOS:** No additional dependencies. WebKit is bundled with the OS.
 
-**Nix:** `nix develop .#proskenion` (see below) provisions the same GTK3/
-webkit2gtk/libxdo/librsvg stack via `flake.nix`'s `gtkWebkitNativeDeps`,
-rather than system packages.
+**Nix:** `nix develop .#proskenion` (see the Build section) provisions the
+same GTK3/webkit2gtk/libxdo/librsvg stack via `flake.nix`'s
+`gtkWebkitNativeDeps`, rather than system packages.
 
 ## Build
 
@@ -189,5 +189,5 @@ Workarounds:
 2. **Use X11 forwarding.** `ssh -X` works with X11/Xwayland, though performance is limited.
 3. **Use the TUI.** The terminal interface works over any SSH session.
 
-This is a WebKit/GTK limitation, not an Aletheia issue. Proskenion currently
-uses in-window shortcuts only; it does not register native global hotkeys.
+This is a WebKit/GTK limitation, not an Aletheia issue. Proskenion uses
+in-window shortcuts only; it does not register native global hotkeys.

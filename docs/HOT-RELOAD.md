@@ -330,7 +330,7 @@ reloaded config instead.
 ### Safe to change via SIGHUP (hot reload)
 
 - **Agent settings**: Model selection, token budgets, thinking settings, tool iterations, recall parameters
-- **MCP rate limiting**: `mcp.rateLimit.*` settings (the gateway's own rate limiting is cold — see below)
+- **MCP rate limiting**: `mcp.rateLimit.*` settings (the gateway's own rate limiting is cold - see **Gateway rate limiting** under "Requires process restart (cold changes)")
 - **Maintenance schedules**: Trace rotation, drift detection, DB monitoring thresholds
 - **Logging**: Log levels, retention, redaction settings
 

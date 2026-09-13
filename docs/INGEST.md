@@ -1,10 +1,8 @@
 # Ingest
 
-`aletheia ingest <path>` loads files into the knowledge store as facts.
-This document covers the supported formats, the per-format chunking
-behavior, the JSON fact schema, and how directory ingest handles
-errors. It is the authoritative reference for the file shapes the
-command accepts.
+`aletheia ingest <path>` loads files into the knowledge store as facts. The
+supported formats, per-format chunking behavior, JSON fact schema, and
+directory-ingest error handling define the file shapes the command accepts.
 
 ## Synopsis
 
@@ -140,6 +138,7 @@ so repeated parses cannot multiply one encoded payload into many owned buffers.
 An xref boundary that would make one indirect object consume bytes belonging to
 its successor is a separate malformed-PDF error, rather than a misleading
 retained-byte refusal.
+
 The retained-allocation policy is cumulative per owned allocation generation;
 its default is an explicit 128 MiB operation ceiling, independent of the
 encoded-file boundary. Borrowed parser input is instead charged once to a

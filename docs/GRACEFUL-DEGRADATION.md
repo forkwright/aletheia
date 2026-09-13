@@ -53,7 +53,7 @@ The streaming handler spawns three concurrent tasks (`streaming.rs:281`, `525`, 
 
 ### Signal handler startup
 
-**Resolved:** `spawn_sighup_handler` (`server.rs:428`) and `shutdown_signal_with` (`server.rs:508`) now treat signal-installation failures as warnings and continue serving without that signal path. SIGHUP handler installation returning `None` simply disables config reload on signal; Ctrl+C or SIGTERM installation failures cause the corresponding future to pend forever rather than panic. The `.expect()` calls cited in the 2026-04 audit have been removed.
+**Resolved:** `spawn_sighup_handler` (`server.rs:428`) and `shutdown_signal_with` (`server.rs:508`) now treat signal-installation failures as warnings and continue serving without that signal path. SIGHUP handler installation returning `None` disables config reload on signal; Ctrl+C or SIGTERM installation failures cause the corresponding future to pend forever rather than panic. The `.expect()` calls cited in the 2026-04 audit have been removed.
 
 ## Daemon Workers
 
@@ -101,7 +101,7 @@ See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolat
 
 ## Surface List - Components That Crash the Process
 
-No audited production component currently turns a documented local failure into
+No audited production component turns a documented local failure into
 a process-wide crash. The formerly open crash surfaces are resolved:
 
 1. ~~Krites Datalog engine~~ - **resolved**: float JSON export uses `f64::classify()` for exhaustive handling without `unreachable!`; query-planning invariant violations return typed errors.
