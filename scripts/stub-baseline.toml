@@ -1079,3 +1079,38 @@ count = 1
 file = "crates/theatron/skene/src/api/client.rs"
 item = "base_url"
 count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/datetime.rs"
+item = "convert_utc_offset"
+count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/encodings/glyphnames.rs"
+item = "impl"
+count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/encodings/mappings.rs"
+item = "EXPERT_ENCODING"
+count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/encodings/mappings.rs"
+item = "PDF_DOC_ENCODING"
+count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/encodings/mappings.rs"
+item = "SYMBOL_ENCODING"
+count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/toc.rs"
+item = "Toc"
+count = 1
+
+[[site]]
+file = "crates/third-party/lopdf/src/toc.rs"
+item = "impl"
+count = 1

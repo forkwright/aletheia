@@ -1,7 +1,6 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use std::collections::HashSet;
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
@@ -11,6 +10,7 @@ use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::id::{NousId, SessionId, ToolName};
+use koina::system::{Environment, RealSystem};
 use organon::registry::{ToolExecutor, ToolRegistry};
 use organon::types::{InputSchema, ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult};
 
@@ -90,6 +90,15 @@ fn test_config() -> NousConfig {
 }
 
 fn test_tool_ctx() -> ToolContext {
+    // WHY(#7338): derive workspace/allowed_roots from the real system temp
+    // dir (`RealSystem::temp_dir()`, honors `TMPDIR`) instead of a hardcoded
+    // `/tmp`, mirroring `organon::testing::make_test_context_without_services`
+    // (organon/src/testing.rs). Tests in this module stage fixtures via
+    // `tempfile::tempdir()`, which also honors `TMPDIR`; a literal `/tmp`
+    // only matched by coincidence on hosts where `TMPDIR` is unset, and
+    // diverged from it in the forge sandbox, which points `TMPDIR` at a
+    // per-run cache path.
+    let temp_root = RealSystem.temp_dir();
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid"),
         session_id: SessionId::new(),
@@ -101,8 +110,8 @@ fn test_tool_ctx() -> ToolContext {
             client_turn_id: None,
         },
         receipt_signer: organon::receipts::ReceiptSigner::new_session(),
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
+        workspace: temp_root.join("test"),
+        allowed_roots: vec![temp_root],
         services: None,
         active_tools: Arc::new(RwLock::new(HashSet::new())),
         tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),

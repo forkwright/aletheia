@@ -67,8 +67,9 @@ Tool executors run in a rich execution context:
 
 - `computer_use` captures before/after screenshots, computes diff regions, and
   runs inside a Landlock sandbox (`crates/organon/src/builtins/computer_use/sandbox.rs:97`).
-- `view_file` resolves symlinks, validates paths against allowed roots, and
-  detects media kinds (`crates/organon/src/builtins/view_file.rs:65`).
+- `view_file` prepares canonical paths, opens each target once beneath a pinned
+  allowed-root handle, reads that same handle, and detects media kinds
+  (`crates/organon/src/builtins/view_file.rs`).
 - Process-based tools have exit codes, stderr streams, timing, and sandbox
   violation logs (`crates/organon/src/sandbox/policy.rs:406`).
 
