@@ -32,11 +32,12 @@ tracing = { workspace = true }
 
 # Shared bearer-token secret storage (#7027): OS keyring, AES-256-GCM
 # encrypted fallback, atomic secure writes. WHY not `workspace = true` for
-# aes-gcm/keyring/zeroize: proskenion is a standalone cargo workspace (GTK
-# deps break the root workspace) and declares these as direct dependencies
-# rather than workspace ones, so skene — built inside both workspaces —
-# pins the same versions directly here instead of requiring a
-# workspace.dependencies entry that only one of the two workspaces has.
+# aes-gcm/keyring/zeroize (aletheia#4726: proskenion folded into the root
+# workspace, no longer a separate implicit one): the root workspace's
+# `[workspace.dependencies]` table has no entry for these three, since skene
+# is their only consumer; pinning them directly here instead of adding a
+# workspace-wide entry for a single consumer keeps that table scoped to
+# genuinely shared dependencies.
 aes-gcm = "0.11"
 keyring = "4"
 zeroize = { version = "1", default-features = false, features = ["std"] }

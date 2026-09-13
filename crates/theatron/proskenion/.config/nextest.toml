@@ -1,4 +1,4 @@
-# nextest configuration for the standalone proskenion workspace
+# nextest configuration for the proskenion crate (non-default root-workspace member)
 # See: https://nexte.st/book/configuration.html
 
 [profile.default]
