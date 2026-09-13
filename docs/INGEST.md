@@ -119,6 +119,55 @@ with `missing field 'id'`** — there is no lightweight authoring
 schema. To author knowledge by hand, prefer `--format markdown` and
 let the chunker synthesize the surrounding metadata.
 
+### `pdf`
+
+PDF is detected from a `.pdf` extension, then decoded to plain text before the
+normal text chunker runs. It is a container input rather than an `--format`
+value, so an explicit `--format markdown` or `--format text` still selects how
+the extracted text is chunked.
+
+PDF ingestion has a 32 MiB encoded-file boundary, shared with the workspace
+PDF policy. It opens and reads one file handle in bounded chunks, so a later
+path replacement or append cannot make the parse allocate beyond that boundary.
+Parsing then runs off the async executor on a bounded worker job and uses the
+same single `lopdf` parser as the agent `inspect_report` tool. Its typed policy
+caps pages, xref/object admission, individual streams/pages and filter layers,
+aggregate decompression, aggregate `/ToUnicode` mappings across fonts, and
+aggregate extracted text before the relevant allocation. It separately caps
+borrowed parser source work (names, strings, dictionaries, xref/trailer
+structure) and cumulative owned stream/object-stream/encrypted-staging copies,
+so repeated parses cannot multiply one encoded payload into many owned buffers.
+An xref boundary that would make one indirect object consume bytes belonging to
+its successor is a separate malformed-PDF error, rather than a misleading
+retained-byte refusal.
+The retained-allocation policy is cumulative per owned allocation generation;
+its default is an explicit 128 MiB operation ceiling, independent of the
+encoded-file boundary. Borrowed parser input is instead charged once to a
+separate interval-union source-work budget equal to the accepted input limit;
+revisiting the same `/Prev` or indirect `/Length` source bytes does not pretend
+to retain another buffer. Stream, encrypted-staging, and clone generations are
+still charged before their actual owned copy occurs.
+
+Object-stream members
+must be present at their exact container/index in the final bounded xref, so
+compressed objects cannot amplify the retained set. Password-protected PDFs are
+rejected at the trailer before any password authentication, including an
+empty-password attempt. Checked parser failures and the public panic boundary
+are per-file errors, so directory ingest continues safely. Cancelling an ingest
+can stop waiting for the bounded worker job; it does not claim to interrupt
+dependency parsing mid-call.
+
+The default policy permits up to 128 pages. That is deliberately coherent with
+the 32 MiB shared decompression budget and 256 KiB per content decoder: a
+document whose pages each reach the decoder cap cannot pass a contradictory
+larger page-count limit. Fonts and multi-filter streams consume the same budget
+and may reduce the practical page count further.
+
+The direct dependency bump to `lopdf` 0.44 was necessary but not sufficient:
+its safe decompression APIs are opt-in, while the former `pdf-extract` path
+kept a second older parser and used unbounded extraction. The shared policy is
+therefore owned in `poiesis-inspect` and passed by both deployed callers.
+
 ### `auto`
 
 Format is detected from the file extension:
@@ -128,6 +177,7 @@ Format is detected from the file extension:
 | `.md` / `.markdown`         | markdown  |
 | `.json`                     | json      |
 | `.jsonl`                    | jsonl     |
+| `.pdf`                      | extracted text |
 | anything else (incl. `.txt`)| text      |
 
 ## Directory ingest

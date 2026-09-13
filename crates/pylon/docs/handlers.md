@@ -462,10 +462,16 @@ Reactivate an archived session.
 
 ### `DELETE /api/v1/sessions/{id}/purge`
 
-Permanently delete a session and all its messages. Irreversible.
+Permanently delete a session and all its messages, usage records, tool-audit
+records, distillations, notes (including run-context/turn-attempt
+provenance), and durable turn records, in one atomic store transaction.
+Irreversible; a fresh `resolve` for the same `nous_id`/`session_key` pair
+starts a brand-new session with zero turns.
 
-**Response `200 OK`** - empty body.
+**Response `204 No Content`**.
 **Response `404 Not Found`** - session not found.
+
+**Response `409 Conflict`** - session has a turn in flight.
 
 ---
 

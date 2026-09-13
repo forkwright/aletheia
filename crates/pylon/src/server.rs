@@ -91,6 +91,10 @@ pub enum ServerError {
     #[snafu(display("default nous spawn failed: {source}"))]
     NousSpawn { source: nous::error::Error },
 
+    /// Failed to open or initialize the working checkpoint store.
+    #[snafu(display("failed to open working checkpoint store: {source}"))]
+    WorkingCheckpointStore { source: nous::error::Error },
+
     /// Authentication setup failed during startup.
     #[snafu(display("authentication setup failed: {message}"))]
     Auth { message: String },
@@ -143,6 +147,16 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let session_store = SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
     let session_store = Arc::new(Mutex::new(session_store));
+
+    // WHY(aletheia#7341): opened here (not shared with the aletheia binary's
+    // runtime builder, since this harness never runs alongside it) so
+    // `AppState::working_checkpoint_store` is never left pointing at a
+    // placeholder -- `purge` depends on a real handle to clear a purged
+    // session's checkpoint rows.
+    let working_checkpoint_store: Arc<dyn organon::types::WorkingCheckpointStore> = Arc::new(
+        nous::working_memory::FjallWorkingCheckpointStore::open(&oikos.working_checkpoints_db())
+            .context(WorkingCheckpointStoreSnafu)?,
+    );
 
     // WARNING(#4556): this deprecated pylon-only harness intentionally does
     // not assemble the production runtime. Use `aletheia serve` so providers
@@ -241,6 +255,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // daemon runners (that lives in the aletheia binary's runtime
         // builder); no runners means no task-state stores to attach.
         daemon_task_states: Arc::new(Vec::new()),
+        working_checkpoint_store,
     });
 
     #[cfg(unix)]

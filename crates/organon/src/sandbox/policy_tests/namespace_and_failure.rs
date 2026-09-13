@@ -142,7 +142,19 @@ fn permissive_fails_open_without_full_landlock_baseline() {
 #[cfg(target_os = "linux")]
 #[test]
 fn disabled_policy_allows_all() {
-    let _workspace = tempfile::tempdir().expect("create workspace");
+    let workspace = tempfile::tempdir().expect("create workspace");
+    // WHY(#7338): probe a file this test creates rather than /etc/hostname --
+    // a CI sandbox (e.g. the forge's bubblewrap jail) may not bind
+    // /etc/hostname into the outer mount namespace at all, which failed this
+    // test for a reason unrelated to our own (disabled) sandbox policy. A
+    // self-owned file proves "disabled policy allows all" just as well,
+    // hermetically.
+    let probe_file = workspace.path().join("disabled-policy-probe.txt");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test setup requires direct filesystem access"
+    )]
+    std::fs::write(&probe_file, "disabled policy probe").expect("write probe file");
     let policy = SandboxPolicy {
         enabled: false,
         read_paths: Vec::new(),
@@ -154,7 +166,7 @@ fn disabled_policy_allows_all() {
     };
 
     let mut cmd = Command::new("cat");
-    cmd.arg("/etc/hostname");
+    cmd.arg(&probe_file);
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
     let output = cmd.output().expect("spawn child");
