@@ -4,6 +4,7 @@
 //! stage level produces both a metric increment and a structured log line.
 
 use koina::event::{InternalEvent, LogLevel};
+use koina::id::NousId;
 
 /// A pipeline stage completed successfully.
 pub(crate) struct StageCompleted {
@@ -246,9 +247,11 @@ impl InternalEvent for StageSkipped {
 /// degradation must be surfaced on the response the caller actually sees,
 /// not only in server-side traces.
 pub(crate) struct StageDegraded {
-    /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
-    pub(crate) nous_id: String,
+    /// Agent identifier. Unlike this file's other events (#6755 tracks
+    /// their eventual conversion), this one is a newly introduced field
+    /// (aletheia#7295), so it carries the already-validated `NousId`
+    /// type directly instead of a bare `String` needing a fresh exemption.
+    pub(crate) nous_id: NousId,
     /// Stage name.
     pub(crate) stage: &'static str,
     /// Machine-readable degradation reason (e.g. `"rewrite_timeout"`),
@@ -276,7 +279,7 @@ impl InternalEvent for StageDegraded {
 
     fn metric_labels(&self) -> Vec<(&'static str, String)> {
         vec![
-            ("nous_id", self.nous_id.clone()),
+            ("nous_id", self.nous_id.to_string()),
             ("stage", self.stage.to_owned()),
             ("reason", self.reason.to_owned()),
         ]
@@ -401,9 +404,13 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test-only literal known valid at compile time; a panic here means the test fixture itself is broken"
+    )]
     fn stage_degraded_event_fields() {
         let event = StageDegraded {
-            nous_id: "test-agent".to_owned(),
+            nous_id: NousId::new("test-agent").expect("valid nous id"),
             stage: "recall",
             reason: "rewrite_timeout",
             detail: "query rewrite call to model 'x' exceeded its 6s budget".to_owned(),

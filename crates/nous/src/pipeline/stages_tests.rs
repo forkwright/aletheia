@@ -1366,6 +1366,7 @@ async fn run_recall_stage_falls_back_to_raw_query_when_rewrite_times_out() {
         providers,
         &emitter,
         None,
+        &NousId::new("test-agent").expect("valid nous id"),
     )
     .await;
 

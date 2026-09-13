@@ -17,6 +17,7 @@ use tracing::{Instrument, debug, error, info_span, warn};
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use koina::event::EventEmitter;
+use koina::id::NousId;
 use mneme::embedding::EmbeddingProvider;
 use mneme::id::FactId;
 use mneme::knowledge::{EpistemicTier, Fact};
@@ -409,6 +410,16 @@ pub(super) async fn run_recall_stage(
     providers: Arc<ProviderRegistry>,
     emitter: &EventEmitter,
     surprise_calc: Option<mneme::surprise::SurpriseCalculator>,
+    // WHY(aletheia#7295): StageDegraded.nous_id is a typed NousId, not the
+    // bare String the pipeline's other events still carry (#6755 tracks
+    // that wider conversion) -- the caller already validated one for
+    // `ToolContext` at the actor boundary (`actor/turn.rs`), so this stage
+    // takes that validated value instead of re-deriving a fallible parse
+    // of `config.id` here. Named distinctly from the `nous_id: Arc<str>`
+    // local bound below (from `config.id.clone()`, used for the recall
+    // search calls) so the two identities are never confused for one
+    // another at a glance.
+    validated_nous_id: &NousId,
 ) -> error::Result<()> {
     // WHY(#3404, #3413): resolve deployment target so the sovereignty filter drops facts the provider
     // cannot receive; unregistered models default to Cloud (Public-only) rather than leaking Internal data.
@@ -562,7 +573,7 @@ pub(super) async fn run_recall_stage(
         );
         if let Some(detail) = rewrite_fallback {
             emitter.emit(&StageDegraded {
-                nous_id: config.id.to_string(),
+                nous_id: validated_nous_id.clone(),
                 stage: "recall",
                 reason: "rewrite_timeout",
                 detail: format!(
