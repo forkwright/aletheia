@@ -370,8 +370,13 @@ async fn try_register(oikos: &Oikos, name: &str) {
         "lan" | "0.0.0.0" | "localhost" => "127.0.0.1",
         other => other,
     };
-    let url = format!("http://{host}:{port}/api/health"); // SAFE: localhost-only, no network traversal
-    let server_running = reqwest::get(&url).await.is_ok();
+    let url = format!("http://{host}:{port}"); // SAFE: localhost-only, no network traversal
+    // WHY(review #5100): routes through the same shared-client health check
+    // every other server-running probe in this crate uses (#7023), instead
+    // of a hand-rolled `reqwest::get` against a hand-built endpoint.
+    let server_running = crate::commands::is_knowledge_server_running(&url)
+        .await
+        .unwrap_or(false);
 
     if server_running {
         println!(
