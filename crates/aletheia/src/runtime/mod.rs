@@ -1000,6 +1000,12 @@ impl RuntimeBuilder {
                     audit_log: Some(Arc::clone(&audit_log)),
                     empirical_router: Some(Arc::clone(&empirical_router)),
                     tool_config: Arc::new(self.config.tool_limits.clone()),
+                    // WHY(aletheia#7306): sourced the same way
+                    // `build_nous_runtime_config` feeds the top-level
+                    // turn's `PipelineConfig::stage_budget` — spawned
+                    // sub-agent turns must honor the operator's
+                    // `[stageBudget]` config, not `StageBudget::default()`.
+                    stage_budget: Arc::new(self.config.stage_budget.clone().into()),
                 }),
             ))
         } else {
@@ -1012,7 +1018,11 @@ impl RuntimeBuilder {
             });
 
         let tool_services = Arc::new(ToolServices {
-            working_checkpoint_store: Some(working_checkpoint_store),
+            // WHY(aletheia#7341): cloned, not moved -- `AppState` below needs
+            // its own handle to the same store so `pylon`'s session purge can
+            // clear a purged session's checkpoint rows through the identical
+            // open fjall database this tool/hook surface writes through.
+            working_checkpoint_store: Some(Arc::clone(&working_checkpoint_store)),
             cross_nous,
             messenger,
             note_store,
@@ -1480,6 +1490,7 @@ impl RuntimeBuilder {
             metrics_mode: self.config.gateway.metrics.mode,
             metrics_detailed: self.config.gateway.metrics.detailed,
             daemon_task_states: Arc::new(daemon_task_state_handles),
+            working_checkpoint_store,
         });
 
         Ok(Runtime {

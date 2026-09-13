@@ -22,6 +22,7 @@ pub(crate) mod poiesis;
 pub(crate) mod prompt_audit;
 pub(crate) mod repl;
 pub(crate) mod server;
+pub(crate) mod service;
 pub(crate) mod session_create;
 pub(crate) mod session_export;
 pub(crate) mod session_store;
@@ -136,6 +137,9 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
                 .map_err(Into::into)
         }
         Command::Tls { action } => tls::run(&action, instance_root).map_err(Into::into),
+        Command::Service { action } => service::run(&action, instance_root)
+            .await
+            .map_err(Into::into),
         Command::Status { url } => status::run(&url, instance_root)
             .await
             .map_err(anyhow::Error::from),

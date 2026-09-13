@@ -156,7 +156,43 @@ impl Config {
     ) -> Result<Self> {
         // kanon:ignore RUST/no-result-unwrap-or-default — missing config file is a normal first-run state; empty default is correct
         let file_config = Self::load_file().unwrap_or_default();
+        Self::load_from_file_config(cli_url, cli_token, cli_agent, cli_session, file_config)
+    }
 
+    /// Test-only entry point for [`Self::load`] that resolves `tui.toml`
+    /// under an explicit `config_dir` instead of the real OS config
+    /// directory (`dirs::config_dir()`).
+    ///
+    /// WHY: a test asserting on the *absence* of a credential (or any other
+    /// file-config-derived field) cannot rely on `dirs::config_dir()`
+    /// resolving to an empty directory — the real HOME/XDG_CONFIG_HOME the
+    /// test process inherits may carry a real `tui.toml` (a developer's own
+    /// machine, or a CI sandbox that provisions one for unrelated live-API
+    /// tests). This crate denies `unsafe_code`, so a test cannot scope
+    /// `XDG_CONFIG_HOME` via `std::env::set_var` to fix that. Threading the
+    /// same `base` parameter [`load_file_in`]'s other hermetic tests already
+    /// use through the rest of `Config::load`'s pipeline makes the whole
+    /// resolved `Config` — not just the raw file — assertable against a
+    /// directory the test created and owns.
+    #[cfg(test)]
+    fn load_in(
+        cli_url: Option<String>,
+        cli_token: Option<String>,
+        cli_agent: Option<String>,
+        cli_session: Option<String>,
+        config_dir: &Path,
+    ) -> Result<Self> {
+        let file_config = load_file_in(config_dir).unwrap_or_default();
+        Self::load_from_file_config(cli_url, cli_token, cli_agent, cli_session, file_config)
+    }
+
+    fn load_from_file_config(
+        cli_url: Option<String>,
+        cli_token: Option<String>,
+        cli_agent: Option<String>,
+        cli_session: Option<String>,
+        file_config: ConfigFile,
+    ) -> Result<Self> {
         let workspace_root = RealSystem
             .var("ALETHEIA_ROOT")
             .map(std::path::PathBuf::from)
@@ -473,7 +509,15 @@ mod tests {
     #[test]
     fn default_url_when_none() {
         ensure_crypto_provider();
-        let config = Config::load(None, None, None, None).unwrap();
+        // WHY(forge sandbox hermeticity): see config_load_no_credential --
+        // plain Config::load resolves file_config from the real OS config
+        // directory, which a sandbox that provisions a tui.toml for
+        // unrelated live-API tests can populate with a non-default url,
+        // inverting this assertion. Load through an empty directory this
+        // test owns so "falls back to the compiled default" is a fact this
+        // test established, not an assumption about the ambient config dir.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
         assert_eq!(config.url, DEFAULT_URL);
     }
 
@@ -679,9 +723,16 @@ mod tests {
     #[test]
     fn theme_parsing_light() {
         ensure_crypto_provider();
-        let config = Config::load(None, None, None, None).unwrap();
-        // Default is auto (None) when no file setting
-        let _ = config.theme;
+        // WHY(forge sandbox hermeticity): see config_load_no_credential --
+        // load through an empty directory this test owns so "no theme
+        // setting" is a fact this test established, not an assumption about
+        // the ambient config dir's tui.toml.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
+        assert!(
+            config.theme.is_none(),
+            "empty config dir must not resolve a theme"
+        );
     }
 
     #[test]
@@ -689,15 +740,20 @@ mod tests {
         ensure_crypto_provider();
         // ALETHEIA_ROOT env var must not be set for this test to be meaningful.
         // We can't mutate env vars (unsafe-code is denied in this crate).
-        // Verify that when neither env nor file provides workspace_root, it is None.
         if std::env::var("ALETHEIA_ROOT").is_ok() {
             // Skip: env is set externally: can't control it without unsafe
             return;
         }
-        let config = Config::load(None, None, None, None).unwrap();
-        // workspace_root may be None (no file) or Some (if tui.toml has workspace_root).
-        // The load succeeds either way.
-        let _ = config.workspace_root;
+        // WHY(forge sandbox hermeticity): see config_load_no_credential --
+        // load through an empty directory this test owns so "no
+        // workspace_root" is a fact this test established, not an
+        // assumption about the ambient config dir's tui.toml.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
+        assert!(
+            config.workspace_root.is_none(),
+            "empty config dir and unset ALETHEIA_ROOT must not resolve a workspace_root"
+        );
     }
 
     #[test]
@@ -738,7 +794,16 @@ mod tests {
     #[test]
     fn config_load_no_credential() {
         ensure_crypto_provider();
-        let config = Config::load(None, None, None, None).unwrap();
+        // WHY(forge sandbox hermeticity): the real OS config directory
+        // (`dirs::config_dir()`, via plain `Config::load`) is ambient state
+        // this test does not control — a sandbox that provisions a real
+        // `tui.toml` for unrelated live-API tests would otherwise resolve a
+        // credential here and invert the assertion. Create an empty
+        // directory this test owns and load through it instead, so "no
+        // credential" is a fact this test established, not an assumption
+        // about the environment it happens to run in.
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::load_in(None, None, None, None, dir.path()).unwrap();
         assert_eq!(config.credential_label, CredentialLabel::None);
     }
 }
