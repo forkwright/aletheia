@@ -476,12 +476,31 @@ mod tests {
     // to the one typed error that means "no chromium binary"
     // (`poiesis_printer_chromium::PrinterError::ChromiumNotFound`), not any
     // error.
+    //
+    // WHY `disable_sandbox: true`, not `false`: that third argument only
+    // selects Chromium's OS-level process sandbox, a host kernel/container
+    // capability this test has no stake in (this crate's own
+    // `chromium_impl::print_to_pdf_inner` already carries the WHY for
+    // sandbox disablement, and `PrintOptions::disable_sandbox` /
+    // `POIESIS_CHROMIUM_DISABLE_SANDBOX` are the shipped, intentional way to
+    // opt out of it). With it left enabled, GitHub's `ubuntu-24.04` runners
+    // (unprivileged user namespaces disabled since Ubuntu 23.10+) crash
+    // Chromium's zygote with "No usable sandbox!" -- a THIRD, host-specific
+    // outcome this test's binary match (Ok(pdf) | Err(ChromiumNotFound))
+    // never accounted for, so a present-but-unsandboxable binary panicked
+    // the match arm instead of exercising either documented branch. Passing
+    // `true` collapses the outcome back to the two this test actually
+    // means to cover -- binary present (real PDF) or absent
+    // (`ChromiumNotFound`) -- without depending on whatever sandbox
+    // support the host happens to have; it is safe here because the deck
+    // HTML rendered is fixed, locally generated fixture content, not
+    // untrusted input.
     #[tokio::test]
     async fn render_deck_to_bytes_pdf_renders_or_reports_missing_chromium() {
         let deck = minimal_deck();
         let meta = Meta::new("Test Deck").expect("valid meta");
 
-        match render_deck_to_bytes(&deck, &meta, "pdf", false).await {
+        match render_deck_to_bytes(&deck, &meta, "pdf", true).await {
             Ok((bytes, format)) => {
                 assert_eq!(format, "pdf");
                 assert!(
