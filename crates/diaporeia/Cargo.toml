@@ -39,7 +39,7 @@ rmcp = { version = "=3.1.4", features = [
 # and its expansion calls rmcp runtime APIs directly. A lock regeneration that
 # moves one without the other breaks every `#[tool]` site with a
 # missing-function error that names neither crate (#6502).
-rmcp-macros = "=3.1.4"
+rmcp-macros = "=3.3.0"
 schemars = "1"
 
 # HTTP (for streamable HTTP transport Axum integration, and the outbound
